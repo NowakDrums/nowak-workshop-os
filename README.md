@@ -1,12 +1,12 @@
-# Nowak Workshop OS Web App v1.2
+# Nowak Workshop OS Web App v1.3
 
 Adds:
-- Full drum job cards
-- Manufacturing checklist saved to notes
-- Progress bars
-- Search
-- Cure queue and marketing queue
-- Time logging from the job card
-- Build detail editing
+- Brady / Chris Brady tracking with separate blue highlighting
+- CB number field
+- Custom order details: customer name, email, custom price, shipping, total price, due date
+- Orders tab
+- Ply veneer cut calculator
+- Per-drum veneer thickness fields for all five glued sheets/pairs
+- Job card updates for customer/order details
 
-Upload the contents of this folder to the existing GitHub repository. Vercel will redeploy automatically.
+Important: Run `supabase/v1_3_migration.sql` in Supabase SQL Editor before deploying.
