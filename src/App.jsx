@@ -7,8 +7,13 @@ import "./style.css";
 
 const stages = ["Veneer Ready","In Mould","Post-Mould","Glued Blank","Machined","Edges / Snare Beds","Ready to Drill","Sealer Coat","Polyurethane Coat 1","Polyurethane Coat 2","Polyurethane Coat 3","Polyurethane Coat 4","Finished Spraying / Curing","Ready to Polish","Ready to Assemble","Finished / Ready to Sell","Sold/Shipped"];
 const checklist = ["Timber / veneer ready","Glue up complete","Machined","Sanded","Bearing edges cut","Snare beds cut","Drilled","Inside oiled / sealed","Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Cure complete","Polished","Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"];
-const defaultPlyLengths = [1106,1096,1087.5,1079.5,1069];
+const defaultPlyLengths14 = [1106,1096,1087.5,1079.5,1069];
 const defaultPairThickness = 1.2;
+const mouldDiameters = {
+  "14": 13.875 * 25.4,
+  "13": 12.875 * 25.4,
+  "12": 11.875 * 25.4,
+};
 const money = (v) => "$" + Math.round(Number(v || 0)).toLocaleString();
 const nextStage = (s) => stages[Math.min(Math.max(stages.indexOf(s),0)+1, stages.length-1)] || s;
 
@@ -30,14 +35,42 @@ function templateCost(t, rate){ if(!t) return 0; return Number(t.hardware_cost||
 function parseChecked(notes){ const found=new Set(); checklist.forEach(item=>{ if((notes||"").includes(`[x] ${item}`)) found.add(item); }); return found; }
 function setChecklistInNotes(existing, checked){ const clean=(existing||"").split("\n").filter(line=>!line.startsWith("[x] ")&&!line.startsWith("[ ] ")).join("\n").trim(); const block=checklist.map(item=>`${checked.has(item)?"[x]":"[ ]"} ${item}`).join("\n"); return `${clean?clean+"\n\n":""}${block}`; }
 function marketingText(d){ return `🔥 New from the workshop\n\n#${d.serial} ${d.timber}\n${d.size} ${d.build_type}\n${d.finish || ""}\n\nHandmade in Western Australia, built one at a time with care, precision and passion.\n\nAvailable from Nowak Drum Company.`; }
-function adjustedLengths(thicknesses){
+function shellSizeKey(size){
+  const text = String(size || "");
+  if(text.includes("12")) return "12";
+  if(text.includes("13")) return "13";
+  return "14";
+}
+
+function baseLengthsForSize(size){
+  const key = shellSizeKey(size);
+  const targetDiameter = mouldDiameters[key] || mouldDiameters["14"];
+  const baseDiameter = mouldDiameters["14"];
+  const diameterDifference = targetDiameter - baseDiameter;
+  return defaultPlyLengths14.map(length => length + Math.PI * diameterDifference);
+}
+
+function adjustedLengths(thicknesses, size="14 x 6.5"){
+  const baseLengths = baseLengthsForSize(size);
   let cumulativeDifference = 0;
   return thicknesses.map((t,i)=>{
     const diff = Number(t || defaultPairThickness) - defaultPairThickness;
     cumulativeDifference += diff;
     const adjustment = cumulativeDifference * 2 * Math.PI;
-    return defaultPlyLengths[i] + adjustment;
+    return baseLengths[i] + adjustment;
   });
+}
+
+function autoPrice({build_type="Ply", finish="Satin", build_client="Nowak", order_type="Stock", size="14 x 6.5"}){
+  const isPly = build_type === "Ply";
+  const highGloss = String(finish).toLowerCase().includes("high");
+  let base = isPly ? 1100 : 1300;
+  if(highGloss) base += isPly ? 150 : 100;
+  if(String(size).includes("13")) base -= 50;
+  if(String(size).includes("12")) base -= 100;
+  if(build_client === "Brady") return Math.round(base * 0.70);
+  if(order_type === "Custom") return Math.round(base * 1.05);
+  return base;
 }
 
 function App(){
@@ -102,12 +135,15 @@ function App(){
       timber:form.timber || "",
       build_type:form.build_type,
       size:form.size || (isPly ? "14 x 6.5" : "14 x 6.5"),
-      finish:"TBD",
-      customer:"Stock",
+      finish:form.finish || "TBD",
+      customer:form.order_type === "Stock" ? "Stock" : "",
       production_status:isPly ? "Veneer Ready" : "Glued Blank",
-      sales_status:"Custom Order",
+      sales_status:form.order_type === "Stock" ? "Stock" : "Custom Order",
       next_step:isPly ? "Confirm veneer thicknesses and cut lengths" : "Machine shell",
-      retail_price:0,
+      retail_price:Number(form.custom_price || 0),
+      custom_price:Number(form.custom_price || 0),
+      shipping_cost:Number(form.shipping_cost || 0),
+      total_price:Number(form.total_price || form.custom_price || 0),
       hours_logged:0,
       build_client:form.build_client || "Nowak",
       cb_number:form.cb_number || "",
@@ -138,7 +174,7 @@ function App(){
   function openJobCard(d){ setJobCard(d); }
 
   return <main>
-    <header className="hero"><div><h1>Nowak Workshop OS</h1><p>v1.3.2 — add-drum wizard, Brady tracking and ply veneer calculator.</p></div><button onClick={loadAll}><RefreshCw size={16}/> Refresh</button></header>
+    <header className="hero"><div><h1>Nowak Workshop OS</h1><p>v1.3.3 — smart add-drum wizard, size-based veneer lengths and auto pricing.</p></div><button onClick={loadAll}><RefreshCw size={16}/> Refresh</button></header>
     {message && <section className="panel warning">{message}</section>}
     <nav>
       <button className={view==="dashboard"?"active":""} onClick={()=>setView("dashboard")}><LayoutDashboard size={16}/> Dashboard</button>
@@ -194,11 +230,11 @@ function DrumCard({drum, openJobCard}){
 
 function VeneerCalculator({drums, updateDrum, openJobCard}){
   const [manual,setManual]=useState([1.2,1.2,1.2,1.2,1.2]);
-  const manualLengths=adjustedLengths(manual);
+  const manualLengths=adjustedLengths(manual, "14 x 6.5");
   return <section>
     <div className="panel"><h2>Ply Veneer Cut Calculator</h2><p>Enter the actual thickness of each glued pair/sheet group. The calculator adjusts your original 14&quot; mould cut list using your 1.2mm baseline.</p></div>
     <section className="panel"><h2>Manual Calculator</h2><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><VeneerResult lengths={manualLengths}/></section>
-    <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>#{d.serial} {d.timber}</b><span>{d.size} · {d.production_status}</span><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(t)}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
+    <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>#{d.serial} {d.timber}</b><span>{d.size} · {d.production_status}</span><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(t, d.size)}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
   </section>
 }
 function VeneerResult({lengths}){ return <div className="resultList">{lengths.map((l,i)=><div key={i}><b>Layer {i+1}</b><span>{l.toFixed(1)} mm</span></div>)}</div> }
@@ -207,18 +243,24 @@ function Inventory({hardware, updateHardware, lowStock, inventoryValue}){ return
 function Costing({templates, labourRate, setLabourRate}){ return <section className="panel"><h2>Costing Templates</h2><label className="inlineLabel">Labour rate <input value={labourRate} onChange={e=>setLabourRate(Number(e.target.value))}/></label><div className="templateGrid">{templates.map(t=>{const total=templateCost(t,labourRate), profit=Number(t.retail_price||0)-total; return <article className="card" key={t.id}><b>{t.name}</b><span>Hardware: {money(t.hardware_cost)}</span><span>Timber: {money(t.timber_cost)}</span><span>Consumables: {money(t.consumables)}</span><span>Labour: {t.labour_hours} hrs × {money(labourRate)}</span><hr/><span>Total cost: {money(total)}</span><span>Retail: {money(t.retail_price)}</span><b>Estimated profit: {money(profit)}</b></article>})}</div></section> }
 
 
+
 function AddDrumWizard({onClose, onCreate}){
   const [form,setForm]=useState({
     build_type:"Stave",
     timber:"",
     size:"14 x 6.5",
+    finish:"Satin",
     build_client:"Nowak",
+    order_type:"Stock",
     cb_number:"",
+    shipping_cost:0,
     veneer:[1.2,1.2,1.2,1.2,1.2],
   });
 
-  const lengths = adjustedLengths(form.veneer);
   const isPly = form.build_type === "Ply";
+  const lengths = adjustedLengths(form.veneer, form.size);
+  const calculatedPrice = autoPrice(form);
+  const total = Number(calculatedPrice || 0) + Number(form.shipping_cost || 0);
 
   function setField(key,value){ setForm(f=>({...f,[key]:value})); }
   function setVeneer(index,value){
@@ -229,11 +271,19 @@ function AddDrumWizard({onClose, onCreate}){
     });
   }
 
+  function create(){
+    onCreate({
+      ...form,
+      custom_price: calculatedPrice,
+      total_price: total,
+    });
+  }
+
   return <div className="modalBg" onClick={onClose}>
     <div className="modal wizardModal" onClick={e=>e.stopPropagation()}>
       <button className="close" onClick={onClose}>×</button>
       <h2>Add Drum</h2>
-      <p>Choose the shell type first. The app will set the correct starting stage and next step.</p>
+      <p>Choose shell type, timber, finish and order type. Pricing and veneer cut lengths update automatically, but can still be adjusted later on the job card.</p>
 
       <section className="choiceRow">
         <button className={form.build_type==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>setField("build_type","Stave")}>Stave shell</button>
@@ -246,7 +296,25 @@ function AddDrumWizard({onClose, onCreate}){
           <label>Material / timber</label>
           <input placeholder="Jarrah, Marri, Blackwood, Spotted Gum..." value={form.timber} onChange={e=>setField("timber",e.target.value)}/>
           <label>Size</label>
-          <input value={form.size} onChange={e=>setField("size",e.target.value)}/>
+          <select value={form.size} onChange={e=>setField("size",e.target.value)}>
+            <option>14 x 6.5</option>
+            <option>14 x 5.5</option>
+            <option>14 x 7</option>
+            <option>13 x 7</option>
+            <option>12 x 7</option>
+          </select>
+          <label>Finish</label>
+          <select value={form.finish} onChange={e=>setField("finish",e.target.value)}>
+            <option>Satin</option>
+            <option>High Gloss</option>
+            <option>Natural / Oil</option>
+            <option>TBD</option>
+          </select>
+          <label>Order type</label>
+          <select value={form.order_type} onChange={e=>setField("order_type",e.target.value)}>
+            <option>Stock</option>
+            <option>Custom</option>
+          </select>
           <label>Build for</label>
           <select value={form.build_client} onChange={e=>setField("build_client",e.target.value)}>
             <option>Nowak</option>
@@ -261,7 +329,7 @@ function AddDrumWizard({onClose, onCreate}){
         <div className="panel inner">
           <h2>{isPly ? "Ply setup" : "Stave setup"}</h2>
           {isPly ? <>
-            <p>Enter the measured thickness of each glued veneer pair/sheet group. The calculated cut lengths update instantly.</p>
+            <p>The cut lengths automatically adjust for 12&quot;, 13&quot; and 14&quot; shells, then fine-tune again based on actual veneer thickness.</p>
             <div className="veneerGrid">
               {form.veneer.map((v,i)=><label key={i}>Layer {i+1} mm<input value={v} onChange={e=>setVeneer(i,e.target.value)}/></label>)}
             </div>
@@ -273,12 +341,20 @@ function AddDrumWizard({onClose, onCreate}){
               <div><b>Next step</b><span>Machine shell</span></div>
             </div>
           </>}
+
+          <h2>Auto Pricing</h2>
+          <div className="resultList twoCols">
+            <div><b>Calculated price</b><span>{money(calculatedPrice)}</span></div>
+            <div><b>Shipping</b><span><input value={form.shipping_cost} onChange={e=>setField("shipping_cost",e.target.value)}/></span></div>
+            <div><b>Total</b><span>{money(total)}</span></div>
+            <div><b>Basis</b><span>{form.build_client==="Brady" ? "CB wholesale" : form.order_type}</span></div>
+          </div>
         </div>
       </section>
 
       <section className="buttonRow">
         <button onClick={onClose}>Cancel</button>
-        <button className="primary" onClick={()=>onCreate(form)}>Create drum</button>
+        <button className="primary" onClick={create}>Create drum</button>
       </section>
     </div>
   </div>

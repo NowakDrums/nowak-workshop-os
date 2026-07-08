@@ -1,10 +1,12 @@
-# Nowak Workshop OS Web App v1.3.2
+# Nowak Workshop OS Web App v1.3.3
 
 Adds:
-- Add Drum wizard
-- Choose Stave or Ply before creating the drum
-- Stave: asks material/size and adds the drum to machining workflow
-- Ply: asks material/size, opens veneer thickness fields and calculates cut lengths immediately
-- Brady / CB details available during creation
+- Smart Add Drum wizard
+- 12, 13 and 14 inch ply veneer cut lengths are calculated automatically
+- Veneer lengths still adjust from actual measured thickness of all five layers
+- Finish selector including High Gloss
+- Auto pricing for Stock, Custom and Brady/CB wholesale
+- Shipping cost added to total
+- Price remains editable later in the Job Card
 
 No new Supabase migration needed if v1.3 migration has already been run.
