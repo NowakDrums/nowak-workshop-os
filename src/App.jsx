@@ -51,6 +51,7 @@ function App(){
   const [message,setMessage]=useState("");
   const [labourRate,setLabourRate]=useState(50);
   const [search,setSearch]=useState("");
+  const [showAddWizard,setShowAddWizard]=useState(false);
 
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
@@ -94,9 +95,38 @@ function App(){
   async function updateHardware(id,patch){ const {error}=await supabase.from("hardware_parts").update(patch).eq("id",id); if(error) setMessage(error.message); else await loadAll(); }
   async function completeDrum(d){ const after=nextStage(d.production_status); const notes=(d.notes||"")+`\n${new Date().toISOString().slice(0,10)}: progressed ${d.production_status} → ${after}`; await updateDrum(d.id,{production_status:after,hours_logged:Number(d.hours_logged||0)+0.5,notes}); }
   async function addTime(d, hours, label){ const notes=(d.notes||"")+`\n${new Date().toISOString().slice(0,10)}: ${label} ${hours} hr`; await updateDrum(d.id,{hours_logged:Number(d.hours_logged||0)+Number(hours),notes}); }
-  async function addDrum(){
-    const {error}=await supabase.from("drums").insert({serial:"Pending",timber:"",build_type:"Ply",size:"14 x 6.5",finish:"TBD",customer:"Stock",production_status:"Glued Blank",sales_status:"Stock",next_step:"",retail_price:0,hours_logged:0,build_client:"Nowak"});
-    if(error) setMessage(error.message); else {setView("production"); await loadAll();}
+  async function addDrumFromWizard(form){
+    const isPly = form.build_type === "Ply";
+    const insertData = {
+      serial:"Pending",
+      timber:form.timber || "",
+      build_type:form.build_type,
+      size:form.size || (isPly ? "14 x 6.5" : "14 x 6.5"),
+      finish:"TBD",
+      customer:"Stock",
+      production_status:isPly ? "Veneer Ready" : "Glued Blank",
+      sales_status:"Custom Order",
+      next_step:isPly ? "Confirm veneer thicknesses and cut lengths" : "Machine shell",
+      retail_price:0,
+      hours_logged:0,
+      build_client:form.build_client || "Nowak",
+      cb_number:form.cb_number || "",
+      veneer_1_thickness:isPly ? Number(form.veneer[0] || 1.2) : null,
+      veneer_2_thickness:isPly ? Number(form.veneer[1] || 1.2) : null,
+      veneer_3_thickness:isPly ? Number(form.veneer[2] || 1.2) : null,
+      veneer_4_thickness:isPly ? Number(form.veneer[3] || 1.2) : null,
+      veneer_5_thickness:isPly ? Number(form.veneer[4] || 1.2) : null,
+    };
+
+    const {data,error}=await supabase.from("drums").insert(insertData).select().single();
+    if(error) {
+      setMessage(error.message);
+    } else {
+      await loadAll();
+      setShowAddWizard(false);
+      if(isPly) setView("veneer"); else setView("today");
+      setJobCard(data);
+    }
   }
   async function markSold(d){
     const price=Number(prompt("Sale price?",d.total_price || d.custom_price || d.retail_price || 0)); if(!price) return;
@@ -108,7 +138,7 @@ function App(){
   function openJobCard(d){ setJobCard(d); }
 
   return <main>
-    <header className="hero"><div><h1>Nowak Workshop OS</h1><p>v1.3 — Brady tracking, custom order pricing and ply veneer calculator.</p></div><button onClick={loadAll}><RefreshCw size={16}/> Refresh</button></header>
+    <header className="hero"><div><h1>Nowak Workshop OS</h1><p>v1.3.2 — add-drum wizard, Brady tracking and ply veneer calculator.</p></div><button onClick={loadAll}><RefreshCw size={16}/> Refresh</button></header>
     {message && <section className="panel warning">{message}</section>}
     <nav>
       <button className={view==="dashboard"?"active":""} onClick={()=>setView("dashboard")}><LayoutDashboard size={16}/> Dashboard</button>
@@ -119,7 +149,7 @@ function App(){
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
       <button className={view==="marketing"?"active":""} onClick={()=>setView("marketing")}><Camera size={16}/> Marketing</button>
-      <button onClick={addDrum}><Plus size={16}/> Add Drum</button>
+      <button onClick={()=>setShowAddWizard(true)}><Plus size={16}/> Add Drum</button>
     </nav>
     <div className="searchBar"><Search size={16}/><input placeholder="Search drums, timber, customer, CB number, email, status..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
     {loading && <section className="panel">Loading...</section>}
@@ -147,12 +177,13 @@ function App(){
 
     {view==="production" && <section className="board">{stages.map(stage=>{ const items=filtered.filter(d=>d.production_status===stage); if(!items.length) return null; return <section className="column" key={stage}><h2>{stage}</h2>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":"")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.build_type}</span><span className="badge">{d.sales_status}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><select value={d.production_status} onChange={e=>updateDrum(d.id,{production_status:e.target.value})}>{stages.map(s=><option key={s}>{s}</option>)}</select><button onClick={()=>openJobCard(d)}>Open job card</button></article>)}</section>})}</section>}
 
-    {view==="customers" && <section className="panel"><h2>Custom Orders / Customers</h2><div className="tableWrap"><table><thead><tr><th>Drum</th><th>Customer</th><th>Email</th><th>Build For</th><th>CB #</th><th>Price</th><th>Shipping</th><th>Total</th><th>Due</th></tr></thead><tbody>{filtered.map(d=><tr key={d.id} className={d.build_client==="Brady"?"bradyRow":""}><td><button onClick={()=>openJobCard(d)}>#{d.serial} {d.timber}</button></td><td>{d.customer}</td><td>{d.customer_email}</td><td>{d.build_client || "Nowak"}</td><td>{d.cb_number}</td><td>{money(d.custom_price)}</td><td>{money(d.shipping_cost)}</td><td>{money(d.total_price)}</td><td>{d.due_date || ""}</td></tr>)}</tbody></table></div></section>}
+    {view==="customers" && <section className="panel"><h2>Custom Orders / Customers</h2><p>New drums added with the Add Drum button will appear here and open as a job card so you can enter customer, price, shipping, due date and CB details straight away.</p><div className="tableWrap"><table><thead><tr><th>Drum</th><th>Customer</th><th>Email</th><th>Build For</th><th>CB #</th><th>Price</th><th>Shipping</th><th>Total</th><th>Due</th></tr></thead><tbody>{filtered.map(d=><tr key={d.id} className={d.build_client==="Brady"?"bradyRow":""}><td><button onClick={()=>openJobCard(d)}>#{d.serial} {d.timber}</button></td><td>{d.customer}</td><td>{d.customer_email}</td><td>{d.build_client || "Nowak"}</td><td>{d.cb_number}</td><td>{money(d.custom_price)}</td><td>{money(d.shipping_cost)}</td><td>{money(d.total_price)}</td><td>{d.due_date || ""}</td></tr>)}</tbody></table></div></section>}
 
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={openJobCard}/>}
     {view==="inventory" && <Inventory hardware={hardware} updateHardware={updateHardware} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
     {view==="marketing" && <section className="templateGrid">{active.filter(d=>d.production_status==="Finished / Ready to Sell").map(d=><article className="panel" key={d.id}><h2>#{d.serial} {d.timber}</h2><p>{d.size} · {d.build_type} · {d.finish}</p><pre>{marketingText(d)}</pre><button className="primary" onClick={()=>copyMarketing(d)}>Copy marketing copy</button><button onClick={()=>openJobCard(d)}>Open job card</button></article>)}</section>}
+    {showAddWizard && <AddDrumWizard onClose={()=>setShowAddWizard(false)} onCreate={addDrumFromWizard}/>} 
     {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyMarketing={copyMarketing}/>}
   </main>
 }
@@ -174,6 +205,85 @@ function VeneerResult({lengths}){ return <div className="resultList">{lengths.ma
 
 function Inventory({hardware, updateHardware, lowStock, inventoryValue}){ return <section className="panel"><h2>Hardware Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p><div className="tableWrap"><table><thead><tr><th>Part</th><th>Code</th><th>Finish</th><th>Size</th><th>Qty</th><th>Reorder</th><th>Landed AUD</th><th>Status</th></tr></thead><tbody>{hardware.map(p=><tr key={p.id}><td>{p.part_name}<br/><small>{p.category}</small></td><td>{p.code}</td><td>{p.finish}</td><td>{p.size}</td><td><input value={p.qty_on_hand??0} onChange={e=>updateHardware(p.id,{qty_on_hand:Number(e.target.value)})}/></td><td>{p.reorder_level}</td><td>{money(p.landed_cost_aud)}</td><td>{Number(p.qty_on_hand||0)<=Number(p.reorder_level||0)?<span className="dangerText">Order</span>:<span className="okText">OK</span>}</td></tr>)}</tbody></table></div></section> }
 function Costing({templates, labourRate, setLabourRate}){ return <section className="panel"><h2>Costing Templates</h2><label className="inlineLabel">Labour rate <input value={labourRate} onChange={e=>setLabourRate(Number(e.target.value))}/></label><div className="templateGrid">{templates.map(t=>{const total=templateCost(t,labourRate), profit=Number(t.retail_price||0)-total; return <article className="card" key={t.id}><b>{t.name}</b><span>Hardware: {money(t.hardware_cost)}</span><span>Timber: {money(t.timber_cost)}</span><span>Consumables: {money(t.consumables)}</span><span>Labour: {t.labour_hours} hrs × {money(labourRate)}</span><hr/><span>Total cost: {money(total)}</span><span>Retail: {money(t.retail_price)}</span><b>Estimated profit: {money(profit)}</b></article>})}</div></section> }
+
+
+function AddDrumWizard({onClose, onCreate}){
+  const [form,setForm]=useState({
+    build_type:"Stave",
+    timber:"",
+    size:"14 x 6.5",
+    build_client:"Nowak",
+    cb_number:"",
+    veneer:[1.2,1.2,1.2,1.2,1.2],
+  });
+
+  const lengths = adjustedLengths(form.veneer);
+  const isPly = form.build_type === "Ply";
+
+  function setField(key,value){ setForm(f=>({...f,[key]:value})); }
+  function setVeneer(index,value){
+    setForm(f=>{
+      const veneer=[...f.veneer];
+      veneer[index]=value;
+      return {...f,veneer};
+    });
+  }
+
+  return <div className="modalBg" onClick={onClose}>
+    <div className="modal wizardModal" onClick={e=>e.stopPropagation()}>
+      <button className="close" onClick={onClose}>×</button>
+      <h2>Add Drum</h2>
+      <p>Choose the shell type first. The app will set the correct starting stage and next step.</p>
+
+      <section className="choiceRow">
+        <button className={form.build_type==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>setField("build_type","Stave")}>Stave shell</button>
+        <button className={form.build_type==="Ply" ? "primary bigChoice" : "bigChoice"} onClick={()=>setField("build_type","Ply")}>Ply shell</button>
+      </section>
+
+      <section className="jobGrid two">
+        <div className="panel inner">
+          <h2>Basic Details</h2>
+          <label>Material / timber</label>
+          <input placeholder="Jarrah, Marri, Blackwood, Spotted Gum..." value={form.timber} onChange={e=>setField("timber",e.target.value)}/>
+          <label>Size</label>
+          <input value={form.size} onChange={e=>setField("size",e.target.value)}/>
+          <label>Build for</label>
+          <select value={form.build_client} onChange={e=>setField("build_client",e.target.value)}>
+            <option>Nowak</option>
+            <option>Brady</option>
+          </select>
+          {form.build_client==="Brady" && <>
+            <label>CB Number</label>
+            <input value={form.cb_number} onChange={e=>setField("cb_number",e.target.value)} placeholder="CB number"/>
+          </>}
+        </div>
+
+        <div className="panel inner">
+          <h2>{isPly ? "Ply setup" : "Stave setup"}</h2>
+          {isPly ? <>
+            <p>Enter the measured thickness of each glued veneer pair/sheet group. The calculated cut lengths update instantly.</p>
+            <div className="veneerGrid">
+              {form.veneer.map((v,i)=><label key={i}>Layer {i+1} mm<input value={v} onChange={e=>setVeneer(i,e.target.value)}/></label>)}
+            </div>
+            <VeneerResult lengths={lengths}/>
+          </> : <>
+            <p>This will be added as a stave shell and placed into the machining workflow.</p>
+            <div className="resultList twoCols">
+              <div><b>Starting stage</b><span>Glued Blank</span></div>
+              <div><b>Next step</b><span>Machine shell</span></div>
+            </div>
+          </>}
+        </div>
+      </section>
+
+      <section className="buttonRow">
+        <button onClick={onClose}>Cancel</button>
+        <button className="primary" onClick={()=>onCreate(form)}>Create drum</button>
+      </section>
+    </div>
+  </div>
+}
+
 
 function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyMarketing}){
   const [checked,setChecked]=useState(parseChecked(drum.notes));

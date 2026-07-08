@@ -1,12 +1,10 @@
-# Nowak Workshop OS Web App v1.3
+# Nowak Workshop OS Web App v1.3.2
 
 Adds:
-- Brady / Chris Brady tracking with separate blue highlighting
-- CB number field
-- Custom order details: customer name, email, custom price, shipping, total price, due date
-- Orders tab
-- Ply veneer cut calculator
-- Per-drum veneer thickness fields for all five glued sheets/pairs
-- Job card updates for customer/order details
+- Add Drum wizard
+- Choose Stave or Ply before creating the drum
+- Stave: asks material/size and adds the drum to machining workflow
+- Ply: asks material/size, opens veneer thickness fields and calculates cut lengths immediately
+- Brady / CB details available during creation
 
-Important: Run `supabase/v1_3_migration.sql` in Supabase SQL Editor before deploying.
+No new Supabase migration needed if v1.3 migration has already been run.
