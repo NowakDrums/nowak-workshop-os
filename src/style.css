@@ -6,3 +6,5 @@ body{margin:0;background:#0f0e0b;color:#f4efe4;font-family:-apple-system,BlinkMa
 .calcNote{color:#d3aa5d;font-size:13px;font-weight:800;background:#0f0e0b;border:1px solid #382f22;border-radius:10px;padding:8px;margin:10px 0}
 
 .twoInputGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.twoInputGrid label{margin-top:0}.calcNote{color:#d3aa5d;font-size:13px;font-weight:800;background:#0f0e0b;border:1px solid #382f22;border-radius:10px;padding:8px;margin:10px 0}@media(max-width:900px){.twoInputGrid{grid-template-columns:1fr}}
+
+.buttonLike{border:1px solid #382f22;background:#171511;color:#f4efe4;border-radius:10px;padding:10px;font:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:6px;justify-content:center}.buttonLike.primary{background:#d3aa5d;color:#111;border:none;font-weight:800}.buttonRow .buttonLike{flex:1}

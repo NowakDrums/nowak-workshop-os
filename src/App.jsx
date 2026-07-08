@@ -1,7 +1,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign, Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users } from "lucide-react";
+import { Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign, Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import "./style.css";
 
@@ -10,6 +10,14 @@ const checklist = ["Timber / veneer ready","Glue up complete","Machined","Sanded
 const drumDiameters = ["10", "12", "13", "14", "16", "18", "20", "22", "24"];
 const drumDepths = ["5", "5 1/2", "6", "6 1/2", "7", "8", "10", "12", "14", "16", "18"];
 const timberOptions = ["Jarrah", "Jarrah Staircase", "Marri", "Blackbutt", "Blackwood", "Wandoo", "Sheoak", "Spotted Gum", "River Banksia", "Tri Colour", "Custom / Other"];
+const communicationMilestones = [
+  {key:"blank", label:"Blank glued", photo:"Glue-up blank, clamps/press, end grain, timber detail"},
+  {key:"machined", label:"Machined shell", photo:"Lathe shot, inside shell, outside shell, shell thickness"},
+  {key:"snarebed", label:"Snare bed / edges cut", photo:"Bearing edge, snare bed close-up, shell on bench"},
+  {key:"sealer", label:"Sealer coat sprayed", photo:"First sealer coat, grain close-up, before/after look"},
+  {key:"shellcomplete", label:"Shell completed", photo:"Finished shell, inside shell, edges, badge/vent if fitted"},
+  {key:"drumcomplete", label:"Drum completed", photo:"Full drum, detail shots, throw-off, hoops, glamour shot"}
+];
 function buildSize(diameter, depth){ return `${diameter} x ${depth}`; }
 function splitSize(size){
   const text = String(size || "14 x 6.5");
@@ -92,6 +100,52 @@ function autoPrice({build_type="Ply", finish="Satin", build_client="Nowak", orde
   if(build_client === "Brady") return Math.round(base * 0.70);
   if(order_type === "Custom") return Math.round(base * 1.05);
   return base;
+}
+
+
+function emailDraft(d, milestone){
+  const name = d.customer && d.customer !== "Stock" ? d.customer : "there";
+  const subjectMap = {
+    blank:"Your Nowak Drum is underway",
+    machined:"Your drum shell is taking shape",
+    snarebed:"Your drum has reached an important tone stage",
+    sealer:"The timber is coming alive",
+    shellcomplete:"Your shell is now complete",
+    drumcomplete:"Your Nowak Drum is complete"
+  };
+  const bodyMap = {
+    blank:`Hi ${name},\n\nJust a quick update from the workshop.\n\nWe've now glued the shell for your ${d.timber} ${d.size} drum and it's curing before the next stage.\n\nThis is always an exciting milestone because the individual pieces of timber have now become a single shell.\n\nWe've attached a few photos so you can follow the build.\n\nThanks again for choosing Nowak Drum Company.\n\nKelly & Kyle`,
+    machined:`Hi ${name},\n\nYour ${d.timber} shell has now been machined and is really starting to take shape.\n\nThe next stage is bearing edges and snare beds, where the shell starts moving from timberwork into becoming a musical instrument.\n\nWe've attached a few workshop photos from this stage.\n\nThanks again,\n\nKelly & Kyle`,
+    snarebed:`Hi ${name},\n\nAnother quick progress update.\n\nThe bearing edges and snare beds have now been cut on your ${d.timber} ${d.size} drum.\n\nThis is one of the most important stages for the response and feel of the drum.\n\nNext we'll keep moving through finishing and sealing.\n\nKelly & Kyle`,
+    sealer:`Hi ${name},\n\nThe first sealer coat has now gone onto your ${d.timber} drum.\n\nThis is always one of our favourite stages because the timber really starts to reveal its depth, colour and character.\n\nWe've attached a few photos so you can see how it's coming to life.\n\nKelly & Kyle`,
+    shellcomplete:`Hi ${name},\n\nYour shell is now complete and ready for final hardware and assembly.\n\nIt's looking fantastic, and we're really happy with how the ${d.timber} has finished up.\n\nNot long to go now.\n\nKelly & Kyle`,
+    drumcomplete:`Hi ${name},\n\nGreat news — your ${d.timber} ${d.size} drum is complete.\n\nWe'll send through final photos and any remaining details shortly.\n\nThank you again for supporting Nowak Drum Company.\n\nKelly & Kyle`
+  };
+  return { subject: subjectMap[milestone.key] || "Nowak Drum update", body: bodyMap[milestone.key] || "" };
+}
+
+function socialPost(d, milestone, platform="facebook"){
+  const common = `${d.timber || "Australian hardwood"} · ${d.size || ""} · ${d.build_type || ""}`;
+  const stockLine = d.sales_status === "Stock" ? "This one will be available soon." : "A custom build taking shape in the workshop.";
+  const isBrady = d.build_client === "Brady";
+  const milestoneText = {
+    blank:"Freshly glued and curing. Every drum starts here — timber, pressure, glue, and a lot of patience.",
+    machined:"Machining complete. The shell is now round, clean and starting to show its voice.",
+    snarebed:"Bearing edges and snare beds cut. This is where the shell begins to become an instrument.",
+    sealer:"First sealer coat is on. The timber has started to come alive.",
+    shellcomplete:"Shell complete and ready for final assembly.",
+    drumcomplete:"Completed and ready to play."
+  }[milestone.key] || "Workshop update.";
+
+  if(platform==="instagram"){
+    return `${milestoneText}\n\n${common}\n${isBrady ? "Built for Brady Drums." : "Handmade by Nowak Drum Company."}\n\n#nowakdrums #customdrums #snaredrum #australianmade #drumbuilding`;
+  }
+  return `${milestoneText}\n\n${common}\n\n${stockLine}\n\n${isBrady ? "Built for Brady Drums." : "Built in Western Australia by Nowak Drum Company."}\n\nBuilt with precision. Played with passion.`;
+}
+
+function mailtoLink(d, draft){
+  const to = d.customer_email || "";
+  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`;
 }
 
 function App(){
@@ -195,7 +249,7 @@ function App(){
   function openJobCard(d){ setJobCard(d); }
 
   return <main>
-    <header className="hero"><div><h1>Nowak Workshop OS</h1><p>v1.3.5 — diameter/depth/timber dropdowns and smarter add drum.</p></div><button onClick={loadAll}><RefreshCw size={16}/> Refresh</button></header>
+    <header className="hero"><div><h1>Nowak Workshop OS</h1><p>v1.4 — milestone emails, social posts and photo prompts.</p></div><button onClick={loadAll}><RefreshCw size={16}/> Refresh</button></header>
     {message && <section className="panel warning">{message}</section>}
     <nav>
       <button className={view==="dashboard"?"active":""} onClick={()=>setView("dashboard")}><LayoutDashboard size={16}/> Dashboard</button>
@@ -206,6 +260,7 @@ function App(){
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
       <button className={view==="marketing"?"active":""} onClick={()=>setView("marketing")}><Camera size={16}/> Marketing</button>
+      <button className={view==="comms"?"active":""} onClick={()=>setView("comms")}><Mail size={16}/> Comms</button>
       <button onClick={()=>setShowAddWizard(true)}><Plus size={16}/> Add Drum</button>
     </nav>
     <div className="searchBar"><Search size={16}/><input placeholder="Search drums, timber, customer, CB number, email, status..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
@@ -241,7 +296,13 @@ function App(){
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
     {view==="marketing" && <section className="templateGrid">{active.filter(d=>d.production_status==="Finished / Ready to Sell").map(d=><article className="panel" key={d.id}><h2>#{d.serial} {d.timber}</h2><p>{d.size} · {d.build_type} · {d.finish}</p><pre>{marketingText(d)}</pre><button className="primary" onClick={()=>copyMarketing(d)}>Copy marketing copy</button><button onClick={()=>openJobCard(d)}>Open job card</button></article>)}</section>}
     {showAddWizard && <AddDrumWizard onClose={()=>setShowAddWizard(false)} onCreate={addDrumFromWizard}/>} 
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyMarketing={copyMarketing}/>}
+
+    {view==="comms" && <section>
+      <div className="panel"><h2>Communication Centre</h2><p>Generate customer emails and Facebook/Instagram posts from production milestones. Emails are signed Kelly & Kyle.</p></div>
+      <section className="templateGrid">{filtered.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard}/>)}</section>
+    </section>}
+
+        {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyMarketing={copyMarketing}/>}
   </main>
 }
 
@@ -265,6 +326,52 @@ function Inventory({hardware, updateHardware, lowStock, inventoryValue}){ return
 function Costing({templates, labourRate, setLabourRate}){ return <section className="panel"><h2>Costing Templates</h2><label className="inlineLabel">Labour rate <input value={labourRate} onChange={e=>setLabourRate(Number(e.target.value))}/></label><div className="templateGrid">{templates.map(t=>{const total=templateCost(t,labourRate), profit=Number(t.retail_price||0)-total; return <article className="card" key={t.id}><b>{t.name}</b><span>Hardware: {money(t.hardware_cost)}</span><span>Timber: {money(t.timber_cost)}</span><span>Consumables: {money(t.consumables)}</span><span>Labour: {t.labour_hours} hrs × {money(labourRate)}</span><hr/><span>Total cost: {money(total)}</span><span>Retail: {money(t.retail_price)}</span><b>Estimated profit: {money(profit)}</b></article>})}</div></section> }
 
 
+
+
+
+function CommsCard({drum, openJobCard}){
+  const [milestoneKey,setMilestoneKey]=useState("blank");
+  const milestone = communicationMilestones.find(m=>m.key===milestoneKey) || communicationMilestones[0];
+  const draft = emailDraft(drum, milestone);
+  const fb = socialPost(drum, milestone, "facebook");
+  const insta = socialPost(drum, milestone, "instagram");
+
+  function copy(text,label){
+    navigator.clipboard?.writeText(text);
+    alert(label + " copied");
+  }
+
+  return <article className={"panel " + (drum.build_client==="Brady"?"bradyCard":"")}>
+    <h2>#{drum.serial} {drum.timber}</h2>
+    {drum.build_client==="Brady" && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
+    <p>{drum.size} · {drum.build_type} · {drum.production_status}</p>
+    <label>Milestone</label>
+    <select value={milestoneKey} onChange={e=>setMilestoneKey(e.target.value)}>
+      {communicationMilestones.map(m=><option key={m.key} value={m.key}>{m.label}</option>)}
+    </select>
+    <p className="calcNote">Photo prompt: {milestone.photo}</p>
+
+    <h3>Customer Email</h3>
+    {drum.customer_email ? <p className="okText">Email available: {drum.customer_email}</p> : <p className="dangerText">No customer email saved yet.</p>}
+    <pre>Subject: {draft.subject}
+
+{draft.body}</pre>
+    <section className="buttonRow">
+      <a className="buttonLike primary" href={mailtoLink(drum,draft)}><Mail size={16}/> Open email</a>
+      <button onClick={()=>copy(`Subject: ${draft.subject}\n\n${draft.body}`,"Email")}>Copy email</button>
+    </section>
+
+    <h3>Facebook</h3>
+    <pre>{fb}</pre>
+    <button onClick={()=>copy(fb,"Facebook post")}><Share2 size={16}/> Copy Facebook</button>
+
+    <h3>Instagram</h3>
+    <pre>{insta}</pre>
+    <button onClick={()=>copy(insta,"Instagram caption")}><Share2 size={16}/> Copy Instagram</button>
+
+    <button onClick={()=>openJobCard(drum)}>Open job card</button>
+  </article>
+}
 
 
 function AddDrumWizard({onClose, onCreate}){
@@ -479,6 +586,15 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     {drum.build_type==="Ply" && <section className="panel inner"><h2>Ply Veneer Calculator</h2><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>updateDrum(drum.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><p className="calcNote">{sizeAdjustmentLabel(drum.size)}</p><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
 
     <section className="panel inner"><h2>Manufacturing Checklist</h2><div className="checkGrid">{checklist.map(item=><label className="checkItem" key={item}><input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>{item}</label>)}</div><button className="primary" onClick={saveChecklist}><Save size={16}/> Save checklist to notes</button></section>
+
+    <section className="panel inner">
+      <h2>Milestone Communications</h2>
+      <p>Use the Communication Centre for full posts/emails. Photo prompts for this drum:</p>
+      <div className="checkGrid">
+        {communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}
+      </div>
+    </section>
+
     <section className="panel inner"><h2>Notes</h2><textarea defaultValue={drum.notes||""} onBlur={e=>updateDrum(drum.id,{notes:e.target.value})}/></section>
     <section className="buttonRow"><button className="primary" onClick={()=>copyMarketing(drum)}><Camera size={16}/> Copy marketing</button><button onClick={()=>markSold(drum)}><Truck size={16}/> Mark sold / shipped</button></section>
   </div></div>

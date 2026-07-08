@@ -1,11 +1,20 @@
-# Nowak Workshop OS Web App v1.3.5
+# Nowak Workshop OS Web App v1.4
 
 Adds:
-- Add Drum wizard now uses dropdowns for diameter and depth
-- Timber/material dropdown with common Nowak timbers
-- Custom timber option
-- Size is built from diameter + depth
-- Ply veneer calculator uses the selected diameter automatically
-- Job Card size editor now uses diameter/depth dropdowns
+- Communication Centre
+- Milestone customer emails signed Kelly & Kyle
+- Facebook post generator
+- Instagram caption generator
+- Photo prompts for each milestone
+- Opens customer email using mailto when customer email exists
+- Copy buttons for email, Facebook and Instagram
 
-No Supabase migration needed if v1.3 migration has already been run.
+Milestones:
+- Blank glued
+- Machined shell
+- Snare bed / edges cut
+- Sealer coat sprayed
+- Shell completed
+- Drum completed
+
+No Supabase migration needed.
