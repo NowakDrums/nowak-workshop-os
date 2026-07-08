@@ -1,12 +1,11 @@
-# Nowak Workshop OS Web App v1.3.3
+# Nowak Workshop OS Web App v1.3.5
 
 Adds:
-- Smart Add Drum wizard
-- 12, 13 and 14 inch ply veneer cut lengths are calculated automatically
-- Veneer lengths still adjust from actual measured thickness of all five layers
-- Finish selector including High Gloss
-- Auto pricing for Stock, Custom and Brady/CB wholesale
-- Shipping cost added to total
-- Price remains editable later in the Job Card
+- Add Drum wizard now uses dropdowns for diameter and depth
+- Timber/material dropdown with common Nowak timbers
+- Custom timber option
+- Size is built from diameter + depth
+- Ply veneer calculator uses the selected diameter automatically
+- Job Card size editor now uses diameter/depth dropdowns
 
-No new Supabase migration needed if v1.3 migration has already been run.
+No Supabase migration needed if v1.3 migration has already been run.

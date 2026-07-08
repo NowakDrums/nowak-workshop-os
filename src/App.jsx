@@ -7,6 +7,19 @@ import "./style.css";
 
 const stages = ["Veneer Ready","In Mould","Post-Mould","Glued Blank","Machined","Edges / Snare Beds","Ready to Drill","Sealer Coat","Polyurethane Coat 1","Polyurethane Coat 2","Polyurethane Coat 3","Polyurethane Coat 4","Finished Spraying / Curing","Ready to Polish","Ready to Assemble","Finished / Ready to Sell","Sold/Shipped"];
 const checklist = ["Timber / veneer ready","Glue up complete","Machined","Sanded","Bearing edges cut","Snare beds cut","Drilled","Inside oiled / sealed","Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Cure complete","Polished","Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"];
+const drumDiameters = ["10", "12", "13", "14", "16", "18", "20", "22", "24"];
+const drumDepths = ["5", "5 1/2", "6", "6 1/2", "7", "8", "10", "12", "14", "16", "18"];
+const timberOptions = ["Jarrah", "Jarrah Staircase", "Marri", "Blackbutt", "Blackwood", "Wandoo", "Sheoak", "Spotted Gum", "River Banksia", "Tri Colour", "Custom / Other"];
+function buildSize(diameter, depth){ return `${diameter} x ${depth}`; }
+function splitSize(size){
+  const text = String(size || "14 x 6.5");
+  const parts = text.split("x").map(p=>p.trim());
+  const diameter = (parts[0] || "14").replace(/"/g,"");
+  let depth = (parts[1] || "6.5").replace(/"/g,"");
+  const depthMap = {"5.5":"5 1/2","6.5":"6 1/2"};
+  depth = depthMap[depth] || depth;
+  return { diameter, depth };
+}
 const defaultPlyLengths14 = [1106,1096,1087.5,1079.5,1069];
 const defaultPairThickness = 1.2;
 const mouldDiameters = {
@@ -36,7 +49,9 @@ function parseChecked(notes){ const found=new Set(); checklist.forEach(item=>{ i
 function setChecklistInNotes(existing, checked){ const clean=(existing||"").split("\n").filter(line=>!line.startsWith("[x] ")&&!line.startsWith("[ ] ")).join("\n").trim(); const block=checklist.map(item=>`${checked.has(item)?"[x]":"[ ]"} ${item}`).join("\n"); return `${clean?clean+"\n\n":""}${block}`; }
 function marketingText(d){ return `🔥 New from the workshop\n\n#${d.serial} ${d.timber}\n${d.size} ${d.build_type}\n${d.finish || ""}\n\nHandmade in Western Australia, built one at a time with care, precision and passion.\n\nAvailable from Nowak Drum Company.`; }
 function shellSizeKey(size){
-  const text = String(size || "");
+  const text = String(size || "").trim().toLowerCase();
+  const match = text.match(/^(10|11|12|13|14|15|16)/);
+  if(match && mouldDiameters[match[1]]) return match[1];
   if(text.includes("12")) return "12";
   if(text.includes("13")) return "13";
   return "14";
@@ -48,6 +63,12 @@ function baseLengthsForSize(size){
   const baseDiameter = mouldDiameters["14"];
   const diameterDifference = targetDiameter - baseDiameter;
   return defaultPlyLengths14.map(length => length + Math.PI * diameterDifference);
+}
+
+function sizeAdjustmentLabel(size){
+  const key = shellSizeKey(size);
+  const diff = Math.PI * ((mouldDiameters[key] || mouldDiameters["14"]) - mouldDiameters["14"]);
+  return `${key}" mould adjustment: ${diff.toFixed(1)} mm per layer before thickness fine-tuning`;
 }
 
 function adjustedLengths(thicknesses, size="14 x 6.5"){
@@ -134,7 +155,7 @@ function App(){
       serial:"Pending",
       timber:form.timber || "",
       build_type:form.build_type,
-      size:form.size || (isPly ? "14 x 6.5" : "14 x 6.5"),
+      size:form.size || "14 x 6.5",
       finish:form.finish || "TBD",
       customer:form.order_type === "Stock" ? "Stock" : "",
       production_status:isPly ? "Veneer Ready" : "Glued Blank",
@@ -174,7 +195,7 @@ function App(){
   function openJobCard(d){ setJobCard(d); }
 
   return <main>
-    <header className="hero"><div><h1>Nowak Workshop OS</h1><p>v1.3.3 — smart add-drum wizard, size-based veneer lengths and auto pricing.</p></div><button onClick={loadAll}><RefreshCw size={16}/> Refresh</button></header>
+    <header className="hero"><div><h1>Nowak Workshop OS</h1><p>v1.3.5 — diameter/depth/timber dropdowns and smarter add drum.</p></div><button onClick={loadAll}><RefreshCw size={16}/> Refresh</button></header>
     {message && <section className="panel warning">{message}</section>}
     <nav>
       <button className={view==="dashboard"?"active":""} onClick={()=>setView("dashboard")}><LayoutDashboard size={16}/> Dashboard</button>
@@ -230,11 +251,12 @@ function DrumCard({drum, openJobCard}){
 
 function VeneerCalculator({drums, updateDrum, openJobCard}){
   const [manual,setManual]=useState([1.2,1.2,1.2,1.2,1.2]);
-  const manualLengths=adjustedLengths(manual, "14 x 6.5");
+  const [manualSize,setManualSize]=useState("14 x 6.5");
+  const manualLengths=adjustedLengths(manual, manualSize);
   return <section>
-    <div className="panel"><h2>Ply Veneer Cut Calculator</h2><p>Enter the actual thickness of each glued pair/sheet group. The calculator adjusts your original 14&quot; mould cut list using your 1.2mm baseline.</p></div>
-    <section className="panel"><h2>Manual Calculator</h2><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><VeneerResult lengths={manualLengths}/></section>
-    <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>#{d.serial} {d.timber}</b><span>{d.size} · {d.production_status}</span><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(t, d.size)}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
+    <div className="panel"><h2>Ply Veneer Cut Calculator</h2><p>Enter the actual thickness of each glued pair/sheet group. The calculator now shows the mould-size adjustment, so 12&quot;, 13&quot; and 14&quot; cut lists are visibly different.</p></div>
+    <section className="panel"><h2>Manual Calculator</h2><label>Shell size</label><select value={manualSize} onChange={e=>setManualSize(e.target.value)}><option>14 x 6.5</option><option>14 x 5.5</option><option>13 x 7</option><option>12 x 7</option></select><p className="calcNote">{sizeAdjustmentLabel(manualSize)}</p><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><VeneerResult lengths={manualLengths}/></section>
+    <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>#{d.serial} {d.timber}</b><span>{d.size} · {d.production_status}</span><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><p className="calcNote">{sizeAdjustmentLabel(d.size)}</p><VeneerResult lengths={adjustedLengths(t, d.size)}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
   </section>
 }
 function VeneerResult({lengths}){ return <div className="resultList">{lengths.map((l,i)=><div key={i}><b>Layer {i+1}</b><span>{l.toFixed(1)} mm</span></div>)}</div> }
@@ -244,11 +266,14 @@ function Costing({templates, labourRate, setLabourRate}){ return <section classN
 
 
 
+
 function AddDrumWizard({onClose, onCreate}){
   const [form,setForm]=useState({
     build_type:"Stave",
-    timber:"",
-    size:"14 x 6.5",
+    diameter:"14",
+    depth:"6 1/2",
+    timber:"Jarrah",
+    customTimber:"",
     finish:"Satin",
     build_client:"Nowak",
     order_type:"Stock",
@@ -257,9 +282,11 @@ function AddDrumWizard({onClose, onCreate}){
     veneer:[1.2,1.2,1.2,1.2,1.2],
   });
 
+  const size = buildSize(form.diameter, form.depth);
+  const timber = form.timber === "Custom / Other" ? form.customTimber : form.timber;
   const isPly = form.build_type === "Ply";
-  const lengths = adjustedLengths(form.veneer, form.size);
-  const calculatedPrice = autoPrice(form);
+  const lengths = adjustedLengths(form.veneer, size);
+  const calculatedPrice = autoPrice({...form, size});
   const total = Number(calculatedPrice || 0) + Number(form.shipping_cost || 0);
 
   function setField(key,value){ setForm(f=>({...f,[key]:value})); }
@@ -274,6 +301,8 @@ function AddDrumWizard({onClose, onCreate}){
   function create(){
     onCreate({
       ...form,
+      timber,
+      size,
       custom_price: calculatedPrice,
       total_price: total,
     });
@@ -283,7 +312,7 @@ function AddDrumWizard({onClose, onCreate}){
     <div className="modal wizardModal" onClick={e=>e.stopPropagation()}>
       <button className="close" onClick={onClose}>×</button>
       <h2>Add Drum</h2>
-      <p>Choose shell type, timber, finish and order type. Pricing and veneer cut lengths update automatically, but can still be adjusted later on the job card.</p>
+      <p>Choose shell type, size, timber, finish and order type. Pricing and veneer cut lengths update automatically.</p>
 
       <section className="choiceRow">
         <button className={form.build_type==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>setField("build_type","Stave")}>Stave shell</button>
@@ -293,16 +322,32 @@ function AddDrumWizard({onClose, onCreate}){
       <section className="jobGrid two">
         <div className="panel inner">
           <h2>Basic Details</h2>
+
+          <div className="twoInputGrid">
+            <label>Diameter
+              <select value={form.diameter} onChange={e=>setField("diameter",e.target.value)}>
+                {drumDiameters.map(d=><option key={d}>{d}</option>)}
+              </select>
+            </label>
+            <label>Depth
+              <select value={form.depth} onChange={e=>setField("depth",e.target.value)}>
+                {drumDepths.map(d=><option key={d}>{d}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <p className="calcNote">Selected size: {size}"</p>
+
           <label>Material / timber</label>
-          <input placeholder="Jarrah, Marri, Blackwood, Spotted Gum..." value={form.timber} onChange={e=>setField("timber",e.target.value)}/>
-          <label>Size</label>
-          <select value={form.size} onChange={e=>setField("size",e.target.value)}>
-            <option>14 x 6.5</option>
-            <option>14 x 5.5</option>
-            <option>14 x 7</option>
-            <option>13 x 7</option>
-            <option>12 x 7</option>
+          <select value={form.timber} onChange={e=>setField("timber",e.target.value)}>
+            {timberOptions.map(t=><option key={t}>{t}</option>)}
           </select>
+
+          {form.timber === "Custom / Other" && <>
+            <label>Custom material</label>
+            <input value={form.customTimber} onChange={e=>setField("customTimber",e.target.value)} placeholder="Enter custom timber/material"/>
+          </>}
+
           <label>Finish</label>
           <select value={form.finish} onChange={e=>setField("finish",e.target.value)}>
             <option>Satin</option>
@@ -310,16 +355,19 @@ function AddDrumWizard({onClose, onCreate}){
             <option>Natural / Oil</option>
             <option>TBD</option>
           </select>
+
           <label>Order type</label>
           <select value={form.order_type} onChange={e=>setField("order_type",e.target.value)}>
             <option>Stock</option>
             <option>Custom</option>
           </select>
+
           <label>Build for</label>
           <select value={form.build_client} onChange={e=>setField("build_client",e.target.value)}>
             <option>Nowak</option>
             <option>Brady</option>
           </select>
+
           {form.build_client==="Brady" && <>
             <label>CB Number</label>
             <input value={form.cb_number} onChange={e=>setField("cb_number",e.target.value)} placeholder="CB number"/>
@@ -329,7 +377,8 @@ function AddDrumWizard({onClose, onCreate}){
         <div className="panel inner">
           <h2>{isPly ? "Ply setup" : "Stave setup"}</h2>
           {isPly ? <>
-            <p>The cut lengths automatically adjust for 12&quot;, 13&quot; and 14&quot; shells, then fine-tune again based on actual veneer thickness.</p>
+            <p>The cut lengths automatically adjust for the selected diameter, then fine-tune again based on actual veneer thickness.</p>
+            <p className="calcNote">{sizeAdjustmentLabel(size)}</p>
             <div className="veneerGrid">
               {form.veneer.map((v,i)=><label key={i}>Layer {i+1} mm<input value={v} onChange={e=>setVeneer(i,e.target.value)}/></label>)}
             </div>
@@ -360,6 +409,25 @@ function AddDrumWizard({onClose, onCreate}){
   </div>
 }
 
+
+function SizeEditor({drum, updateDrum}){
+  const parsed = splitSize(drum.size);
+  const [diameter,setDiameter]=useState(parsed.diameter);
+  const [depth,setDepth]=useState(parsed.depth);
+
+  function save(nextDiameter=diameter, nextDepth=depth){
+    updateDrum(drum.id,{size:buildSize(nextDiameter,nextDepth)});
+  }
+
+  return <div className="twoInputGrid">
+    <select value={diameter} onChange={e=>{setDiameter(e.target.value); save(e.target.value, depth);}}>
+      {drumDiameters.map(d=><option key={d}>{d}</option>)}
+    </select>
+    <select value={depth} onChange={e=>{setDepth(e.target.value); save(diameter, e.target.value);}}>
+      {drumDepths.map(d=><option key={d}>{d}</option>)}
+    </select>
+  </div>
+}
 
 function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyMarketing}){
   const [checked,setChecked]=useState(parseChecked(drum.notes));
@@ -394,7 +462,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       </div>
 
       <div className="panel inner"><h2>Build Details</h2>
-        <label>Size</label><input defaultValue={drum.size||""} onBlur={e=>updateDrum(drum.id,{size:e.target.value})}/>
+        <label>Size</label><SizeEditor drum={drum} updateDrum={updateDrum}/>
         <label>Finish</label><input defaultValue={drum.finish||""} onBlur={e=>updateDrum(drum.id,{finish:e.target.value})}/>
         <label>Production status</label><select defaultValue={drum.production_status} onChange={e=>updateDrum(drum.id,{production_status:e.target.value})}>{stages.map(s=><option key={s}>{s}</option>)}</select>
         <label>Next step</label><input defaultValue={drum.next_step||""} onBlur={e=>updateDrum(drum.id,{next_step:e.target.value})}/>
@@ -408,7 +476,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       </div>
     </section>
 
-    {drum.build_type==="Ply" && <section className="panel inner"><h2>Ply Veneer Calculator</h2><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>updateDrum(drum.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer)}/></section>}
+    {drum.build_type==="Ply" && <section className="panel inner"><h2>Ply Veneer Calculator</h2><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>updateDrum(drum.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><p className="calcNote">{sizeAdjustmentLabel(drum.size)}</p><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
 
     <section className="panel inner"><h2>Manufacturing Checklist</h2><div className="checkGrid">{checklist.map(item=><label className="checkItem" key={item}><input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>{item}</label>)}</div><button className="primary" onClick={saveChecklist}><Save size={16}/> Save checklist to notes</button></section>
     <section className="panel inner"><h2>Notes</h2><textarea defaultValue={drum.notes||""} onBlur={e=>updateDrum(drum.id,{notes:e.target.value})}/></section>
