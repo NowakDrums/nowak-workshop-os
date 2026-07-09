@@ -1,1 +1,10 @@
-{"name":"Nowak Workshop OS","short_name":"Nowak OS","start_url":"/","display":"standalone","background_color":"#0f0e0b","theme_color":"#0f0e0b"}
+{
+  "name": "Nowak Workshop OS",
+  "short_name": "Nowak OS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0e0b",
+  "theme_color": "#0f0e0b",
+  "description": "Production, inventory and marketing system for Nowak Drums.",
+  "icons": []
+}
