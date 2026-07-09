@@ -1,12 +1,9 @@
-# Nowak Workshop OS Web App v2.0.1
+# Nowak Workshop OS Web App v2.0.2
 
-Minor job card refinements only:
-- Production number field on job card
-- Suggested production number when adding a custom order
-- CB number only appears for Brady jobs
-- Finish dropdown: High Gloss, Satin, Natural
-- Ply drums do not show the machining checklist item
-- Job card top selector for Stave / Ply
-- Delete option at the very bottom with confirmation
-
-No Supabase migration needed.
+Minor workflow fixes only:
+- Stave/Ply tabs on the job card now highlight immediately when clicked
+- Brady drums no longer show as Custom Order
+- Brady drums show as Brady Production
+- When Build For changes to Brady, sales status updates to Brady Production
+- When Build For changes back to Nowak, Brady Production changes back to Stock
+- No Supabase migration needed

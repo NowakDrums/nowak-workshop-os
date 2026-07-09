@@ -161,6 +161,17 @@ function batchType(d){
   return null;
 }
 
+
+function displaySalesBadge(d){
+  if(d.build_client === "Brady") return d.sales_status === "Custom Order" ? "Brady Production" : (d.sales_status || "Brady Production");
+  return d.sales_status || "Stock";
+}
+
+function salesStatusForNewDrum(form){
+  if(form.build_client === "Brady") return "Brady Production";
+  return form.order_type === "Stock" ? "Stock" : "Custom Order";
+}
+
 function stagePercent(s){
   const i=stages.indexOf(s);
   return i<0?0:Math.round((i/(stages.length-1))*100);
@@ -335,7 +346,7 @@ function App(){
       finish:form.finish || "TBD",
       customer:form.order_type === "Stock" ? "Stock" : "",
       production_status:isPly ? "Veneer Ready" : "Glued Blank",
-      sales_status:form.order_type === "Stock" ? "Stock" : "Custom Order",
+      sales_status:salesStatusForNewDrum(form),
       next_step:isPly ? "Confirm veneer thicknesses and cut lengths" : "Machine shell",
       retail_price:Number(form.custom_price || 0),
       custom_price:Number(form.custom_price || 0),
@@ -385,7 +396,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v2.0.1 — job card refinements.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v2.0.2 — instant Stave/Ply tabs and Brady badges.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -428,7 +439,7 @@ function App(){
       <section className="panel"><h2>Priority Jobs</h2>{filtered.filter(d=>d.next_step).slice(0,8).map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard}/>)}</section>
     </>}
 
-    {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":"")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{d.sales_status}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{d.production_status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
+    {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":"")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{displaySalesBadge(d)}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{d.production_status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
 
     {view==="production" && <section className="board">{stages.map(stage=>{ const items=filtered.filter(d=>d.production_status===stage); if(!items.length) return null; return <section className="column" key={stage}><h2>{stage}</h2>{items.map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} updateDrum={updateDrum}/>)}</section>})}</section>}
 
@@ -449,7 +460,7 @@ function DrumCard({drum, openJobCard, updateDrum}){
     <b>#{drum.serial} {drum.timber}</b>
     {drum.build_client==="Brady" && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
     <span>{drum.size} · {drum.drum_type || "Snare"} · {drum.build_type}</span>
-    <span className="badge">{drum.sales_status}</span>
+    <span className="badge">{displaySalesBadge(drum)}</span>
     <div className="progress"><i style={{width:stagePercent(drum.production_status)+"%"}}></i></div>
     <p>{drum.production_status}</p>
     {updateDrum && <select value={drum.production_status} onClick={e=>e.stopPropagation()} onChange={e=>updateDrum(drum.id,{production_status:e.target.value})}>{stages.map(s=><option key={s}>{s}</option>)}</select>}
@@ -655,6 +666,7 @@ function SettingsPage(){
 }
 
 function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum}){
+  const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [checked,setChecked]=useState(parseChecked(drum.notes));
   const [timeAmount,setTimeAmount]=useState(0.5);
   const [timeLabel,setTimeLabel]=useState("Workshop time");
@@ -672,8 +684,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <button className="close" onClick={onClose}>×</button>
     <div className="jobHeader"><div><h2>Job Card — #{drum.serial} {drum.timber}</h2><p>{drum.size} · {drum.drum_type||"Snare"} · {drum.build_type} · {drum.finish}</p>{drum.build_client==="Brady" && <span className="cbBadge">Brady / CB {drum.cb_number || "No CB number"}</span>}</div><div className="statusPill">{drum.production_status}</div></div>
     <section className="choiceRow compactChoice">
-      <button className={drum.build_type==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>updateDrum(drum.id,{build_type:"Stave"})}>Stave</button>
-      <button className={drum.build_type==="Ply" ? "primary bigChoice" : "bigChoice"} onClick={()=>updateDrum(drum.id,{build_type:"Ply"})}>Ply</button>
+      <button className={localBuildType==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>{setLocalBuildType("Stave"); updateDrum(drum.id,{build_type:"Stave"});}}>Stave</button>
+      <button className={localBuildType==="Ply" ? "primary bigChoice" : "bigChoice"} onClick={()=>{setLocalBuildType("Ply"); updateDrum(drum.id,{build_type:"Ply"});}}>Ply</button>
     </section>
     <div className="progress large"><i style={{width:stagePercent(drum.production_status)+"%"}}></i></div>
     <section className="stats smallStats"><div><b>{money(drum.total_price||drum.retail_price)}</b><span>Total / retail</span></div><div><b>{money(totalCost)}</b><span>Est. cost</span></div><div><b>{money(profit)}</b><span>Est. profit</span></div><div><b>{drum.hours_logged || 0}</b><span>Hours logged</span></div></section>
@@ -681,7 +693,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <section className="jobGrid">
       <div className="panel inner"><h2>Build / Customer Details</h2>
         <label>Production number</label><input defaultValue={drum.serial||""} onBlur={e=>updateDrum(drum.id,{serial:e.target.value})}/>
-        <label>Build for</label><select defaultValue={drum.build_client||"Nowak"} onChange={e=>updateDrum(drum.id,{build_client:e.target.value, cb_number:e.target.value==="Brady" ? drum.cb_number : ""})}><option>Nowak</option><option>Brady</option></select>
+        <label>Build for</label><select defaultValue={drum.build_client||"Nowak"} onChange={e=>updateDrum(drum.id,{build_client:e.target.value, cb_number:e.target.value==="Brady" ? drum.cb_number : "", sales_status:e.target.value==="Brady" ? "Brady Production" : (drum.sales_status==="Brady Production" ? "Stock" : drum.sales_status)})}><option>Nowak</option><option>Brady</option></select>
         {drum.build_client==="Brady" && <>
           <label>CB Number</label><input defaultValue={drum.cb_number||""} onBlur={e=>updateDrum(drum.id,{cb_number:e.target.value})}/>
         </>}
@@ -712,10 +724,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       </div>
     </section>
 
-    {drum.build_type==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"}/></section>}
-    {drum.build_type==="Ply" && <section className="panel inner"><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>updateDrum(drum.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
+    {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"}/></section>}
+    {localBuildType==="Ply" && <section className="panel inner"><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>updateDrum(drum.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
 
-    <section className="panel inner"><h2>Manufacturing Checklist</h2><div className="checkGrid">{checklist.filter(item=>!(drum.build_type==="Ply" && item==="Machined")).map(item=><label className="checkItem" key={item}><input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>{item}</label>)}</div><button className="primary" onClick={saveChecklist}><Save size={16}/> Save checklist to notes</button></section>
+    <section className="panel inner"><h2>Manufacturing Checklist</h2><div className="checkGrid">{checklist.filter(item=>!(localBuildType==="Ply" && item==="Machined")).map(item=><label className="checkItem" key={item}><input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>{item}</label>)}</div><button className="primary" onClick={saveChecklist}><Save size={16}/> Save checklist to notes</button></section>
 
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
     <section className="panel inner"><h2>Notes</h2><textarea defaultValue={drum.notes||""} onBlur={e=>updateDrum(drum.id,{notes:e.target.value})}/></section>
