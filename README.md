@@ -1,8 +1,11 @@
-# Nowak Workshop OS Web App v2.0.3
+# Nowak Workshop OS Web App v2.0.4
 
-Minor veneer calculator correction only:
-- Treats the mould as the outside of the shell
-- Layer 1 is the largest outer layer and its length stays fixed for the selected mould size
-- Thickness changes now affect only the inner layers beneath it
-- Inner layers get shorter when outer layers are thicker than the 1.2mm baseline
-- No Supabase migration needed
+Minor veneer calculator workflow fix:
+- Veneer thickness fields now update the cut lengths live while typing on the Job Card
+- Values still save back to Supabase when you leave the field
+- Keeps the v2.0.3 outside-mould logic:
+  - Layer 1 is the largest outer layer
+  - Layer 1 remains fixed for the selected mould
+  - Outer-layer thickness changes affect the inner layers only
+
+No Supabase migration needed.

@@ -400,7 +400,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v2.0.3 — corrected outside-mould veneer calculations.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v2.0.4 — live veneer calculator typing.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -676,10 +676,20 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [timeLabel,setTimeLabel]=useState("Workshop time");
   const [customPrice,setCustomPrice]=useState(drum.custom_price||drum.retail_price||0);
   const [shipping,setShipping]=useState(drum.shipping_cost||0);
+  const [veneer,setVeneer]=useState([drum.veneer_1_thickness,drum.veneer_2_thickness,drum.veneer_3_thickness,drum.veneer_4_thickness,drum.veneer_5_thickness].map(x=>x||1.2));
   const totalCost=templateCost(template,labourRate);
   const totalPrice=Number(customPrice||0)+Number(shipping||0);
   const profit=Number(drum.total_price||drum.retail_price||0)-totalCost;
-  const veneer=[drum.veneer_1_thickness,drum.veneer_2_thickness,drum.veneer_3_thickness,drum.veneer_4_thickness,drum.veneer_5_thickness].map(x=>x||1.2);
+
+  function changeVeneer(index,value){
+    const next=[...veneer];
+    next[index]=value;
+    setVeneer(next);
+  }
+
+  async function saveVeneer(index,value){
+    await updateDrum(drum.id,{[`veneer_${index+1}_thickness`]:Number(value || 0)});
+  }
 
   async function saveChecklist(){ await updateDrum(drum.id,{notes:setChecklistInNotes(drum.notes, checked)}); onClose(); }
   function toggle(item){ const next=new Set(checked); if(next.has(item)) next.delete(item); else next.add(item); setChecked(next); }
@@ -729,7 +739,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     </section>
 
     {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"}/></section>}
-    {localBuildType==="Ply" && <section className="panel inner"><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>updateDrum(drum.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
+    {localBuildType==="Ply" && <section className="panel inner"><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
 
     <section className="panel inner"><h2>Manufacturing Checklist</h2><div className="checkGrid">{checklist.filter(item=>!(localBuildType==="Ply" && item==="Machined")).map(item=><label className="checkItem" key={item}><input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>{item}</label>)}</div><button className="primary" onClick={saveChecklist}><Save size={16}/> Save checklist to notes</button></section>
 
