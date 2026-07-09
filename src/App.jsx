@@ -298,6 +298,13 @@ function App(){
     if(error) setMessage(error.message); else await loadAll();
   }
 
+  async function deleteDrum(id){
+    const ok = window.confirm("Are you absolutely sure you want to delete this drum/job card? This cannot be undone.");
+    if(!ok) return;
+    const {error}=await supabase.from("drums").delete().eq("id",id);
+    if(error) setMessage(error.message); else { setJobCard(null); await loadAll(); }
+  }
+
   async function updateHardware(id,patch){
     const {error}=await supabase.from("hardware_parts").update(patch).eq("id",id);
     if(error) setMessage(error.message); else await loadAll();
@@ -320,7 +327,7 @@ function App(){
     const construction = !isPly ? drumTypeComment(form.drum_type, form.diameter) : null;
 
     const insertData = {
-      serial:"Pending",
+      serial:form.serial || "Pending",
       timber:form.timber || "",
       build_type:form.build_type,
       drum_type:form.drum_type || "Snare",
@@ -378,7 +385,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v2.0 — production, orders, pricing, timber stories, comms and manufacturing recipes.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v2.0.1 — job card refinements.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -432,8 +439,8 @@ function App(){
     {view==="comms" && <CommsCentre drums={filtered} openJobCard={setJobCard}/>}
     {view==="settings" && <SettingsPage/>}
 
-    {showAddWizard && <AddDrumWizard onClose={()=>setShowAddWizard(false)} onCreate={addDrumFromWizard}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText}/>}
+    {showAddWizard && <AddDrumWizard onClose={()=>setShowAddWizard(false)} onCreate={addDrumFromWizard} drums={drums}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum}/>}
   </main>
 }
 
@@ -449,7 +456,8 @@ function DrumCard({drum, openJobCard, updateDrum}){
   </article>
 }
 
-function AddDrumWizard({onClose, onCreate}){
+function AddDrumWizard({onClose, onCreate, drums=[]}){
+  const suggestedProductionNumber = String(Math.max(0,...drums.map(d=>Number(d.serial)).filter(n=>!Number.isNaN(n)))+1);
   const [form,setForm]=useState({
     build_type:"Stave", drum_type:"Snare", diameter:"14", depth:"6 1/2",
     timber:"Jarrah", customTimber:"", finish:"Satin", build_client:"Nowak",
@@ -520,6 +528,11 @@ function AddDrumWizard({onClose, onCreate}){
 
         <label>Order type</label>
         <select value={form.order_type} onChange={e=>setField("order_type",e.target.value)}><option>Stock</option><option>Custom</option></select>
+
+        {form.order_type==="Custom" && <>
+          <label>Production number</label>
+          <input value={form.serial || suggestedProductionNumber} onChange={e=>setField("serial",e.target.value)} placeholder="Production number"/>
+        </>}
 
         <label>Build for</label>
         <select value={form.build_client} onChange={e=>setField("build_client",e.target.value)}><option>Nowak</option><option>Brady</option></select>
@@ -641,7 +654,7 @@ function SettingsPage(){
   </section>
 }
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum}){
   const [checked,setChecked]=useState(parseChecked(drum.notes));
   const [timeAmount,setTimeAmount]=useState(0.5);
   const [timeLabel,setTimeLabel]=useState("Workshop time");
@@ -658,13 +671,20 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   return <div className="modalBg" onClick={onClose}><div className={"modal jobModal "+(drum.build_client==="Brady"?"bradyModal":"")} onClick={e=>e.stopPropagation()}>
     <button className="close" onClick={onClose}>×</button>
     <div className="jobHeader"><div><h2>Job Card — #{drum.serial} {drum.timber}</h2><p>{drum.size} · {drum.drum_type||"Snare"} · {drum.build_type} · {drum.finish}</p>{drum.build_client==="Brady" && <span className="cbBadge">Brady / CB {drum.cb_number || "No CB number"}</span>}</div><div className="statusPill">{drum.production_status}</div></div>
+    <section className="choiceRow compactChoice">
+      <button className={drum.build_type==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>updateDrum(drum.id,{build_type:"Stave"})}>Stave</button>
+      <button className={drum.build_type==="Ply" ? "primary bigChoice" : "bigChoice"} onClick={()=>updateDrum(drum.id,{build_type:"Ply"})}>Ply</button>
+    </section>
     <div className="progress large"><i style={{width:stagePercent(drum.production_status)+"%"}}></i></div>
     <section className="stats smallStats"><div><b>{money(drum.total_price||drum.retail_price)}</b><span>Total / retail</span></div><div><b>{money(totalCost)}</b><span>Est. cost</span></div><div><b>{money(profit)}</b><span>Est. profit</span></div><div><b>{drum.hours_logged || 0}</b><span>Hours logged</span></div></section>
 
     <section className="jobGrid">
       <div className="panel inner"><h2>Build / Customer Details</h2>
-        <label>Build for</label><select defaultValue={drum.build_client||"Nowak"} onChange={e=>updateDrum(drum.id,{build_client:e.target.value})}><option>Nowak</option><option>Brady</option></select>
-        <label>CB Number</label><input defaultValue={drum.cb_number||""} onBlur={e=>updateDrum(drum.id,{cb_number:e.target.value})}/>
+        <label>Production number</label><input defaultValue={drum.serial||""} onBlur={e=>updateDrum(drum.id,{serial:e.target.value})}/>
+        <label>Build for</label><select defaultValue={drum.build_client||"Nowak"} onChange={e=>updateDrum(drum.id,{build_client:e.target.value, cb_number:e.target.value==="Brady" ? drum.cb_number : ""})}><option>Nowak</option><option>Brady</option></select>
+        {drum.build_client==="Brady" && <>
+          <label>CB Number</label><input defaultValue={drum.cb_number||""} onBlur={e=>updateDrum(drum.id,{cb_number:e.target.value})}/>
+        </>}
         <label>Customer name</label><input defaultValue={drum.customer||""} onBlur={e=>updateDrum(drum.id,{customer:e.target.value})}/>
         <label>Customer email</label><input defaultValue={drum.customer_email||""} onBlur={e=>updateDrum(drum.id,{customer_email:e.target.value})}/>
         <label>Shipping address</label><textarea defaultValue={drum.shipping_address||""} onBlur={e=>updateDrum(drum.id,{shipping_address:e.target.value})}/>
@@ -677,7 +697,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       <div className="panel inner"><h2>Build Details</h2>
         <label>Size</label><SizeEditor drum={drum} updateDrum={updateDrum}/>
         <label>Drum type</label><select defaultValue={drum.drum_type||"Snare"} onChange={e=>updateDrum(drum.id,{drum_type:e.target.value, construction_note:drumTypeComment(e.target.value, splitSize(drum.size).diameter)})}>{drumTypeOptions.map(t=><option key={t}>{t}</option>)}</select>
-        <label>Finish</label><input defaultValue={drum.finish||""} onBlur={e=>updateDrum(drum.id,{finish:e.target.value})}/>
+        <label>Finish</label><select defaultValue={drum.finish||"Satin"} onChange={e=>updateDrum(drum.id,{finish:e.target.value})}><option>High Gloss</option><option>Satin</option><option>Natural</option></select>
         <label>Production status</label><select defaultValue={drum.production_status} onChange={e=>updateDrum(drum.id,{production_status:e.target.value})}>{stages.map(s=><option key={s}>{s}</option>)}</select>
         <label>Next step</label><input defaultValue={drum.next_step||""} onBlur={e=>updateDrum(drum.id,{next_step:e.target.value})}/>
         <label>Timber story</label><textarea defaultValue={drum.timber_story||""} onBlur={e=>updateDrum(drum.id,{timber_story:e.target.value})}/>
@@ -695,11 +715,12 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     {drum.build_type==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"}/></section>}
     {drum.build_type==="Ply" && <section className="panel inner"><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>updateDrum(drum.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
 
-    <section className="panel inner"><h2>Manufacturing Checklist</h2><div className="checkGrid">{checklist.map(item=><label className="checkItem" key={item}><input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>{item}</label>)}</div><button className="primary" onClick={saveChecklist}><Save size={16}/> Save checklist to notes</button></section>
+    <section className="panel inner"><h2>Manufacturing Checklist</h2><div className="checkGrid">{checklist.filter(item=>!(drum.build_type==="Ply" && item==="Machined")).map(item=><label className="checkItem" key={item}><input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>{item}</label>)}</div><button className="primary" onClick={saveChecklist}><Save size={16}/> Save checklist to notes</button></section>
 
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
     <section className="panel inner"><h2>Notes</h2><textarea defaultValue={drum.notes||""} onBlur={e=>updateDrum(drum.id,{notes:e.target.value})}/></section>
     <section className="buttonRow"><button className="primary" onClick={()=>copyText(marketingText(drum),"Marketing")}><Camera size={16}/> Copy marketing</button><button onClick={()=>markSold(drum)}><Truck size={16}/> Mark sold / shipped</button></section>
+    <section className="deleteZone"><button className="dangerButton" onClick={()=>deleteDrum(drum.id)}>Delete this job card</button></section>
   </div></div>
 }
 
