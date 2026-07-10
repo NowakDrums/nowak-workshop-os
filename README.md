@@ -1,13 +1,23 @@
-# Nowak Workshop OS v5.2.7
+# Nowak Workshop OS v5.3.1
 
-Workshop Today fixes:
+Focused milestone-photo workflow fix.
 
-- Ply drums now skip the machining task completely.
-- Next Step is calculated from the actual next applicable checklist item.
-- After ply glue-up, the next task is Sand the shell.
-- Stave drums still move from glue-up to Machine the shell.
-- Workshop Today task panels no longer stretch to match the tallest column.
-- Cards display in one readable column inside each task panel.
-- Task totals are shown compactly in the heading.
+## Restored workflow button
+- Job Cards again show `Progress to Next Stage`.
+- Clicking it completes the correct next checklist item.
+- Production status, Next Step, dates and labour estimates update automatically.
+- If that stage has a photo milestone, the photo prompt opens immediately.
 
-No Supabase migration required.
+## Stock / Custom selection
+- Nowak Job Cards now include:
+  - Stock drum
+  - Custom order
+- Stock drums receive photo upload and prepopulated social messages.
+- Custom orders receive the same, plus the prepopulated customer email when an email address is saved.
+- Brady drums retain the completed-shell photo prompt.
+
+## Save Changes
+- Save Changes saves normal Job Card fields.
+- It is no longer necessary to press Save Changes to progress a manufacturing stage.
+
+No new Supabase migration is required because the v5.3 photo-storage setup has already been run.
