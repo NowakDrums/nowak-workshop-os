@@ -1,12 +1,13 @@
-# Nowak Workshop OS v5.2.6
+# Nowak Workshop OS v5.2.7
 
-Workshop Today workflow fix:
+Workshop Today fixes:
 
-- Workshop Today now uses the same checklist-derived workflow engine as Job Cards and Production.
-- Drums ready for bearing edges now appear correctly.
-- Tasks are grouped by the real Next Step.
-- Drums belonging to the same kit/project are grouped together under the project name.
-- Unlinked drums appear under Individual Drums.
-- Cards show workflow status, next step, customer name and progress.
+- Ply drums now skip the machining task completely.
+- Next Step is calculated from the actual next applicable checklist item.
+- After ply glue-up, the next task is Sand the shell.
+- Stave drums still move from glue-up to Machine the shell.
+- Workshop Today task panels no longer stretch to match the tallest column.
+- Cards display in one readable column inside each task panel.
+- Task totals are shown compactly in the heading.
 
 No Supabase migration required.

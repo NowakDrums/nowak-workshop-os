@@ -142,6 +142,38 @@ function hasWorkflowStarted(drum){
   return parseChecked(drum.notes).size > 0;
 }
 
+function workflowNextInstruction(nextItem){
+  const instructions = {
+    "Timber / veneer ready":"Prepare timber or veneer",
+    "Glue up complete":"Complete the shell glue-up",
+    "Machined":"Machine the shell",
+    "Sanded":"Sand the shell",
+    "Bearing edges cut":"Cut the bearing edges",
+    "Snare beds cut":"Cut the snare beds",
+    "Drilled":"Drill the hardware holes",
+    "Inside oiled / sealed":"Oil or seal the inside",
+    "Sealer coat":"Spray the sealer coat",
+    "Poly coat 1":"Spray polyurethane coat 1",
+    "Poly coat 2":"Spray polyurethane coat 2",
+    "Poly coat 3":"Spray polyurethane coat 3",
+    "Poly coat 4":"Spray polyurethane coat 4",
+    "Satin coat":"Spray the final satin coat",
+    "Danish oil 1":"Apply Danish oil coat 1",
+    "Danish oil 2":"Apply Danish oil coat 2",
+    "Danish oil 3":"Apply Danish oil coat 3",
+    "Cure complete":"Allow the finish to cure",
+    "Polished":"Polish the shell",
+    "Assembled":"Assemble the drum",
+    "Photos taken":"Take final photographs",
+    "Website listing":"Create the website listing",
+    "Facebook / Instagram":"Create Facebook and Instagram content",
+    "YouTube demo":"Record the YouTube demo",
+    "Packed":"Pack the drum",
+    "Shipped":"Ship the drum",
+  };
+  return instructions[nextItem] || nextItem || "Complete";
+}
+
 function workflowState(buildType, checked, finish=""){
   const steps=applicableChecklist(buildType,finish);
   let completedCount=0;
@@ -153,9 +185,7 @@ function workflowState(buildType, checked, finish=""){
   const previous=completedCount>0 ? steps[completedCount-1] : null;
   const next=steps[completedCount] || null;
   const status=previous ? workflowLabels[previous]?.status || previous : "Ready to Start";
-  const nextStep=next
-    ? (previous ? workflowLabels[previous]?.next : (next==="Timber / veneer ready" ? "Prepare timber or veneer" : next))
-    : "Complete";
+  const nextStep=next ? workflowNextInstruction(next) : "Complete";
   const estimates=workflowEstimates[buildType] || workflowEstimates.Stave;
   const estimatedCompleted=steps.slice(0,completedCount).reduce((sum,item)=>sum+Number(estimates[item]||0),0);
   const estimatedTotal=steps.reduce((sum,item)=>sum+Number(estimates[item]||0),0);
@@ -785,7 +815,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.2.6 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.2.7 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -843,8 +873,7 @@ function App(){
           });
 
         return <section className="panel todayTaskPanel" key={name}>
-          <h2>{name}</h2>
-          <p>{items.length} drum(s) ready.</p>
+          <h2>{name} <span className="taskCount">({items.length})</span></h2>
 
           {Object.entries(grouped).map(([groupName,groupItems])=>
             <section className={"todayProjectGroup "+(groupName==="Individual Drums"?"individualTodayGroup":"")} key={groupName}>

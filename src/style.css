@@ -221,3 +221,19 @@ input[readonly]{opacity:.86;background:#0f0e0b}
 @media(max-width:900px){
   .todayDrumGrid{grid-template-columns:1fr}
 }
+
+.batchGrid{
+  align-items:start;
+}
+.todayTaskPanel{
+  align-self:start;
+  height:max-content;
+}
+.todayDrumGrid{
+  grid-template-columns:1fr!important;
+}
+.taskCount{
+  color:#a9a397;
+  font-size:.78em;
+  font-weight:700;
+}
