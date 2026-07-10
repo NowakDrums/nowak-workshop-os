@@ -164,3 +164,12 @@ input[readonly]{opacity:.86;background:#0f0e0b}
   background:rgba(211,170,93,.08);
   color:#f1dfb7;
 }
+
+.satinFinishNote{
+  margin:8px 0 12px;
+  padding:10px 12px;
+  border:1px solid #9db5c7;
+  border-radius:10px;
+  background:rgba(157,181,199,.08);
+  color:#dce9f2;
+}

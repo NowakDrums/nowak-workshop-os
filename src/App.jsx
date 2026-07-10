@@ -20,7 +20,7 @@ const stages = [
 const checklist = [
   "Timber / veneer ready","Glue up complete","Machined","Sanded",
   "Bearing edges cut","Snare beds cut","Drilled","Inside oiled / sealed",
-  "Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4",
+  "Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Satin coat",
   "Danish oil 1","Danish oil 2","Danish oil 3",
   "Cure complete","Polished","Assembled","Photos taken","Website listing",
   "Facebook / Instagram","YouTube demo","Packed","Shipped"
@@ -42,6 +42,7 @@ const workflowEstimates = {
     "Poly coat 2":0.20,
     "Poly coat 3":0.20,
     "Poly coat 4":0.20,
+    "Satin coat":0.20,
     "Danish oil 1":0.25,
     "Danish oil 2":0.25,
     "Danish oil 3":0.25,
@@ -68,6 +69,7 @@ const workflowEstimates = {
     "Poly coat 2":0.20,
     "Poly coat 3":0.20,
     "Poly coat 4":0.20,
+    "Satin coat":0.20,
     "Danish oil 1":0.25,
     "Danish oil 2":0.25,
     "Danish oil 3":0.25,
@@ -96,7 +98,8 @@ const workflowLabels = {
   "Poly coat 1": {status:"Polyurethane Coat 1 Complete", next:"Spray polyurethane coat 2"},
   "Poly coat 2": {status:"Polyurethane Coat 2 Complete", next:"Spray polyurethane coat 3"},
   "Poly coat 3": {status:"Polyurethane Coat 3 Complete", next:"Spray polyurethane coat 4"},
-  "Poly coat 4": {status:"Final Coat Complete", next:"Allow the finish to cure"},
+  "Poly coat 4": {status:"Final Gloss Coat Complete", next:"Allow the finish to cure"},
+  "Satin coat": {status:"Satin Coat Complete", next:"Allow the finish to cure"},
   "Danish oil 1": {status:"Danish Oil Coat 1 Complete", next:"Apply Danish oil coat 2"},
   "Danish oil 2": {status:"Danish Oil Coat 2 Complete", next:"Apply Danish oil coat 3"},
   "Danish oil 3": {status:"Danish Oil Complete", next:"Allow the finish to cure"},
@@ -112,15 +115,23 @@ const workflowLabels = {
 };
 
 function applicableChecklist(buildType, finish=""){
-  const isNatural=String(finish || "").toLowerCase().includes("natural");
+  const finishText=String(finish || "").toLowerCase();
+  const isNatural=finishText.includes("natural");
+  const isSatin=finishText.includes("satin");
 
   return checklist.filter(item=>{
     if(buildType==="Ply" && item==="Machined") return false;
 
     if(isNatural){
-      if(["Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4"].includes(item)) return false;
+      if(["Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Satin coat"].includes(item)) return false;
     }else{
       if(["Danish oil 1","Danish oil 2","Danish oil 3"].includes(item)) return false;
+
+      if(isSatin){
+        if(item==="Poly coat 4") return false;
+      }else{
+        if(item==="Satin coat") return false;
+      }
     }
 
     return true;
@@ -770,7 +781,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.2.2 — natural-finish Danish oil workflow.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.2.4 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1412,7 +1423,6 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
   const [localBuildSpec,setLocalBuildSpec]=useState(drum.construction_note || defaultBuildSpecification(drum.drum_type || "Snare"));
   const [checked,setChecked]=useState(parseChecked(drum.notes));
-  const flow=workflowState(localBuildType,checked,draft.finish);
   const [timeAmount,setTimeAmount]=useState(0.5);
   const [timeLabel,setTimeLabel]=useState("Workshop time");
   const [customPrice,setCustomPrice]=useState(drum.custom_price||drum.retail_price||0);
@@ -1432,6 +1442,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   });
   const [savedMessage,setSavedMessage]=useState("");
   const [projectMessage,setProjectMessage]=useState("");
+  const flow=workflowState(localBuildType,checked,draft.finish);
   const totalCost=templateCost(template,labourRate);
   const totalPrice=Number(customPrice||0)+Number(shipping||0);
   const profit=Number(drum.total_price||drum.retail_price||0)-totalCost;
@@ -1645,6 +1656,9 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <section className="panel inner"><h2>Manufacturing Checklist</h2>
       {String(draft.finish||"").toLowerCase().includes("natural") && <p className="naturalFinishNote">
         Natural finish workflow: 3 × Danish oil coats. Sealer and polyurethane coats are not required.
+      </p>}
+      {String(draft.finish||"").toLowerCase().includes("satin") && <p className="satinFinishNote">
+        Satin finish workflow: Sealer coat, Poly coats 1–3, then the final Satin coat.
       </p>}
       <p>Ticking an item automatically updates Production Status, Next Step, estimated labour and its completion date.</p>
       <div className="checkGrid">{applicableChecklist(localBuildType,draft.finish).map(item=>{
