@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
@@ -243,33 +243,33 @@ const photoMilestoneByChecklist = {
 const photoMilestones = {
   wood:{
     label:"Wood / timber selected",
-    prompt:"Upload timber selection, grain, colour and provenance photos.",
-    social:"A new build is underway in the Nowak workshop. We have selected the timber and are preparing it for the shell.",
+    prompt:"Take or upload timber selection, grain, colour and provenance photos.",
+    social:"A new drum build is underway in the Nowak workshop. We have selected the timber and are preparing the pieces that will become the shell. This stage is where the character of the finished drum begins—grain, colour, figure and the individual story of the timber all start here.",
   },
   blank:{
     label:"Shell blank glued",
-    prompt:"Upload the glued shell blank, clamps or mould, end grain and timber detail.",
-    social:"The shell blank has now been glued and is curing before the next workshop stage.",
+    prompt:"Take or upload the glued shell blank, clamps or mould, end grain and timber detail.",
+    social:"The shell blank has now been glued and is curing in the workshop. The individual pieces have come together to form the foundation of the drum, with the grain and colour already beginning to show how the finished shell will look.",
   },
   machined:{
     label:"Shell machined",
-    prompt:"Upload the shell on the lathe, inside and outside of the shell, and shell thickness.",
-    social:"The shell has now been machined and the timber is beginning to reveal its final character.",
+    prompt:"Take or upload the shell on the lathe, inside and outside of the shell, and shell thickness.",
+    social:"The shell has now been machined to its final dimensions. This is one of the most important stages of the build, where the rough blank becomes a precise drum shell and the timber reveals its true character inside and out.",
   },
   sealer:{
     label:"First sealer coat",
-    prompt:"Upload the first sealer coat, grain close-ups and before/after appearance.",
-    social:"The first sealer coat is on and the grain is coming alive.",
+    prompt:"Take or upload the first sealer coat, grain close-ups and before/after appearance.",
+    social:"The first sealer coat has been applied and the timber is really coming alive. The colour, grain and figure deepen dramatically at this stage, giving the first proper glimpse of how the completed drum will look.",
   },
   shellcomplete:{
     label:"Brady shell complete",
-    prompt:"Upload several completed-shell photos: outside, inside, bearing edges, snare beds and finish.",
-    social:"This shell is complete and ready for the next stage of its journey.",
+    prompt:"Take or upload several completed-shell photos: outside, inside, bearing edges, snare beds and finish.",
+    social:"This shell is now complete. The machining, sanding, edges, snare beds and finish have all been completed, and the shell is ready for the next stage of its journey.",
   },
   drumcomplete:{
     label:"Finished drum",
-    prompt:"Upload full drum photos, details, throw-off, hoops and a final glamour image.",
-    social:"This drum is now complete and ready to be played.",
+    prompt:"Take or upload full drum photos, details, throw-off, hoops and a final glamour image.",
+    social:"The drum is now complete. From the original timber through every stage of machining, finishing and assembly, it has been built by hand in Western Australia and is now ready to be played.",
   },
 };
 
@@ -292,9 +292,7 @@ function photoMilestoneForCompletion(drum,item){
 }
 
 function isCustomCustomerDrum(drum){
-  return drum.build_client==="Nowak" &&
-    drum.sales_status==="Custom Order" &&
-    Boolean(String(drum.customer_email || "").trim());
+  return drum.build_client==="Nowak" && drum.sales_status==="Custom Order";
 }
 
 function milestoneMessage(drum,milestoneKey){
@@ -710,6 +708,7 @@ function App(){
   const [labourRate,setLabourRate]=useState(50);
   const [search,setSearch]=useState("");
   const [productionFilter,setProductionFilter]=useState("All");
+  const [globalPhotoPrompt,setGlobalPhotoPrompt]=useState(null);
 
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
@@ -818,6 +817,39 @@ function App(){
     if(error) setMessage(error.message); else await loadAll();
   }
 
+  async function progressDrumFromCard(d){
+    const checked=parseChecked(d.notes);
+    const flow=workflowState(d.build_type || "Stave",checked,d.finish);
+    const nextItem=flow.steps[flow.completedCount];
+    if(!nextItem) return;
+
+    const next=new Set(checked);
+    next.add(nextItem);
+    const nextFlow=workflowState(d.build_type || "Stave",next,d.finish);
+    let history=Array.isArray(d.stage_history) ? [...d.stage_history] : [];
+    history=history.filter(entry=>entry.item!==nextItem);
+    history.push({item:nextItem,completed:true,completed_at:new Date().toISOString()});
+
+    const {error}=await supabase.from("drums").update({
+      notes:setChecklistInNotes(d.notes,next),
+      production_status:nextFlow.status,
+      next_step:nextFlow.nextStep,
+      stage_history:history
+    }).eq("id",d.id);
+
+    if(error){
+      setMessage("Could not progress drum: " + error.message);
+      return;
+    }
+
+    const milestoneKey=photoMilestoneForCompletion(d,nextItem);
+    await loadAll();
+
+    if(milestoneKey){
+      setGlobalPhotoPrompt({drum:{...d,notes:setChecklistInNotes(d.notes,next)},milestoneKey});
+    }
+  }
+
   async function completeDrum(d){
     const after=nextStage(d.production_status);
     const notes=(d.notes||"")+`\n${new Date().toISOString().slice(0,10)}: progressed ${d.production_status} → ${after}`;
@@ -894,7 +926,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.3.1 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.3.2 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -971,6 +1003,7 @@ function App(){
                     <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
                     <p><b>Status:</b> {flow.status}</p>
                     <p><b>Next:</b> {flow.nextStep}</p>
+                    {flow.nextStep!=="Complete" && <button className="primary" onClick={()=>progressDrumFromCard(d)}><CheckCircle2 size={15}/> Progress: {flow.nextStep}</button>}
                     <button onClick={()=>setJobCard(d)}>Open job card</button>
                   </article>
                 })}
@@ -1005,6 +1038,7 @@ function App(){
         projects={projects}
         openJobCard={setJobCard}
         updateDrum={updateDrum}
+        progressDrum={progressDrumFromCard}
       />
     </section>}
 
@@ -1017,13 +1051,20 @@ function App(){
     {view==="comms" && <CommsCentre drums={filtered} openJobCard={setJobCard}/>}
     {view==="settings" && <SettingsPage/>}
 
+    {globalPhotoPrompt && <MilestonePhotoModal
+      drum={globalPhotoPrompt.drum}
+      milestoneKey={globalPhotoPrompt.milestoneKey}
+      onClose={()=>setGlobalPhotoPrompt(null)}
+      setMessage={setMessage}
+    />}
+
     {showAddWizard && <AddDrumWizard onClose={()=>{setShowAddWizard(false);setAddWizardPreset({});}} onCreate={addDrumFromWizard} drums={drums} projects={projects} createProject={createProject} preset={addWizardPreset}/>}
     {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}}/>}
   </main>
 }
 
 
-function ProductionGroups({drums,projects,openJobCard,updateDrum}){
+function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum}){
   const projectMap=Object.fromEntries(projects.map(p=>[p.id,p]));
   const linkedGroups={};
   const unlinked=[];
@@ -1067,7 +1108,7 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum}){
           </div>
         </header>
         <div className="productionList kitDrumGrid">
-          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum}/>)}
+          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum}/>)}
         </div>
       </section>
     })}
@@ -1083,18 +1124,18 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum}){
       <div className="productionList">
         {[...unlinked]
           .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
-          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum}/>)}
+          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum}/>)}
       </div>
     </section>}
   </section>
 }
 
 
-function DrumCard({drum, openJobCard, updateDrum}){
+function DrumCard({drum, openJobCard, updateDrum, progressDrum}){
   const checked=parseChecked(drum.notes);
   const flow=workflowState(drum.build_type || "Stave",checked,drum.finish);
 
-  return <article className={"card clickable " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard")} onClick={()=>openJobCard(drum)}>
+  return <article className={"card " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard")}>
     <div className="cardHeading">
       <b>#{drum.serial} {drum.timber}</b>
       {allocatedCustomerName(drum) && <span className="customerNameBadge">{allocatedCustomerName(drum)}</span>}
@@ -1108,6 +1149,10 @@ function DrumCard({drum, openJobCard, updateDrum}){
     <p><b>Next:</b> {flow.nextStep}</p>
     <p><b>Estimated:</b> {flow.estimatedCompleted.toFixed(2)} hr completed · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
+    <section className="cardActionRow">
+      {flow.nextStep!=="Complete" && <button className="primary" onClick={()=>progressDrum(drum)}><CheckCircle2 size={15}/> Progress: {flow.nextStep}</button>}
+      <button onClick={()=>openJobCard(drum)}>Open job card</button>
+    </section>
   </article>
 }
 
@@ -1612,12 +1657,15 @@ function DrumPhotoLibrary({drumId}){
 
 
 function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
+  const cameraInputRef=useRef(null);
+  const libraryInputRef=useRef(null);
   const milestone=photoMilestones[milestoneKey] || photoMilestones.blank;
   const message=milestoneMessage(drum,milestoneKey);
   const [files,setFiles]=useState([]);
   const [socialText,setSocialText]=useState(message.social);
   const [emailSubject,setEmailSubject]=useState(message.emailSubject);
   const [emailBody,setEmailBody]=useState(message.emailBody);
+  const [customerEmail,setCustomerEmail]=useState(drum.customer_email || "");
   const [status,setStatus]=useState("");
   const [uploaded,setUploaded]=useState([]);
 
@@ -1680,7 +1728,7 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
     setStatus(label + " copied.");
   }
 
-  const mailto=`mailto:${encodeURIComponent(drum.customer_email || "")}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+  const mailto=`mailto:${encodeURIComponent(customerEmail || "")}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
 
   return <div className="modalBg milestonePhotoBg" onClick={onClose}>
     <div className="modal milestonePhotoModal" onClick={e=>e.stopPropagation()}>
@@ -1688,11 +1736,15 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       <h2>{milestone.label}</h2>
       <p>{milestone.prompt}</p>
 
-      <label>Choose photos</label>
-      <input type="file" accept="image/*" multiple onChange={e=>setFiles(Array.from(e.target.files || []))}/>
-      {files.length>0 && <p className="okText">{files.length} photo{files.length===1?"":"s"} selected.</p>}
+      <div className="photoChoiceButtons">
+        <button className="primary" type="button" onClick={()=>cameraInputRef.current?.click()}><Camera size={16}/> Take Photo</button>
+        <button type="button" onClick={()=>libraryInputRef.current?.click()}><Plus size={16}/> Choose Existing Photos</button>
+      </div>
+      <input className="hiddenFileInput" ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={e=>setFiles(Array.from(e.target.files || []))}/>
+      <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept="image/*" multiple onChange={e=>setFiles(Array.from(e.target.files || []))}/>
+      {files.length>0 && <p className="okText">{files.length} photo{files.length===1?"":"s"} selected and ready to upload.</p>}
 
-      <button className="primary" onClick={uploadPhotos}><Camera size={16}/> Upload and Store Photos</button>
+      <button className="primary uploadPhotosButton" onClick={uploadPhotos}><Camera size={16}/> Upload and Store Photos</button>
       {status && <p className={status.includes("failed") ? "dangerText" : "okText"}>{status}</p>}
 
       <h3>Prepopulated social message</h3>
@@ -1700,14 +1752,26 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       <button onClick={()=>copy(socialText,"Social message")}>Copy social message</button>
 
       {isCustomCustomerDrum(drum) && <>
-        <h3>Customer email</h3>
+        <h3>Customer update email</h3>
+        {!customerEmail && <p className="dangerText">No customer email is saved yet. Enter it below before opening the email.</p>}
+        <label>Customer email address</label>
+        <input value={customerEmail} onChange={e=>setCustomerEmail(e.target.value)} onBlur={async e=>{
+          const email=e.target.value.trim();
+          if(email){
+            const {error}=await supabase.from("drums").update({customer_email:email}).eq("id",drum.id);
+            if(error) setStatus("Could not save customer email: "+error.message);
+            else setStatus("Customer email saved.");
+          }
+        }}/>
         <label>Subject</label>
         <input value={emailSubject} onChange={e=>setEmailSubject(e.target.value)}/>
-        <label>Email</label>
+        <label>Email message</label>
         <textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)}/>
         <section className="buttonRow">
-          <a className="buttonLike primary" href={mailto}><Mail size={16}/> Open Email</a>
-          <button onClick={()=>copy(`Subject: ${emailSubject}\n\n${emailBody}`,"Customer email")}>Copy Email</button>
+          <a className={"buttonLike primary "+(!customerEmail?"disabledLink":"")} href={customerEmail?mailto:undefined}><Mail size={16}/> Open Customer Email</a>
+          <button onClick={()=>copy(`Subject: ${emailSubject}
+
+${emailBody}`,"Customer email")}>Copy Email</button>
         </section>
       </>}
 

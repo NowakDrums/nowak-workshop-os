@@ -256,3 +256,11 @@ input[readonly]{opacity:.86;background:#0f0e0b}
   font-size:16px;
   font-weight:800;
 }
+
+.cardActionRow{display:grid;gap:7px;margin-top:8px}
+.cardActionRow button{width:100%;justify-content:center}
+.photoChoiceButtons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.hiddenFileInput{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important}
+.uploadPhotosButton{width:100%;justify-content:center;margin-top:8px}
+.disabledLink{opacity:.45;pointer-events:none}
+@media(max-width:700px){.photoChoiceButtons{grid-template-columns:1fr}}
