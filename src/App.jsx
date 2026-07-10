@@ -261,6 +261,20 @@ function mailtoLink(d, draft){
   return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`;
 }
 
+
+function extractNumber(value){
+  const match = String(value || "").match(/\d+/g);
+  return match ? Number(match.join("")) : 0;
+}
+
+function nextProductionNumber(drums=[]){
+  return String(Math.max(0,...drums.map(d=>extractNumber(d.serial)))+1);
+}
+
+function nextCbNumber(drums=[]){
+  return String(Math.max(0,...drums.filter(d=>d.build_client==="Brady").map(d=>extractNumber(d.cb_number)))+1);
+}
+
 function App(){
   const [view,setView]=useState("dashboard");
   const [drums,setDrums]=useState([]);
@@ -344,7 +358,7 @@ function App(){
     const construction = !isPly ? drumTypeComment(form.drum_type, form.diameter) : null;
 
     const insertData = {
-      serial:form.serial || "Pending",
+      serial:form.serial || suggestedProductionNumber,
       timber:form.timber || "",
       build_type:form.build_type,
       drum_type:form.drum_type || "Snare",
@@ -402,7 +416,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v2.0.5 — instant Brady field and Workshop Blank ownership.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v2.0.6 — automatic production and CB numbering.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -457,7 +471,7 @@ function App(){
     {view==="settings" && <SettingsPage/>}
 
     {showAddWizard && <AddDrumWizard onClose={()=>setShowAddWizard(false)} onCreate={addDrumFromWizard} drums={drums}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum} drums={drums}/>}
   </main>
 }
 
@@ -474,8 +488,9 @@ function DrumCard({drum, openJobCard, updateDrum}){
 }
 
 function AddDrumWizard({onClose, onCreate, drums=[]}){
-  const suggestedProductionNumber = String(Math.max(0,...drums.map(d=>Number(d.serial)).filter(n=>!Number.isNaN(n)))+1);
-  const [form,setForm]=useState({
+  const suggestedProductionNumber = nextProductionNumber(drums);
+  const suggestedCbNumber = nextCbNumber(drums);
+  const [form,setForm]=useState({serial:suggestedProductionNumber,
     build_type:"Stave", drum_type:"Snare", diameter:"14", depth:"6 1/2",
     timber:"Jarrah", customTimber:"", finish:"Satin", build_client:"Workshop Blank",
     order_type:"Stock", price_rule:"Nowak Stock", cb_number:"", shipping_cost:0,
@@ -546,15 +561,13 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
         <label>Order type</label>
         <select value={form.order_type} onChange={e=>setField("order_type",e.target.value)}><option>Stock</option><option>Custom</option></select>
 
-        {form.order_type==="Custom" && <>
-          <label>Production number</label>
-          <input value={form.serial || suggestedProductionNumber} onChange={e=>setField("serial",e.target.value)} placeholder="Production number"/>
-        </>}
+        <label>Production number</label>
+        <input value={form.serial || suggestedProductionNumber} onChange={e=>setField("serial",e.target.value)} placeholder="Production number"/>
 
         <label>Build for</label>
         <select value={form.build_client} onChange={e=>setField("build_client",e.target.value)}><option>Nowak</option><option>Brady</option></select>
 
-        {form.build_client==="Brady" && <><label>CB Number</label><input value={form.cb_number} onChange={e=>setField("cb_number",e.target.value)} placeholder="CB number"/></>}
+        {form.build_client==="Brady" && <><label>CB Number</label><input value={form.cb_number || suggestedCbNumber} onChange={e=>setField("cb_number",e.target.value)} placeholder="CB number"/></>}
       </div>
 
       <div className="panel inner">
@@ -671,9 +684,10 @@ function SettingsPage(){
   </section>
 }
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum, drums=[]}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Workshop Blank");
+  const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
   const [checked,setChecked]=useState(parseChecked(drum.notes));
   const [timeAmount,setTimeAmount]=useState(0.5);
   const [timeLabel,setTimeLabel]=useState("Workshop time");
@@ -713,17 +727,20 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         <label>Ownership</label>
         <select value={localOwnership} onChange={e=>{
           const ownership=e.target.value;
+          const suggestedCb = ownership==="Brady" ? (localCbNumber || nextCbNumber(drums)) : "";
           setLocalOwnership(ownership);
+          setLocalCbNumber(suggestedCb);
           updateDrum(drum.id,{
             build_client:ownership,
-            cb_number:ownership==="Brady" ? drum.cb_number : "",
+            cb_number:suggestedCb,
             sales_status:ownership==="Brady" ? "Brady Production" : ownership==="Workshop Blank" ? "Workshop Blank" : ((drum.sales_status==="Brady Production" || drum.sales_status==="Workshop Blank") ? "Stock" : drum.sales_status)
           });
         }}>
           <option>Workshop Blank</option><option>Nowak</option><option>Brady</option>
         </select>
         {localOwnership==="Brady" && <>
-          <label>CB Number</label><input autoFocus defaultValue={drum.cb_number||""} onBlur={e=>updateDrum(drum.id,{cb_number:e.target.value})}/>
+          <label>CB Number</label>
+          <input autoFocus value={localCbNumber} onChange={e=>setLocalCbNumber(e.target.value)} onBlur={e=>updateDrum(drum.id,{cb_number:e.target.value})}/>
         </>}
         <label>Customer name</label><input defaultValue={drum.customer||""} onBlur={e=>updateDrum(drum.id,{customer:e.target.value})}/>
         <label>Customer email</label><input defaultValue={drum.customer_email||""} onBlur={e=>updateDrum(drum.id,{customer_email:e.target.value})}/>
