@@ -1,11 +1,10 @@
-# Nowak Workshop OS Web App v2.0.4
+# Nowak Workshop OS Web App v2.0.5
 
-Minor veneer calculator workflow fix:
-- Veneer thickness fields now update the cut lengths live while typing on the Job Card
-- Values still save back to Supabase when you leave the field
-- Keeps the v2.0.3 outside-mould logic:
-  - Layer 1 is the largest outer layer
-  - Layer 1 remains fixed for the selected mould
-  - Outer-layer thickness changes affect the inner layers only
-
-No Supabase migration needed.
+Minor ownership workflow refinements:
+- Ownership options: Workshop Blank, Nowak, Brady
+- Workshop Blank is the default for unallocated shells
+- Selecting Brady immediately reveals and focuses the CB Number field
+- Brady jobs display as Brady Production
+- Workshop Blank jobs display as Workshop Blank
+- Changing away from Brady hides and clears the CB Number
+- No Supabase migration needed

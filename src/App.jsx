@@ -167,12 +167,14 @@ function batchType(d){
 
 
 function displaySalesBadge(d){
-  if(d.build_client === "Brady") return d.sales_status === "Custom Order" ? "Brady Production" : (d.sales_status || "Brady Production");
+  if(d.build_client === "Brady") return "Brady Production";
+  if(d.build_client === "Workshop Blank" || !d.build_client) return "Workshop Blank";
   return d.sales_status || "Stock";
 }
 
 function salesStatusForNewDrum(form){
   if(form.build_client === "Brady") return "Brady Production";
+  if(form.build_client === "Workshop Blank" || !form.build_client) return "Workshop Blank";
   return form.order_type === "Stock" ? "Stock" : "Custom Order";
 }
 
@@ -400,7 +402,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v2.0.4 — live veneer calculator typing.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v2.0.5 — instant Brady field and Workshop Blank ownership.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -475,7 +477,7 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
   const suggestedProductionNumber = String(Math.max(0,...drums.map(d=>Number(d.serial)).filter(n=>!Number.isNaN(n)))+1);
   const [form,setForm]=useState({
     build_type:"Stave", drum_type:"Snare", diameter:"14", depth:"6 1/2",
-    timber:"Jarrah", customTimber:"", finish:"Satin", build_client:"Nowak",
+    timber:"Jarrah", customTimber:"", finish:"Satin", build_client:"Workshop Blank",
     order_type:"Stock", price_rule:"Nowak Stock", cb_number:"", shipping_cost:0,
     timber_story:"", veneer:[1.2,1.2,1.2,1.2,1.2],
   });
@@ -671,6 +673,7 @@ function SettingsPage(){
 
 function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
+  const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Workshop Blank");
   const [checked,setChecked]=useState(parseChecked(drum.notes));
   const [timeAmount,setTimeAmount]=useState(0.5);
   const [timeLabel,setTimeLabel]=useState("Workshop time");
@@ -707,9 +710,20 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <section className="jobGrid">
       <div className="panel inner"><h2>Build / Customer Details</h2>
         <label>Production number</label><input defaultValue={drum.serial||""} onBlur={e=>updateDrum(drum.id,{serial:e.target.value})}/>
-        <label>Build for</label><select defaultValue={drum.build_client||"Nowak"} onChange={e=>updateDrum(drum.id,{build_client:e.target.value, cb_number:e.target.value==="Brady" ? drum.cb_number : "", sales_status:e.target.value==="Brady" ? "Brady Production" : (drum.sales_status==="Brady Production" ? "Stock" : drum.sales_status)})}><option>Nowak</option><option>Brady</option></select>
-        {drum.build_client==="Brady" && <>
-          <label>CB Number</label><input defaultValue={drum.cb_number||""} onBlur={e=>updateDrum(drum.id,{cb_number:e.target.value})}/>
+        <label>Ownership</label>
+        <select value={localOwnership} onChange={e=>{
+          const ownership=e.target.value;
+          setLocalOwnership(ownership);
+          updateDrum(drum.id,{
+            build_client:ownership,
+            cb_number:ownership==="Brady" ? drum.cb_number : "",
+            sales_status:ownership==="Brady" ? "Brady Production" : ownership==="Workshop Blank" ? "Workshop Blank" : ((drum.sales_status==="Brady Production" || drum.sales_status==="Workshop Blank") ? "Stock" : drum.sales_status)
+          });
+        }}>
+          <option>Workshop Blank</option><option>Nowak</option><option>Brady</option>
+        </select>
+        {localOwnership==="Brady" && <>
+          <label>CB Number</label><input autoFocus defaultValue={drum.cb_number||""} onBlur={e=>updateDrum(drum.id,{cb_number:e.target.value})}/>
         </>}
         <label>Customer name</label><input defaultValue={drum.customer||""} onBlur={e=>updateDrum(drum.id,{customer:e.target.value})}/>
         <label>Customer email</label><input defaultValue={drum.customer_email||""} onBlur={e=>updateDrum(drum.id,{customer_email:e.target.value})}/>
