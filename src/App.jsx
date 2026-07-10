@@ -337,6 +337,13 @@ function batchType(d){
 }
 
 
+function allocatedCustomerName(d){
+  const name=String(d?.customer || "").trim();
+  if(!name) return "";
+  if(["stock","unallocated","none","n/a"].includes(name.toLowerCase())) return "";
+  return name;
+}
+
 function displaySalesBadge(d){
   if(d.build_client === "Brady") return "Brady Production";
   if(d.build_client === "Nowak") return "Nowak";
@@ -781,7 +788,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.2.4 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.2.5 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -941,7 +948,10 @@ function DrumCard({drum, openJobCard, updateDrum}){
   const flow=workflowState(drum.build_type || "Stave",checked,drum.finish);
 
   return <article className={"card clickable " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard")} onClick={()=>openJobCard(drum)}>
-    <b>#{drum.serial} {drum.timber}</b>
+    <div className="cardHeading">
+      <b>#{drum.serial} {drum.timber}</b>
+      {allocatedCustomerName(drum) && <span className="customerNameBadge">{allocatedCustomerName(drum)}</span>}
+    </div>
     {drum.build_client==="Brady" && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
     <span>{drum.size} · {drum.drum_type || "Snare"} · {drum.build_type}</span>
     <span className="badge">{displaySalesBadge(drum)}</span>
@@ -1288,7 +1298,10 @@ function CommsCard({drum, openJobCard}){
   function copy(text,label){ navigator.clipboard?.writeText(text); alert(label + " copied"); }
 
   return <article className={"panel " + (drum.build_client==="Brady"?"bradyCard":"")}>
-    <h2>#{drum.serial} {drum.timber}</h2>
+    <div className="cardHeading">
+      <h2>#{drum.serial} {drum.timber}</h2>
+      {allocatedCustomerName(drum) && <span className="customerNameBadge">{allocatedCustomerName(drum)}</span>}
+    </div>
     {drum.build_client==="Brady" && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
     <p>{drum.size} · {drum.build_type} · {drum.production_status}</p>
     <label>Milestone</label>
@@ -1573,7 +1586,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
   return <div className="modalBg" onClick={onClose}><div className={"modal jobModal "+(drum.build_client==="Brady"?"bradyModal":"")} onClick={e=>e.stopPropagation()}>
     <button className="close" onClick={onClose}>×</button>
-    <div className="jobHeader"><div><h2>Job Card — #{drum.serial} {drum.timber}</h2><p>{drum.size} · {drum.drum_type||"Snare"} · {drum.build_type} · {drum.finish}</p>{drum.build_client==="Brady" && <span className="cbBadge">Brady / CB {drum.cb_number || "No CB number"}</span>}</div><div className="statusPill">{flow.status}</div></div>
+    <div className="jobHeader"><div><h2>Job Card — #{drum.serial} {drum.timber}</h2>{allocatedCustomerName(drum) && <div className="jobCustomerName">For: {allocatedCustomerName(drum)}</div>}<p>{drum.size} · {drum.drum_type||"Snare"} · {drum.build_type} · {drum.finish}</p>{drum.build_client==="Brady" && <span className="cbBadge">Brady / CB {drum.cb_number || "No CB number"}</span>}</div><div className="statusPill">{flow.status}</div></div>
     <section className="choiceRow compactChoice">
       <button className={localBuildType==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>{setLocalBuildType("Stave"); updateDrum(drum.id,{build_type:"Stave"});}}>Stave</button>
       <button className={localBuildType==="Ply" ? "primary bigChoice" : "bigChoice"} onClick={()=>{setLocalBuildType("Ply"); updateDrum(drum.id,{build_type:"Ply"});}}>Ply</button>

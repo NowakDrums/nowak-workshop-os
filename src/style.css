@@ -173,3 +173,29 @@ input[readonly]{opacity:.86;background:#0f0e0b}
   background:rgba(157,181,199,.08);
   color:#dce9f2;
 }
+
+.cardHeading{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.customerNameBadge{
+  display:inline-block;
+  width:max-content;
+  padding:4px 9px;
+  border-radius:999px;
+  background:#d3aa5d;
+  color:#171511;
+  font-size:12px;
+  font-weight:800;
+}
+.jobCustomerName{
+  display:inline-block;
+  margin:4px 0 2px;
+  padding:5px 10px;
+  border-radius:999px;
+  background:#d3aa5d;
+  color:#171511;
+  font-weight:800;
+}
