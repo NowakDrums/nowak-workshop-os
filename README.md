@@ -1,8 +1,9 @@
-# Nowak Workshop OS v5.1.1
+# Nowak Workshop OS v5.1.2
 
-Minor Job Card interface fix:
+Critical save fix:
 
-- Removed the duplicate Save Changes button from the Manufacturing Checklist.
-- The single sticky Save Changes button at the bottom of the Job Card remains.
-- Checklist ticks still save workflow progress automatically.
-- No Supabase migration required.
+- Fixed `ReferenceError: Can't find variable: setMessage`
+- Job Card can now display database save errors correctly
+- Save Changes should now complete instead of staying on `Saving...`
+- Kit / Project linking remains unchanged
+- No Supabase migration required
