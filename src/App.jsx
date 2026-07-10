@@ -323,17 +323,14 @@ function nextStage(s){
 }
 
 function batchType(d){
-  const s=d.production_status, b=d.build_type;
-  if(s==="Glued Blank" && (b==="Stave" || b==="Stave Tom")) return "Machine stave blanks";
-  if(s==="Machined") return "Cut bearing edges / snare beds";
-  if(s==="Post-Mould") return "Sand / prep shells";
-  if(s==="In Mould") return "Remove from mould";
-  if(s==="Edges / Snare Beds" || s==="Ready to Drill") return "Drill hardware";
-  if(["Sealer Coat","Polyurethane Coat 1","Polyurethane Coat 2","Polyurethane Coat 3"].includes(s)) return "Spray session";
-  if(["Polyurethane Coat 4","Finished Spraying / Curing","Ready to Polish"].includes(s)) return "Polish session";
-  if(s==="Ready to Assemble") return "Assembly session";
-  if(s==="Finished / Ready to Sell") return "Marketing / photos";
-  return null;
+  const flow=workflowState(
+    d.build_type || "Stave",
+    parseChecked(d.notes),
+    d.finish
+  );
+
+  if(!flow.nextStep || flow.nextStep==="Complete") return null;
+  return flow.nextStep;
 }
 
 
@@ -788,7 +785,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.2.5 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.2.6 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -832,7 +829,49 @@ function App(){
       <section className="panel"><h2>Priority Jobs</h2>{filtered.filter(d=>d.next_step).slice(0,8).map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard}/>)}</section>
     </>}
 
-    {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{displaySalesBadge(d)}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish).status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
+    {view==="today" && <section className="batchGrid">
+      {Object.entries(batches).map(([name,items])=>{
+        const projectMap=Object.fromEntries(projects.map(p=>[p.id,p.name]));
+        const grouped={};
+
+        items
+          .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
+          .forEach(d=>{
+            const groupName=d.project_id ? (projectMap[d.project_id] || "Kit / Project") : "Individual Drums";
+            grouped[groupName] ??=[];
+            grouped[groupName].push(d);
+          });
+
+        return <section className="panel todayTaskPanel" key={name}>
+          <h2>{name}</h2>
+          <p>{items.length} drum(s) ready.</p>
+
+          {Object.entries(grouped).map(([groupName,groupItems])=>
+            <section className={"todayProjectGroup "+(groupName==="Individual Drums"?"individualTodayGroup":"")} key={groupName}>
+              <h3>{groupName}</h3>
+              <div className="todayDrumGrid">
+                {groupItems.map(d=>{
+                  const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish);
+                  return <article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard")} key={d.id}>
+                    <div className="cardHeading">
+                      <b>#{d.serial} {d.timber}</b>
+                      {allocatedCustomerName(d) && <span className="customerNameBadge">{allocatedCustomerName(d)}</span>}
+                    </div>
+                    {d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}
+                    <span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span>
+                    <span className="badge">{displaySalesBadge(d)}</span>
+                    <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
+                    <p><b>Status:</b> {flow.status}</p>
+                    <p><b>Next:</b> {flow.nextStep}</p>
+                    <button onClick={()=>setJobCard(d)}>Open job card</button>
+                  </article>
+                })}
+              </div>
+            </section>
+          )}
+        </section>
+      })}
+    </section>}
 
     {view==="production" && <section>
       <section className="panel productionToolbar">

@@ -1,12 +1,12 @@
-# Nowak Workshop OS v5.2.5
+# Nowak Workshop OS v5.2.6
 
-Customer allocation visibility update:
+Workshop Today workflow fix:
 
-- If a drum has a real customer name assigned, that name now appears beside the production/job number.
-- The customer is visible on:
-  - Production cards
-  - Workshop Today / dashboard cards
-  - Job Card header
-  - Communication cards
-- Blank, Stock, Unallocated, None and N/A values are hidden.
-- No Supabase migration required.
+- Workshop Today now uses the same checklist-derived workflow engine as Job Cards and Production.
+- Drums ready for bearing edges now appear correctly.
+- Tasks are grouped by the real Next Step.
+- Drums belonging to the same kit/project are grouped together under the project name.
+- Unlinked drums appear under Individual Drums.
+- Cards show workflow status, next step, customer name and progress.
+
+No Supabase migration required.

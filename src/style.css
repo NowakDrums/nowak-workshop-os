@@ -199,3 +199,25 @@ input[readonly]{opacity:.86;background:#0f0e0b}
   color:#171511;
   font-weight:800;
 }
+
+.todayTaskPanel{display:grid;gap:12px}
+.todayProjectGroup{
+  border:1px solid #5eb9ff;
+  border-radius:14px;
+  padding:12px;
+  background:rgba(43,99,142,.10);
+}
+.todayProjectGroup h3{margin:0 0 10px;color:#bfe6ff}
+.individualTodayGroup{
+  border-color:#4b4235;
+  background:#171511;
+}
+.individualTodayGroup h3{color:#d3aa5d}
+.todayDrumGrid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+}
+@media(max-width:900px){
+  .todayDrumGrid{grid-template-columns:1fr}
+}
