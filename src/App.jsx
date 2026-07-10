@@ -25,6 +25,127 @@ const checklist = [
   "Facebook / Instagram","YouTube demo","Packed","Shipped"
 ];
 
+
+const workflowEstimates = {
+  Stave: {
+    "Timber / veneer ready":1.50,
+    "Glue up complete":0.25,
+    "Machined":1.00,
+    "Sanded":1.00,
+    "Bearing edges cut":0.50,
+    "Snare beds cut":0.50,
+    "Drilled":0.50,
+    "Inside oiled / sealed":0.25,
+    "Sealer coat":0.20,
+    "Poly coat 1":0.20,
+    "Poly coat 2":0.20,
+    "Poly coat 3":0.20,
+    "Poly coat 4":0.20,
+    "Cure complete":0,
+    "Polished":1.00,
+    "Assembled":0.75,
+    "Photos taken":0.50,
+    "Website listing":0.25,
+    "Facebook / Instagram":0.25,
+    "YouTube demo":0.50,
+    "Packed":0.50,
+    "Shipped":0.25,
+  },
+  Ply: {
+    "Timber / veneer ready":1.25,
+    "Glue up complete":0.50,
+    "Sanded":0.50,
+    "Bearing edges cut":0.25,
+    "Snare beds cut":0.25,
+    "Drilled":0.50,
+    "Inside oiled / sealed":0.25,
+    "Sealer coat":0.20,
+    "Poly coat 1":0.20,
+    "Poly coat 2":0.20,
+    "Poly coat 3":0.20,
+    "Poly coat 4":0.20,
+    "Cure complete":0,
+    "Polished":1.00,
+    "Assembled":0.75,
+    "Photos taken":0.50,
+    "Website listing":0.25,
+    "Facebook / Instagram":0.25,
+    "YouTube demo":0.50,
+    "Packed":0.50,
+    "Shipped":0.25,
+  }
+};
+
+const workflowLabels = {
+  "Timber / veneer ready": {status:"Materials Ready", next:"Complete the shell glue-up"},
+  "Glue up complete": {status:"Shell Glued", next:"Machine the shell"},
+  "Machined": {status:"Machining Complete", next:"Sand the shell"},
+  "Sanded": {status:"Sanding Complete", next:"Cut the bearing edges"},
+  "Bearing edges cut": {status:"Bearing Edges Complete", next:"Cut the snare beds"},
+  "Snare beds cut": {status:"Snare Beds Complete", next:"Drill the hardware holes"},
+  "Drilled": {status:"Drilling Complete", next:"Oil or seal the inside"},
+  "Inside oiled / sealed": {status:"Inside Sealed", next:"Spray the sealer coat"},
+  "Sealer coat": {status:"Sealer Coat Complete", next:"Spray polyurethane coat 1"},
+  "Poly coat 1": {status:"Polyurethane Coat 1 Complete", next:"Spray polyurethane coat 2"},
+  "Poly coat 2": {status:"Polyurethane Coat 2 Complete", next:"Spray polyurethane coat 3"},
+  "Poly coat 3": {status:"Polyurethane Coat 3 Complete", next:"Spray polyurethane coat 4"},
+  "Poly coat 4": {status:"Final Coat Complete", next:"Allow the finish to cure"},
+  "Cure complete": {status:"Finish Cured", next:"Polish the shell"},
+  "Polished": {status:"Polishing Complete", next:"Assemble the drum"},
+  "Assembled": {status:"Drum Assembled", next:"Take final photographs"},
+  "Photos taken": {status:"Photography Complete", next:"Create the website listing"},
+  "Website listing": {status:"Website Listed", next:"Create Facebook and Instagram content"},
+  "Facebook / Instagram": {status:"Social Media Complete", next:"Record the YouTube demo"},
+  "YouTube demo": {status:"Marketing Complete", next:"Pack the drum"},
+  "Packed": {status:"Packed", next:"Ship the drum"},
+  "Shipped": {status:"Sold / Shipped", next:"Complete"},
+};
+
+function applicableChecklist(buildType){
+  return checklist.filter(item=>!(buildType==="Ply" && item==="Machined"));
+}
+
+function workflowState(buildType, checked){
+  const steps=applicableChecklist(buildType);
+  let completedCount=0;
+  for(const step of steps){
+    if(checked.has(step)) completedCount += 1;
+    else break;
+  }
+
+  const previous=completedCount>0 ? steps[completedCount-1] : null;
+  const next=steps[completedCount] || null;
+  const status=previous ? workflowLabels[previous]?.status || previous : "Ready to Start";
+  const nextStep=next
+    ? (previous ? workflowLabels[previous]?.next : (next==="Timber / veneer ready" ? "Prepare timber or veneer" : next))
+    : "Complete";
+  const estimates=workflowEstimates[buildType] || workflowEstimates.Stave;
+  const estimatedCompleted=steps.slice(0,completedCount).reduce((sum,item)=>sum+Number(estimates[item]||0),0);
+  const estimatedTotal=steps.reduce((sum,item)=>sum+Number(estimates[item]||0),0);
+  const percent=steps.length ? Math.round((completedCount/steps.length)*100) : 0;
+
+  return {
+    steps, completedCount, status, nextStep, percent,
+    estimatedCompleted,
+    estimatedRemaining:Math.max(0,estimatedTotal-estimatedCompleted),
+    estimatedTotal
+  };
+}
+
+function historyForItem(stageHistory,item){
+  const history=Array.isArray(stageHistory) ? stageHistory : [];
+  return history.find(entry=>entry.item===item && entry.completed);
+}
+
+function formatStageDate(value){
+  if(!value) return "";
+  try{
+    return new Intl.DateTimeFormat("en-AU",{day:"numeric",month:"short",year:"numeric"}).format(new Date(value));
+  }catch{
+    return "";
+  }
+}
+
 const drumDiameters = ["8","10","12","13","14","16","18","20","22","24"];
 const drumDepths = ["5","5 1/2","6","6 1/2","7","8","10","12","14","16","18"];
 const drumTypeOptions = ["Snare","Tom","Floor Tom","Bass Drum"];
@@ -461,7 +582,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v3.0.1 — Workshop Specifications with rough and finished diameters.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v3.1 — checklist-driven workflow, next steps, dates and estimated labour.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -504,7 +625,7 @@ function App(){
       <section className="panel"><h2>Priority Jobs</h2>{filtered.filter(d=>d.next_step).slice(0,8).map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard}/>)}</section>
     </>}
 
-    {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{displaySalesBadge(d)}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{d.production_status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
+    {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{displaySalesBadge(d)}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{workflowState(d.build_type||"Stave",parseChecked(d.notes)).status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
 
     {view==="production" && <section className="board">{stages.map(stage=>{ const items=filtered.filter(d=>d.production_status===stage); if(!items.length) return null; return <section className="column" key={stage}><h2>{stage}</h2>{items.map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} updateDrum={updateDrum}/>)}</section>})}</section>}
 
@@ -520,15 +641,21 @@ function App(){
   </main>
 }
 
+
 function DrumCard({drum, openJobCard, updateDrum}){
+  const checked=parseChecked(drum.notes);
+  const flow=workflowState(drum.build_type || "Stave",checked);
+
   return <article className={"card clickable " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard")} onClick={()=>openJobCard(drum)}>
     <b>#{drum.serial} {drum.timber}</b>
     {drum.build_client==="Brady" && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
     <span>{drum.size} · {drum.drum_type || "Snare"} · {drum.build_type}</span>
     <span className="badge">{displaySalesBadge(drum)}</span>
-    <div className="progress"><i style={{width:stagePercent(drum.production_status)+"%"}}></i></div>
-    <p>{drum.production_status}</p>
-    {updateDrum && <select value={drum.production_status} onClick={e=>e.stopPropagation()} onChange={e=>updateDrum(drum.id,{production_status:e.target.value})}>{stages.map(s=><option key={s}>{s}</option>)}</select>}
+    <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
+    <p><b>Status:</b> {flow.status}</p>
+    <p><b>Next:</b> {flow.nextStep}</p>
+    <p><b>Estimated:</b> {flow.estimatedCompleted.toFixed(2)} hr completed · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
+    <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
   </article>
 }
 
@@ -867,6 +994,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
   const [localBuildSpec,setLocalBuildSpec]=useState(drum.construction_note || defaultBuildSpecification(drum.drum_type || "Snare"));
   const [checked,setChecked]=useState(parseChecked(drum.notes));
+  const flow=workflowState(localBuildType,checked);
   const [timeAmount,setTimeAmount]=useState(0.5);
   const [timeLabel,setTimeLabel]=useState("Workshop time");
   const [customPrice,setCustomPrice]=useState(drum.custom_price||drum.retail_price||0);
@@ -886,18 +1014,52 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     await updateDrum(drum.id,{[`veneer_${index+1}_thickness`]:Number(value || 0)});
   }
 
-  async function saveChecklist(){ await updateDrum(drum.id,{notes:setChecklistInNotes(drum.notes, checked)}); onClose(); }
-  function toggle(item){ const next=new Set(checked); if(next.has(item)) next.delete(item); else next.add(item); setChecked(next); }
+  async function saveWorkflow(nextChecked, changedItem=null, completed=null){
+    const nextFlow=workflowState(localBuildType,nextChecked);
+    let history=Array.isArray(drum.stage_history) ? [...drum.stage_history] : [];
+
+    if(changedItem){
+      history=history.filter(entry=>entry.item!==changedItem);
+      if(completed){
+        history.push({item:changedItem,completed:true,completed_at:new Date().toISOString()});
+      }
+    }
+
+    await updateDrum(drum.id,{
+      notes:setChecklistInNotes(drum.notes,nextChecked),
+      production_status:nextFlow.status,
+      next_step:nextFlow.nextStep,
+      stage_history:history
+    });
+  }
+
+  async function saveChecklist(){
+    await saveWorkflow(checked);
+  }
+
+  async function toggle(item){
+    const next=new Set(checked);
+    const isCompleting=!next.has(item);
+    if(isCompleting) next.add(item); else next.delete(item);
+    setChecked(next);
+    await saveWorkflow(next,item,isCompleting);
+  }
 
   return <div className="modalBg" onClick={onClose}><div className={"modal jobModal "+(drum.build_client==="Brady"?"bradyModal":"")} onClick={e=>e.stopPropagation()}>
     <button className="close" onClick={onClose}>×</button>
-    <div className="jobHeader"><div><h2>Job Card — #{drum.serial} {drum.timber}</h2><p>{drum.size} · {drum.drum_type||"Snare"} · {drum.build_type} · {drum.finish}</p>{drum.build_client==="Brady" && <span className="cbBadge">Brady / CB {drum.cb_number || "No CB number"}</span>}</div><div className="statusPill">{drum.production_status}</div></div>
+    <div className="jobHeader"><div><h2>Job Card — #{drum.serial} {drum.timber}</h2><p>{drum.size} · {drum.drum_type||"Snare"} · {drum.build_type} · {drum.finish}</p>{drum.build_client==="Brady" && <span className="cbBadge">Brady / CB {drum.cb_number || "No CB number"}</span>}</div><div className="statusPill">{flow.status}</div></div>
     <section className="choiceRow compactChoice">
       <button className={localBuildType==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>{setLocalBuildType("Stave"); updateDrum(drum.id,{build_type:"Stave"});}}>Stave</button>
       <button className={localBuildType==="Ply" ? "primary bigChoice" : "bigChoice"} onClick={()=>{setLocalBuildType("Ply"); updateDrum(drum.id,{build_type:"Ply"});}}>Ply</button>
     </section>
-    <div className="progress large"><i style={{width:stagePercent(drum.production_status)+"%"}}></i></div>
-    <section className="stats smallStats"><div><b>{money(drum.total_price||drum.retail_price)}</b><span>Total / retail</span></div><div><b>{money(totalCost)}</b><span>Est. cost</span></div><div><b>{money(profit)}</b><span>Est. profit</span></div><div><b>{drum.hours_logged || 0}</b><span>Hours logged</span></div></section>
+    <div className="progress large"><i style={{width:flow.percent+"%"}}></i></div>
+    <section className="stats workflowStats">
+      <div><b>{flow.percent}%</b><span>Complete</span></div>
+      <div><b>{flow.estimatedCompleted.toFixed(2)}</b><span>Estimated hours completed</span></div>
+      <div><b>{flow.estimatedRemaining.toFixed(2)}</b><span>Estimated hours remaining</span></div>
+      <div><b>{Number(drum.hours_logged||0).toFixed(2)}</b><span>Actual hours logged</span></div>
+      <div><b>{(Number(drum.hours_logged||0)-flow.estimatedCompleted).toFixed(2)}</b><span>Actual vs estimate</span></div>
+    </section>
 
     <section className="jobGrid">
       <div className="panel inner"><h2>Build / Customer Details</h2>
@@ -939,24 +1101,36 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           updateDrum(drum.id,{drum_type:newType, construction_note:nextSpec});
         }}>{drumTypeOptions.map(t=><option key={t}>{t}</option>)}</select>
         <label>Finish</label><select defaultValue={drum.finish||"To Be Decided"} onChange={e=>updateDrum(drum.id,{finish:e.target.value})}><option>To Be Decided</option><option>Natural</option><option>Satin</option><option>High Gloss</option></select>
-        <label>Production status</label><select defaultValue={drum.production_status} onChange={e=>updateDrum(drum.id,{production_status:e.target.value})}>{stages.map(s=><option key={s}>{s}</option>)}</select>
-        <label>Next step</label><input defaultValue={drum.next_step||""} onBlur={e=>updateDrum(drum.id,{next_step:e.target.value})}/>
+        <label>Production status</label><input value={flow.status} readOnly/>
+        <label>Next step</label><input value={flow.nextStep} readOnly/>
         <label>Timber story</label><textarea defaultValue={drum.timber_story||""} onBlur={e=>updateDrum(drum.id,{timber_story:e.target.value})}/>
         <label>Build Specification</label><textarea value={localBuildSpec} onChange={e=>setLocalBuildSpec(e.target.value)} onBlur={e=>updateDrum(drum.id,{construction_note:e.target.value})}/>
       </div>
 
       <div className="panel inner"><h2>Time Log</h2>
+        <label>Estimated time to current stage</label><input value={flow.estimatedCompleted.toFixed(2)+" hr"} readOnly/>
+        <label>Estimated remaining time</label><input value={flow.estimatedRemaining.toFixed(2)+" hr"} readOnly/>
+        <label>Actual time logged</label><input value={Number(drum.hours_logged||0).toFixed(2)+" hr"} readOnly/>
         <label>Activity</label><input value={timeLabel} onChange={e=>setTimeLabel(e.target.value)}/>
         <label>Hours</label><input value={timeAmount} onChange={e=>setTimeAmount(e.target.value)}/>
-        <button className="primary" onClick={()=>addTime(drum, timeAmount, timeLabel)}><Clock size={16}/> Add time</button>
-        <button onClick={()=>completeDrum(drum)}><CheckCircle2 size={16}/> Complete current stage</button>
+        <button className="primary" onClick={()=>addTime(drum, timeAmount, timeLabel)}><Clock size={16}/> Add actual time</button>
       </div>
     </section>
 
     {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Stave" serial={drum.serial} timber={drum.timber} size={drum.size}/></section>}
     {localBuildType==="Ply" && <section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={drum.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
 
-    <section className="panel inner"><h2>Manufacturing Checklist</h2><div className="checkGrid">{checklist.filter(item=>!(localBuildType==="Ply" && item==="Machined")).map(item=><label className="checkItem" key={item}><input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>{item}</label>)}</div><button className="primary" onClick={saveChecklist}><Save size={16}/> Save checklist to notes</button></section>
+    <section className="panel inner"><h2>Manufacturing Checklist</h2>
+      <p>Ticking an item automatically updates Production Status, Next Step, estimated labour and its completion date.</p>
+      <div className="checkGrid">{applicableChecklist(localBuildType).map(item=>{
+        const history=historyForItem(drum.stage_history,item);
+        return <label className="checkItem workflowCheckItem" key={item}>
+          <input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>
+          <span><b>{item}</b>{checked.has(item) && <small>{formatStageDate(history?.completed_at) || "Completed"}</small>}</span>
+        </label>
+      })}</div>
+      <button onClick={saveChecklist}><Save size={16}/> Sync workflow</button>
+    </section>
 
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
     <section className="panel inner"><h2>Notes</h2><textarea defaultValue={drum.notes||""} onBlur={e=>updateDrum(drum.id,{notes:e.target.value})}/></section>

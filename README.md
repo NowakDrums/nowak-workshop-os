@@ -1,17 +1,23 @@
-# Nowak Workshop OS Web App v3.0.1
+# Nowak Workshop OS v3.1
 
-Adds Workshop Specifications.
+Workflow Engine release.
 
-Stave drums show:
-- Rough outside diameter
-- Finished outside diameter
-- Triton saw setting
-- Finished stave width
-- Recommended build specification
-- Copy Workshop Specs button
+The manufacturing checklist now automatically controls:
+- Production status
+- Next step
+- Percentage complete
+- Estimated labour completed
+- Estimated labour remaining
+- Completion date for each checklist item
 
-Ply drums show:
-- Finished outside diameter
-- Existing live veneer calculator
+Time Log now separates:
+- Estimated hours to the current stage
+- Estimated remaining hours
+- Actual logged hours
+- Variance between actual and estimated
 
-No Supabase migration needed.
+Ply workflows automatically omit the Machined step.
+
+Important:
+Run `supabase/v3_1_migration.sql` once before deployment. It safely adds the
+`stage_history` field only if it does not already exist.

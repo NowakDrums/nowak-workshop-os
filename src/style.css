@@ -13,3 +13,9 @@ body{margin:0;background:#0f0e0b;color:#f4efe4;font-family:-apple-system,BlinkMa
 @media(max-width:900px){.threeChoices,.threeInputGrid{grid-template-columns:1fr}}
 
 .staveSpec span{font-size:18px;color:#f4efe4;margin-top:4px}
+
+.workflowStats{grid-template-columns:repeat(5,1fr)}
+.workflowCheckItem span{display:flex;flex-direction:column;gap:3px}
+.workflowCheckItem small{color:#d3aa5d;font-size:11px}
+input[readonly]{opacity:.86;background:#0f0e0b}
+@media(max-width:900px){.workflowStats{grid-template-columns:1fr}}
