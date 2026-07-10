@@ -1,15 +1,12 @@
-# Nowak Workshop OS v5.3.3
+# Nowak Workshop OS v5.3.4
 
-Fixes and improvements:
+Construction and first-stage workflow refinement:
 
-- Fixed Progress buttons on Dashboard Priority Jobs, Workshop Today and Production.
-- Progress buttons now show Progressing... while saving and display database errors clearly.
-- Added Add Photo buttons directly to production/workshop cards.
-- Added Take or Upload a Photo at Any Stage inside every Job Card.
-- Reworked photo upload storage:
-  - unique filenames
-  - robust error handling
-  - exact upload/database errors shown
-  - no dependency on insert-return permissions
-- Upload button now shows Uploading... and confirms successful storage.
-- Existing v5.3 Supabase photo setup is still used; no new migration is required.
+- Once a drum has been created, its construction type is locked.
+- The Job Card no longer allows switching between Stave and Ply.
+- The selected construction type is shown as a read-only field.
+- First workflow stage now displays:
+  - Ply: Veneer ready
+  - Stave: Timber cut and ready
+- Progress buttons and Production/Workshop Today use matching build-specific wording.
+- No Supabase migration is required.

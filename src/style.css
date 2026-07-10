@@ -269,3 +269,19 @@ input[readonly]{opacity:.86;background:#0f0e0b}
 .anytimePhotoPanel button{width:100%;justify-content:center}
 button:disabled{opacity:.55;cursor:not-allowed}
 .uploadPhotosButton{min-height:46px}
+
+.fixedBuildType{
+  display:grid;
+  grid-template-columns:auto auto 1fr;
+  gap:10px;
+  align-items:center;
+  margin:10px 0 14px;
+  padding:12px 14px;
+  border:1px solid #5eb9ff;
+  border-radius:12px;
+  background:rgba(43,99,142,.08);
+}
+.fixedBuildType span{color:#a9a397;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.fixedBuildType b{font-size:18px;color:#f4efe4}
+.fixedBuildType small{color:#a9a397}
+@media(max-width:700px){.fixedBuildType{grid-template-columns:1fr}.fixedBuildType small{display:block}}

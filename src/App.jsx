@@ -142,9 +142,23 @@ function hasWorkflowStarted(drum){
   return parseChecked(drum.notes).size > 0;
 }
 
-function workflowNextInstruction(nextItem){
+function checklistDisplayLabel(item,buildType){
+  if(item==="Timber / veneer ready"){
+    return buildType==="Ply" ? "Veneer ready" : "Timber cut and ready";
+  }
+  return item;
+}
+
+function workflowStatusLabel(item,buildType){
+  if(item==="Timber / veneer ready"){
+    return buildType==="Ply" ? "Veneer Ready" : "Timber Cut and Ready";
+  }
+  return workflowLabels[item]?.status || item;
+}
+
+function workflowNextInstruction(nextItem,buildType){
   const instructions = {
-    "Timber / veneer ready":"Prepare timber or veneer",
+    "Timber / veneer ready":buildType==="Ply" ? "Prepare veneer" : "Cut and prepare timber",
     "Glue up complete":"Complete the shell glue-up",
     "Machined":"Machine the shell",
     "Sanded":"Sand the shell",
@@ -184,8 +198,8 @@ function workflowState(buildType, checked, finish=""){
 
   const previous=completedCount>0 ? steps[completedCount-1] : null;
   const next=steps[completedCount] || null;
-  const status=previous ? workflowLabels[previous]?.status || previous : "Ready to Start";
-  const nextStep=next ? workflowNextInstruction(next) : "Complete";
+  const status=previous ? workflowStatusLabel(previous,buildType) : "Ready to Start";
+  const nextStep=next ? workflowNextInstruction(next,buildType) : "Complete";
   const estimates=workflowEstimates[buildType] || workflowEstimates.Stave;
   const estimatedCompleted=steps.slice(0,completedCount).reduce((sum,item)=>sum+Number(estimates[item]||0),0);
   const estimatedTotal=steps.reduce((sum,item)=>sum+Number(estimates[item]||0),0);
@@ -247,8 +261,8 @@ const photoMilestones = {
     social:"Another look behind the scenes at this build in the Nowak workshop. Every stage contributes to the final sound, feel and character of the finished drum.",
   },
   wood:{
-    label:"Wood / timber selected",
-    prompt:"Take or upload timber selection, grain, colour and provenance photos.",
+    label:"Materials ready",
+    prompt:"Take or upload the prepared timber or veneer, grain, colour and provenance photos.",
     social:"A new drum build is underway in the Nowak workshop. We have selected the timber and are preparing the pieces that will become the shell. This stage is where the character of the finished drum begins—grain, colour, figure and the individual story of the timber all start here.",
   },
   blank:{
@@ -946,7 +960,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.3.3 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.3.4 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -2007,9 +2021,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   return <div className="modalBg" onClick={onClose}><div className={"modal jobModal "+(drum.build_client==="Brady"?"bradyModal":"")} onClick={e=>e.stopPropagation()}>
     <button className="close" onClick={onClose}>×</button>
     <div className="jobHeader"><div><h2>Job Card — #{drum.serial} {drum.timber}</h2>{allocatedCustomerName(drum) && <div className="jobCustomerName">For: {allocatedCustomerName(drum)}</div>}<p>{drum.size} · {drum.drum_type||"Snare"} · {drum.build_type} · {drum.finish}</p>{drum.build_client==="Brady" && <span className="cbBadge">Brady / CB {drum.cb_number || "No CB number"}</span>}</div><div className="statusPill">{flow.status}</div></div>
-    <section className="choiceRow compactChoice">
-      <button className={localBuildType==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>{setLocalBuildType("Stave"); updateDrum(drum.id,{build_type:"Stave"});}}>Stave</button>
-      <button className={localBuildType==="Ply" ? "primary bigChoice" : "bigChoice"} onClick={()=>{setLocalBuildType("Ply"); updateDrum(drum.id,{build_type:"Ply"});}}>Ply</button>
+    <section className="fixedBuildType">
+      <span>Construction</span>
+      <b>{localBuildType}</b>
+      <small>Construction type is locked after the drum is created.</small>
     </section>
     <div className="progress large"><i style={{width:flow.percent+"%"}}></i></div>
     <section className="stats workflowStats">
@@ -2113,7 +2128,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         const history=historyForItem(drum.stage_history,item);
         return <label className="checkItem workflowCheckItem" key={item}>
           <input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>
-          <span><b>{item}</b>{checked.has(item) && <small>{formatStageDate(history?.completed_at) || "Completed"}</small>}</span>
+          <span><b>{checklistDisplayLabel(item,localBuildType)}</b>{checked.has(item) && <small>{formatStageDate(history?.completed_at) || "Completed"}</small>}</span>
         </label>
       })}</div>
       
