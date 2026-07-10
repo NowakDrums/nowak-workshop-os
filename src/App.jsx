@@ -42,6 +42,19 @@ const communicationMilestones = [
   {key:"drumcomplete", label:"Drum completed", photo:"Full drum, detail shots, throw-off, hoops, glamour shot"}
 ];
 
+const diameterSpecs = {
+  "8":  { rough:"20.64 cm", finished:"20.00 cm" },
+  "10": { rough:"25.72 cm", finished:"25.08 cm" },
+  "12": { rough:"30.80 cm", finished:"30.16 cm" },
+  "13": { rough:"33.34 cm", finished:"32.70 cm" },
+  "14": { rough:"35.88 cm", finished:"35.24 cm" },
+  "16": { rough:"40.96 cm", finished:"40.32 cm" },
+  "18": { rough:"46.04 cm", finished:"45.40 cm" },
+  "20": { rough:"51.12 cm", finished:"50.48 cm" },
+  "22": { rough:"56.20 cm", finished:"55.56 cm" },
+  "24": { rough:"61.28 cm", finished:"60.64 cm" },
+};
+
 const staveSpecs = {
   "8": { triton:"25mm", stave:"21mm", comment:"Tom: 8mm shell, 14mm x 30mm re-ring" },
   "10": { triton:"30.5mm", stave:"27mm", comment:"Tom: 8mm shell, 14mm x 30mm re-ring" },
@@ -290,6 +303,23 @@ function ownershipLabel(d){
   return "Unallocated";
 }
 
+
+function workshopSpecForDiameter(diameter){
+  return diameterSpecs[String(diameter || "").replace(/"/g,"")] || null;
+}
+
+function workshopSpecsText({serial,timber,size,buildType,drumType,diameter}){
+  const d = workshopSpecForDiameter(diameter);
+  const s = staveSpecForDiameter(diameter);
+  const lines = [`Production #${serial || ""}`,"",size || "","",`${timber || ""} ${buildType || ""}`,""];
+  if(buildType === "Stave"){
+    lines.push("ROUGH OD",d?.rough || "","FINISHED OD",d?.finished || "","TRITON",s?.triton || "","STAVE",s?.stave || "","BUILD SPECIFICATION",defaultBuildSpecification(drumType || "Snare"));
+  }else{
+    lines.push("FINISHED OD",d?.finished || "","BUILD SPECIFICATION",defaultBuildSpecification(drumType || "Snare"));
+  }
+  return lines.join("\\n");
+}
+
 function App(){
   const [view,setView]=useState("dashboard");
   const [drums,setDrums]=useState([]);
@@ -431,7 +461,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v3.0 — rebuilt Add Drum wizard.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v3.0.1 — Workshop Specifications with rough and finished diameters.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -683,6 +713,7 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
         <h3>5. Manufacturing calculator</h3>
 
         {isPly ? <>
+          <StaveSpecPanel diameter={form.diameter} drumType={form.drum_type} buildType="Ply" serial={form.serial} timber={timber} size={size}/>
           <p className="calcNote">{sizeAdjustmentLabel(size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect inner layers only.</p>
           <div className="veneerGrid">
             {form.veneer.map((value,index)=>
@@ -693,7 +724,7 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
           </div>
           <VeneerResult lengths={lengths}/>
         </> : <>
-          <StaveSpecPanel diameter={form.diameter} drumType={form.drum_type}/>
+          <StaveSpecPanel diameter={form.diameter} drumType={form.drum_type} buildType="Stave" serial={form.serial} timber={timber} size={size}/>
         </>}
       </section>
 
@@ -728,14 +759,29 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
 }
 
 
-function StaveSpecPanel({diameter, drumType}){
-  const spec = staveSpecForDiameter(diameter);
-  if(!spec) return <p className="calcNote">No stave calculator data saved for {diameter}".</p>;
-  const comment = drumTypeComment(drumType, diameter) || spec.comment;
-  return <section className="staveSpec">
-    <div><b>Triton saw</b><span>{spec.triton}</span></div>
-    <div><b>Each stave</b><span>{spec.stave}</span></div>
-    {comment && <div className="wide"><b>Construction note</b><span>{comment}</span></div>}
+
+function StaveSpecPanel({diameter, drumType, buildType="Stave", serial="", timber="", size=""}){
+  const staveSpec = staveSpecForDiameter(diameter);
+  const diameterSpec = workshopSpecForDiameter(diameter);
+  const text = workshopSpecsText({serial,timber,size,buildType,drumType,diameter});
+
+  function copySpecs(){
+    navigator.clipboard?.writeText(text);
+    alert("Workshop specifications copied");
+  }
+
+  return <section>
+    <h2>Workshop Specifications</h2>
+    {buildType==="Stave" ? <section className="staveSpec">
+      <div><b>Rough Outside Diameter</b><span>{diameterSpec?.rough || "Not set"}</span></div>
+      <div><b>Finished Outside Diameter</b><span>{diameterSpec?.finished || "Not set"}</span></div>
+      <div><b>Triton Saw Setting</b><span>{staveSpec?.triton || "Not set"}</span></div>
+      <div><b>Finished Stave Width</b><span>{staveSpec?.stave || "Not set"}</span></div>
+      <div className="wide"><b>Recommended Build Specification</b><span>{defaultBuildSpecification(drumType)}</span></div>
+    </section> : <section className="staveSpec">
+      <div className="wide"><b>Finished Outside Diameter</b><span>{diameterSpec?.finished || "Not set"}</span></div>
+    </section>}
+    <button onClick={copySpecs}>Copy Workshop Specs</button>
   </section>
 }
 
@@ -907,8 +953,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       </div>
     </section>
 
-    {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"}/></section>}
-    {localBuildType==="Ply" && <section className="panel inner"><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
+    {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Stave" serial={drum.serial} timber={drum.timber} size={drum.size}/></section>}
+    {localBuildType==="Ply" && <section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={drum.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
 
     <section className="panel inner"><h2>Manufacturing Checklist</h2><div className="checkGrid">{checklist.filter(item=>!(localBuildType==="Ply" && item==="Machined")).map(item=><label className="checkItem" key={item}><input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>{item}</label>)}</div><button className="primary" onClick={saveChecklist}><Save size={16}/> Save checklist to notes</button></section>
 
