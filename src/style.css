@@ -19,3 +19,31 @@ body{margin:0;background:#0f0e0b;color:#f4efe4;font-family:-apple-system,BlinkMa
 .workflowCheckItem small{color:#d3aa5d;font-size:11px}
 input[readonly]{opacity:.86;background:#0f0e0b}
 @media(max-width:900px){.workflowStats{grid-template-columns:1fr}}
+
+.wizardModal{
+  max-height:90vh;
+  overflow-y:auto;
+  padding-bottom:90px;
+}
+.wizardFooter{
+  position:sticky;
+  bottom:0;
+  z-index:20;
+  background:#17140f;
+  border-top:1px solid #4c3f2d;
+  margin:16px -18px -18px;
+  padding:14px 18px;
+  box-shadow:0 -8px 20px rgba(0,0,0,.35);
+}
+.saveDrumButton{
+  font-size:16px;
+  font-weight:700;
+}
+.notStartedColumn{
+  border-color:#777!important;
+}
+.columnHint{
+  color:#aaa;
+  font-size:12px;
+  margin-top:-4px;
+}

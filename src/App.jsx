@@ -105,6 +105,10 @@ function applicableChecklist(buildType){
   return checklist.filter(item=>!(buildType==="Ply" && item==="Machined"));
 }
 
+function hasWorkflowStarted(drum){
+  return parseChecked(drum.notes).size > 0;
+}
+
 function workflowState(buildType, checked){
   const steps=applicableChecklist(buildType);
   let completedCount=0;
@@ -531,9 +535,9 @@ function App(){
       size:form.size,
       finish:form.finish || "TBD",
       customer:form.order_type === "Stock" ? "Stock" : "",
-      production_status:isPly ? "Veneer Ready" : "Glued Blank",
+      production_status:"Not Started",
       sales_status:salesStatusForNewDrum(form),
-      next_step:isPly ? "Confirm veneer thicknesses and cut lengths" : "Machine shell",
+      next_step:isPly ? "Prepare veneer and confirm cut lengths" : "Prepare timber / staves",
       retail_price:Number(form.custom_price || 0),
       custom_price:Number(form.custom_price || 0),
       wholesale_price:form.build_client==="Brady" ? Number(form.custom_price || 0) : 0,
@@ -582,7 +586,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v3.1 — checklist-driven workflow, next steps, dates and estimated labour.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v3.1.1 — visible Add Drum save button and Not Started production queue.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -627,7 +631,18 @@ function App(){
 
     {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{displaySalesBadge(d)}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{workflowState(d.build_type||"Stave",parseChecked(d.notes)).status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
 
-    {view==="production" && <section className="board">{stages.map(stage=>{ const items=filtered.filter(d=>d.production_status===stage); if(!items.length) return null; return <section className="column" key={stage}><h2>{stage}</h2>{items.map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} updateDrum={updateDrum}/>)}</section>})}</section>}
+    {view==="production" && <section className="board">
+      {filtered.filter(d=>!hasWorkflowStarted(d)).length>0 && <section className="column notStartedColumn">
+        <h2>Not Started</h2>
+        <p className="columnHint">Created in production, but no manufacturing checklist items have been completed yet.</p>
+        {filtered.filter(d=>!hasWorkflowStarted(d)).map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} updateDrum={updateDrum}/>)}
+      </section>}
+      {stages.map(stage=>{
+        const items=filtered.filter(d=>hasWorkflowStarted(d) && d.production_status===stage);
+        if(!items.length) return null;
+        return <section className="column" key={stage}><h2>{stage}</h2>{items.map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} updateDrum={updateDrum}/>)}</section>
+      })}
+    </section>}
 
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
@@ -877,9 +892,9 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
         </div>
       </section>
 
-      <section className="buttonRow">
+      <section className="buttonRow wizardFooter">
         <button onClick={onClose}>Cancel</button>
-        <button className="primary" onClick={create}>Create Drum</button>
+        <button className="primary saveDrumButton" onClick={create}>Save & Create Drum</button>
       </section>
     </div>
   </div>
