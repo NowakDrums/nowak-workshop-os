@@ -1,10 +1,15 @@
-# Nowak Workshop OS Web App v2.0.6
+# Nowak Workshop OS Web App v3.0
 
-Minor numbering and ownership refinements:
-- Every new shell gets the next available production number automatically
-- Production number applies to Workshop Blank, Nowak and Brady shells
-- Production number remains editable
-- Selecting Brady automatically allocates the next available CB number
-- CB number remains editable
-- Ownership options remain Workshop Blank, Nowak and Brady
-- No Supabase migration needed
+Rebuilt Add Drum wizard:
+- Ownership first: Unallocated, Nowak, Brady
+- Production number always assigned and editable
+- Brady automatically receives next CB number and remains editable
+- Stave/Ply selection
+- Drum type, diameter and depth
+- Build Specification auto-defaults and remains editable
+- Timber and finish selection
+- Finish options: To Be Decided, Natural, Satin, High Gloss
+- Live stave or veneer calculator
+- Order type, shipping and automatic pricing
+
+No Supabase migration needed.

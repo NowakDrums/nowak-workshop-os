@@ -168,14 +168,14 @@ function batchType(d){
 
 function displaySalesBadge(d){
   if(d.build_client === "Brady") return "Brady Production";
-  if(d.build_client === "Workshop Blank" || !d.build_client) return "Workshop Blank";
-  return d.sales_status || "Stock";
+  if(d.build_client === "Nowak") return "Nowak";
+  return "Unallocated";
 }
 
 function salesStatusForNewDrum(form){
   if(form.build_client === "Brady") return "Brady Production";
-  if(form.build_client === "Workshop Blank" || !form.build_client) return "Workshop Blank";
-  return form.order_type === "Stock" ? "Stock" : "Custom Order";
+  if(form.build_client === "Nowak") return form.order_type === "Stock" ? "Stock" : "Custom Order";
+  return "Unallocated";
 }
 
 function stagePercent(s){
@@ -273,6 +273,21 @@ function nextProductionNumber(drums=[]){
 
 function nextCbNumber(drums=[]){
   return String(Math.max(0,...drums.filter(d=>d.build_client==="Brady").map(d=>extractNumber(d.cb_number)))+1);
+}
+
+
+function defaultBuildSpecification(drumType){
+  if(drumType === "Snare") return "Shell thickness: 12 mm";
+  if(drumType === "Tom") return "Shell thickness: 8 mm\nRe-ring: 14 x 30 mm";
+  if(drumType === "Floor Tom") return "Shell thickness: 8 mm\nRe-ring: 14 x 40 mm";
+  if(drumType === "Bass Drum") return "Shell thickness: 10 mm\nRe-ring: 14 x 50 mm";
+  return "";
+}
+
+function ownershipLabel(d){
+  if(d.build_client === "Brady") return "Brady Production";
+  if(d.build_client === "Nowak") return "Nowak";
+  return "Unallocated";
 }
 
 function App(){
@@ -379,7 +394,7 @@ function App(){
       cb_number:form.cb_number || "",
       stave_triton_setting:!isPly && spec ? spec.triton : null,
       stave_width:!isPly && spec ? spec.stave : null,
-      construction_note:construction,
+      construction_note:form.construction_note || construction || defaultBuildSpecification(form.drum_type),
       shell_thickness:construction?.match(/(8mm|9mm|10mm)/)?.[1] || "",
       rering_size:construction?.match(/14mm x (30mm|40mm|50mm)/)?.[0] || "",
       timber_story:form.timber_story || "",
@@ -416,7 +431,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v2.0.6 — automatic production and CB numbering.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v3.0 — rebuilt Add Drum wizard.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -459,7 +474,7 @@ function App(){
       <section className="panel"><h2>Priority Jobs</h2>{filtered.filter(d=>d.next_step).slice(0,8).map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard}/>)}</section>
     </>}
 
-    {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":"")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{displaySalesBadge(d)}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{d.production_status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
+    {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{displaySalesBadge(d)}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{d.production_status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
 
     {view==="production" && <section className="board">{stages.map(stage=>{ const items=filtered.filter(d=>d.production_status===stage); if(!items.length) return null; return <section className="column" key={stage}><h2>{stage}</h2>{items.map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} updateDrum={updateDrum}/>)}</section>})}</section>}
 
@@ -476,7 +491,7 @@ function App(){
 }
 
 function DrumCard({drum, openJobCard, updateDrum}){
-  return <article className={"card clickable " + (drum.build_client==="Brady"?"bradyCard":"")} onClick={()=>openJobCard(drum)}>
+  return <article className={"card clickable " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard")} onClick={()=>openJobCard(drum)}>
     <b>#{drum.serial} {drum.timber}</b>
     {drum.build_client==="Brady" && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
     <span>{drum.size} · {drum.drum_type || "Snare"} · {drum.build_type}</span>
@@ -487,115 +502,231 @@ function DrumCard({drum, openJobCard, updateDrum}){
   </article>
 }
 
+
 function AddDrumWizard({onClose, onCreate, drums=[]}){
   const suggestedProductionNumber = nextProductionNumber(drums);
   const suggestedCbNumber = nextCbNumber(drums);
-  const [form,setForm]=useState({serial:suggestedProductionNumber,
-    build_type:"Stave", drum_type:"Snare", diameter:"14", depth:"6 1/2",
-    timber:"Jarrah", customTimber:"", finish:"Satin", build_client:"Workshop Blank",
-    order_type:"Stock", price_rule:"Nowak Stock", cb_number:"", shipping_cost:0,
-    timber_story:"", veneer:[1.2,1.2,1.2,1.2,1.2],
+
+  const [form,setForm]=useState({
+    serial:suggestedProductionNumber,
+    build_client:"Unallocated",
+    cb_number:"",
+    build_type:"Stave",
+    drum_type:"Snare",
+    diameter:"14",
+    depth:"6 1/2",
+    timber:"Jarrah",
+    customTimber:"",
+    finish:"To Be Decided",
+    order_type:"Stock",
+    shipping_cost:0,
+    timber_story:"",
+    construction_note:defaultBuildSpecification("Snare"),
+    veneer:[1.2,1.2,1.2,1.2,1.2],
   });
 
   const size = buildSize(form.diameter, form.depth);
   const timber = form.timber === "Custom / Other" ? form.customTimber : form.timber;
   const isPly = form.build_type === "Ply";
   const lengths = adjustedLengths(form.veneer, size);
-  const calculatedPrice = autoPrice({...form, size});
-  const total = Number(calculatedPrice || 0) + Number(form.shipping_cost || 0);
+  const calculatedPrice = autoPrice({...form,size});
+  const total = Number(calculatedPrice||0) + Number(form.shipping_cost||0);
 
   function setField(key,value){
-    setForm(f=>{
-      const next = {...f,[key]:value};
-      if(key==="build_client" || key==="order_type"){
-        if((key==="build_client" ? value : next.build_client)==="Brady"){
-          next.price_rule = (key==="order_type" ? value : next.order_type)==="Custom" ? "Brady Custom" : "Brady Wholesale";
-        } else {
-          next.price_rule = (key==="order_type" ? value : next.order_type)==="Custom" ? "Nowak Custom" : "Nowak Stock";
+    setForm(current=>{
+      const next={...current,[key]:value};
+
+      if(key==="build_client"){
+        if(value==="Brady"){
+          next.cb_number = current.cb_number || suggestedCbNumber;
+        }else{
+          next.cb_number = "";
         }
       }
+
+      if(key==="drum_type"){
+        const previousDefault = defaultBuildSpecification(current.drum_type);
+        if(!current.construction_note || current.construction_note===previousDefault){
+          next.construction_note = defaultBuildSpecification(value);
+        }
+      }
+
       return next;
     });
   }
 
   function setVeneer(index,value){
-    setForm(f=>{ const veneer=[...f.veneer]; veneer[index]=value; return {...f,veneer}; });
+    setForm(current=>{
+      const veneer=[...current.veneer];
+      veneer[index]=value;
+      return {...current,veneer};
+    });
   }
 
   function create(){
-    onCreate({...form, timber, size, custom_price:calculatedPrice, total_price:total});
+    onCreate({
+      ...form,
+      timber,
+      size,
+      custom_price:calculatedPrice,
+      total_price:total,
+    });
   }
 
-  return <div className="modalBg" onClick={onClose}><div className="modal wizardModal" onClick={e=>e.stopPropagation()}>
-    <button className="close" onClick={onClose}>×</button>
-    <h2>Add Drum</h2>
-    <p>Choose shell type, size, timber, drum type and order type. Pricing, construction notes and cut calculators update automatically.</p>
+  return <div className="modalBg" onClick={onClose}>
+    <div className="modal wizardModal" onClick={e=>e.stopPropagation()}>
+      <button className="close" onClick={onClose}>×</button>
 
-    <section className="choiceRow">
-      <button className={form.build_type==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>setField("build_type","Stave")}>Stave shell</button>
-      <button className={form.build_type==="Ply" ? "primary bigChoice" : "bigChoice"} onClick={()=>setField("build_type","Ply")}>Ply shell</button>
-    </section>
+      <h2>Add Drum</h2>
+      <p>This wizard creates a complete production record. Every shell receives the next production number, whether it is Unallocated, Nowak or Brady.</p>
 
-    <section className="jobGrid two">
-      <div className="panel inner">
-        <h2>Basic Details</h2>
-        <div className="twoInputGrid">
-          <label>Diameter<select value={form.diameter} onChange={e=>setField("diameter",e.target.value)}>{drumDiameters.map(d=><option key={d}>{d}</option>)}</select></label>
-          <label>Depth<select value={form.depth} onChange={e=>setField("depth",e.target.value)}>{drumDepths.map(d=><option key={d}>{d}</option>)}</select></label>
+      <section className="wizardSection">
+        <h3>1. Ownership</h3>
+        <div className="choiceRow threeChoices">
+          {["Unallocated","Nowak","Brady"].map(owner=>
+            <button
+              key={owner}
+              className={form.build_client===owner ? "primary bigChoice" : "bigChoice"}
+              onClick={()=>setField("build_client",owner)}
+            >
+              {owner}
+            </button>
+          )}
         </div>
+
+        <div className="twoInputGrid">
+          <label>Production number
+            <input value={form.serial} onChange={e=>setField("serial",e.target.value)} />
+          </label>
+
+          {form.build_client==="Brady" &&
+            <label>CB number
+              <input
+                autoFocus
+                value={form.cb_number}
+                onChange={e=>setField("cb_number",e.target.value)}
+              />
+            </label>
+          }
+        </div>
+      </section>
+
+      <section className="wizardSection">
+        <h3>2. Construction</h3>
+        <div className="choiceRow">
+          <button className={form.build_type==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>setField("build_type","Stave")}>Stave</button>
+          <button className={form.build_type==="Ply" ? "primary bigChoice" : "bigChoice"} onClick={()=>setField("build_type","Ply")}>Ply</button>
+        </div>
+      </section>
+
+      <section className="wizardSection">
+        <h3>3. Drum type and size</h3>
+        <div className="threeInputGrid">
+          <label>Drum type
+            <select value={form.drum_type} onChange={e=>setField("drum_type",e.target.value)}>
+              {drumTypeOptions.map(t=><option key={t}>{t}</option>)}
+            </select>
+          </label>
+
+          <label>Diameter
+            <select value={form.diameter} onChange={e=>setField("diameter",e.target.value)}>
+              {drumDiameters.map(d=><option key={d}>{d}</option>)}
+            </select>
+          </label>
+
+          <label>Depth
+            <select value={form.depth} onChange={e=>setField("depth",e.target.value)}>
+              {drumDepths.map(d=><option key={d}>{d}</option>)}
+            </select>
+          </label>
+        </div>
+
         <p className="calcNote">Selected size: {size}"</p>
 
-        <label>Drum type</label>
-        <select value={form.drum_type} onChange={e=>setField("drum_type",e.target.value)}>{drumTypeOptions.map(t=><option key={t}>{t}</option>)}</select>
+        <label>Build Specification</label>
+        <textarea
+          value={form.construction_note}
+          onChange={e=>setField("construction_note",e.target.value)}
+        />
+      </section>
 
-        <label>Material / timber</label>
-        <select value={form.timber} onChange={e=>setField("timber",e.target.value)}>{timberOptions.map(t=><option key={t}>{t}</option>)}</select>
-        {form.timber === "Custom / Other" && <><label>Custom material</label><input value={form.customTimber} onChange={e=>setField("customTimber",e.target.value)} placeholder="Enter custom timber/material"/></>}
+      <section className="wizardSection">
+        <h3>4. Timber and finish</h3>
+        <div className="twoInputGrid">
+          <label>Material / timber
+            <select value={form.timber} onChange={e=>setField("timber",e.target.value)}>
+              {timberOptions.map(t=><option key={t}>{t}</option>)}
+            </select>
+          </label>
+
+          <label>Finish
+            <select value={form.finish} onChange={e=>setField("finish",e.target.value)}>
+              <option>To Be Decided</option>
+              <option>Natural</option>
+              <option>Satin</option>
+              <option>High Gloss</option>
+            </select>
+          </label>
+        </div>
+
+        {form.timber==="Custom / Other" &&
+          <label>Custom material
+            <input value={form.customTimber} onChange={e=>setField("customTimber",e.target.value)} />
+          </label>
+        }
 
         <label>Timber story</label>
-        <textarea value={form.timber_story} onChange={e=>setField("timber_story",e.target.value)} placeholder="e.g. Reclaimed Jarrah staircase from Perth..."/>
+        <textarea value={form.timber_story} onChange={e=>setField("timber_story",e.target.value)} />
+      </section>
 
-        <label>Finish</label>
-        <select value={form.finish} onChange={e=>setField("finish",e.target.value)}><option>Satin</option><option>High Gloss</option><option>Natural / Oil</option><option>TBD</option></select>
+      <section className="wizardSection">
+        <h3>5. Manufacturing calculator</h3>
 
-        <label>Order type</label>
-        <select value={form.order_type} onChange={e=>setField("order_type",e.target.value)}><option>Stock</option><option>Custom</option></select>
-
-        <label>Production number</label>
-        <input value={form.serial || suggestedProductionNumber} onChange={e=>setField("serial",e.target.value)} placeholder="Production number"/>
-
-        <label>Build for</label>
-        <select value={form.build_client} onChange={e=>setField("build_client",e.target.value)}><option>Nowak</option><option>Brady</option></select>
-
-        {form.build_client==="Brady" && <><label>CB Number</label><input value={form.cb_number || suggestedCbNumber} onChange={e=>setField("cb_number",e.target.value)} placeholder="CB number"/></>}
-      </div>
-
-      <div className="panel inner">
-        <h2>{isPly ? "Ply setup" : "Stave setup"}</h2>
         {isPly ? <>
-          <p className="calcNote">{sizeAdjustmentLabel(size)}</p>
-          <div className="veneerGrid">{form.veneer.map((v,i)=><label key={i}>Layer {i+1} mm<input value={v} onChange={e=>setVeneer(i,e.target.value)}/></label>)}</div>
+          <p className="calcNote">{sizeAdjustmentLabel(size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect inner layers only.</p>
+          <div className="veneerGrid">
+            {form.veneer.map((value,index)=>
+              <label key={index}>Layer {index+1} mm
+                <input value={value} onChange={e=>setVeneer(index,e.target.value)} />
+              </label>
+            )}
+          </div>
           <VeneerResult lengths={lengths}/>
         </> : <>
           <StaveSpecPanel diameter={form.diameter} drumType={form.drum_type}/>
-          <div className="resultList twoCols"><div><b>Starting stage</b><span>Glued Blank</span></div><div><b>Next step</b><span>Machine shell</span></div></div>
         </>}
+      </section>
 
-        <h2>Auto Pricing</h2>
-        <label>Price rule</label>
-        <select value={form.price_rule} onChange={e=>setField("price_rule",e.target.value)}>{Object.keys(priceRules).map(k=><option key={k}>{k}</option>)}</select>
+      <section className="wizardSection">
+        <h3>6. Order and price</h3>
+
+        <div className="twoInputGrid">
+          <label>Order type
+            <select value={form.order_type} onChange={e=>setField("order_type",e.target.value)}>
+              <option>Stock</option>
+              <option>Custom</option>
+            </select>
+          </label>
+
+          <label>Shipping
+            <input value={form.shipping_cost} onChange={e=>setField("shipping_cost",e.target.value)} />
+          </label>
+        </div>
+
         <div className="resultList twoCols">
           <div><b>Calculated price</b><span>{money(calculatedPrice)}</span></div>
-          <div><b>Shipping</b><span><input value={form.shipping_cost} onChange={e=>setField("shipping_cost",e.target.value)}/></span></div>
           <div><b>Total</b><span>{money(total)}</span></div>
-          <div><b>Basis</b><span>{form.price_rule}</span></div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section className="buttonRow"><button onClick={onClose}>Cancel</button><button className="primary" onClick={create}>Create drum</button></section>
-  </div></div>
+      <section className="buttonRow">
+        <button onClick={onClose}>Cancel</button>
+        <button className="primary" onClick={create}>Create Drum</button>
+      </section>
+    </div>
+  </div>
 }
+
 
 function StaveSpecPanel({diameter, drumType}){
   const spec = staveSpecForDiameter(diameter);
@@ -686,8 +817,9 @@ function SettingsPage(){
 
 function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum, drums=[]}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
-  const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Workshop Blank");
+  const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
+  const [localBuildSpec,setLocalBuildSpec]=useState(drum.construction_note || defaultBuildSpecification(drum.drum_type || "Snare"));
   const [checked,setChecked]=useState(parseChecked(drum.notes));
   const [timeAmount,setTimeAmount]=useState(0.5);
   const [timeLabel,setTimeLabel]=useState("Workshop time");
@@ -733,10 +865,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           updateDrum(drum.id,{
             build_client:ownership,
             cb_number:suggestedCb,
-            sales_status:ownership==="Brady" ? "Brady Production" : ownership==="Workshop Blank" ? "Workshop Blank" : ((drum.sales_status==="Brady Production" || drum.sales_status==="Workshop Blank") ? "Stock" : drum.sales_status)
+            sales_status:ownership==="Brady" ? "Brady Production" : ownership==="Unallocated" ? "Unallocated" : ((drum.sales_status==="Brady Production" || drum.sales_status==="Unallocated") ? "Stock" : drum.sales_status)
           });
         }}>
-          <option>Workshop Blank</option><option>Nowak</option><option>Brady</option>
+          <option>Unallocated</option><option>Nowak</option><option>Brady</option>
         </select>
         {localOwnership==="Brady" && <>
           <label>CB Number</label>
@@ -753,12 +885,18 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
       <div className="panel inner"><h2>Build Details</h2>
         <label>Size</label><SizeEditor drum={drum} updateDrum={updateDrum}/>
-        <label>Drum type</label><select defaultValue={drum.drum_type||"Snare"} onChange={e=>updateDrum(drum.id,{drum_type:e.target.value, construction_note:drumTypeComment(e.target.value, splitSize(drum.size).diameter)})}>{drumTypeOptions.map(t=><option key={t}>{t}</option>)}</select>
-        <label>Finish</label><select defaultValue={drum.finish||"Satin"} onChange={e=>updateDrum(drum.id,{finish:e.target.value})}><option>High Gloss</option><option>Satin</option><option>Natural</option></select>
+        <label>Drum type</label><select defaultValue={drum.drum_type||"Snare"} onChange={e=>{
+          const newType=e.target.value;
+          const previousDefault=defaultBuildSpecification(drum.drum_type||"Snare");
+          const nextSpec=(!localBuildSpec || localBuildSpec===previousDefault) ? defaultBuildSpecification(newType) : localBuildSpec;
+          setLocalBuildSpec(nextSpec);
+          updateDrum(drum.id,{drum_type:newType, construction_note:nextSpec});
+        }}>{drumTypeOptions.map(t=><option key={t}>{t}</option>)}</select>
+        <label>Finish</label><select defaultValue={drum.finish||"To Be Decided"} onChange={e=>updateDrum(drum.id,{finish:e.target.value})}><option>To Be Decided</option><option>Natural</option><option>Satin</option><option>High Gloss</option></select>
         <label>Production status</label><select defaultValue={drum.production_status} onChange={e=>updateDrum(drum.id,{production_status:e.target.value})}>{stages.map(s=><option key={s}>{s}</option>)}</select>
         <label>Next step</label><input defaultValue={drum.next_step||""} onBlur={e=>updateDrum(drum.id,{next_step:e.target.value})}/>
         <label>Timber story</label><textarea defaultValue={drum.timber_story||""} onBlur={e=>updateDrum(drum.id,{timber_story:e.target.value})}/>
-        <label>Construction note</label><textarea defaultValue={drum.construction_note||""} onBlur={e=>updateDrum(drum.id,{construction_note:e.target.value})}/>
+        <label>Build Specification</label><textarea value={localBuildSpec} onChange={e=>setLocalBuildSpec(e.target.value)} onBlur={e=>updateDrum(drum.id,{construction_note:e.target.value})}/>
       </div>
 
       <div className="panel inner"><h2>Time Log</h2>
