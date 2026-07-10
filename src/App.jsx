@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
-  Settings
+  Settings, Layers3, FolderPlus
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import "./style.css";
@@ -451,25 +451,28 @@ function App(){
   const [hardware,setHardware]=useState([]);
   const [templates,setTemplates]=useState([]);
   const [sales,setSales]=useState([]);
+  const [projects,setProjects]=useState([]);
   const [jobCard,setJobCard]=useState(null);
   const [showAddWizard,setShowAddWizard]=useState(false);
   const [loading,setLoading]=useState(false);
   const [message,setMessage]=useState("");
   const [labourRate,setLabourRate]=useState(50);
   const [search,setSearch]=useState("");
+  const [productionFilter,setProductionFilter]=useState("All");
 
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
     setLoading(true); setMessage("");
-    const [d,h,t,s]=await Promise.all([
+    const [d,h,t,s,p]=await Promise.all([
       supabase.from("drums").select("*").order("created_at",{ascending:false}),
       supabase.from("hardware_parts").select("*").order("category",{ascending:true}),
       supabase.from("cost_templates").select("*").order("name",{ascending:true}),
-      supabase.from("sales").select("*").order("sold_at",{ascending:false})
+      supabase.from("sales").select("*").order("sold_at",{ascending:false}),
+      supabase.from("projects").select("*").order("created_at",{ascending:false})
     ]);
-    const errors=[d.error,h.error,t.error,s.error].filter(Boolean);
+    const errors=[d.error,h.error,t.error,s.error,p.error].filter(Boolean);
     if(errors.length) setMessage(errors.map(e=>e.message).join(" | "));
-    else { setDrums(d.data||[]); setHardware(h.data||[]); setTemplates(t.data||[]); setSales(s.data||[]); }
+    else { setDrums(d.data||[]); setHardware(h.data||[]); setTemplates(t.data||[]); setSales(s.data||[]); setProjects(p.data||[]); }
     setLoading(false);
   }
 
@@ -487,6 +490,19 @@ function App(){
   const overdue=active.filter(d=>d.due_date && new Date(d.due_date) < new Date()).length;
   const cureQueue=active.filter(d=>["Polyurethane Coat 4","Finished Spraying / Curing"].includes(d.production_status)).length;
   const photoQueue=active.filter(d=>d.production_status==="Finished / Ready to Sell").length;
+
+
+  async function createProject(){
+    const name=window.prompt("Kit / project name");
+    if(!name) return;
+    const {error}=await supabase.from("projects").insert({name});
+    if(error) setMessage(error.message); else await loadAll();
+  }
+
+  async function updateProject(id,patch){
+    const {error}=await supabase.from("projects").update(patch).eq("id",id);
+    if(error) setMessage(error.message); else await loadAll();
+  }
 
   async function updateDrum(id,patch){
     if("custom_price" in patch || "shipping_cost" in patch){
@@ -553,6 +569,7 @@ function App(){
       shell_thickness:construction?.match(/(8mm|9mm|10mm)/)?.[1] || "",
       rering_size:construction?.match(/14mm x (30mm|40mm|50mm)/)?.[0] || "",
       timber_story:form.timber_story || "",
+      project_id:form.project_id || null,
       veneer_1_thickness:isPly ? Number(form.veneer[0] || 1.2) : null,
       veneer_2_thickness:isPly ? Number(form.veneer[1] || 1.2) : null,
       veneer_3_thickness:isPly ? Number(form.veneer[2] || 1.2) : null,
@@ -586,7 +603,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v3.1.1 — visible Add Drum save button and Not Started production queue.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v4.0 — unified Save Changes, sorted production and linked kits/projects.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -596,6 +613,7 @@ function App(){
       <button className={view==="dashboard"?"active":""} onClick={()=>setView("dashboard")}><LayoutDashboard size={16}/> Dashboard</button>
       <button className={view==="today"?"active":""} onClick={()=>setView("today")}><Hammer size={16}/> Workshop Today</button>
       <button className={view==="production"?"active":""} onClick={()=>setView("production")}><ListChecks size={16}/> Production</button>
+      <button className={view==="projects"?"active":""} onClick={()=>setView("projects")}><Layers3 size={16}/> Kits / Projects</button>
       <button className={view==="orders"?"active":""} onClick={()=>setView("orders")}><Users size={16}/> Orders</button>
       <button className={view==="veneer"?"active":""} onClick={()=>setView("veneer")}><Ruler size={16}/> Veneer Calc</button>
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
@@ -631,18 +649,34 @@ function App(){
 
     {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{displaySalesBadge(d)}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{workflowState(d.build_type||"Stave",parseChecked(d.notes)).status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
 
-    {view==="production" && <section className="board">
-      {filtered.filter(d=>!hasWorkflowStarted(d)).length>0 && <section className="column notStartedColumn">
-        <h2>Not Started</h2>
-        <p className="columnHint">Created in production, but no manufacturing checklist items have been completed yet.</p>
-        {filtered.filter(d=>!hasWorkflowStarted(d)).map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} updateDrum={updateDrum}/>)}
-      </section>}
-      {stages.map(stage=>{
-        const items=filtered.filter(d=>hasWorkflowStarted(d) && d.production_status===stage);
-        if(!items.length) return null;
-        return <section className="column" key={stage}><h2>{stage}</h2>{items.map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} updateDrum={updateDrum}/>)}</section>
-      })}
+    {view==="production" && <section>
+      <section className="panel productionToolbar">
+        <h2>Production</h2>
+        <div className="filterRow">
+          {["All","Pending","Active","Completed","Sold"].map(f=>
+            <button key={f} className={productionFilter===f?"primary":""} onClick={()=>setProductionFilter(f)}>{f}</button>
+          )}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="productionList">
+          {[...filtered]
+            .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
+            .filter(d=>{
+              const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes));
+              if(productionFilter==="Pending") return !hasWorkflowStarted(d);
+              if(productionFilter==="Active") return hasWorkflowStarted(d) && flow.percent<100 && d.sales_status!=="Sold/Shipped";
+              if(productionFilter==="Completed") return flow.percent===100 && d.sales_status!=="Sold/Shipped";
+              if(productionFilter==="Sold") return d.sales_status==="Sold/Shipped";
+              return true;
+            })
+            .map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} updateDrum={updateDrum}/>)}
+        </div>
+      </section>
     </section>}
+
+    {view==="projects" && <ProjectsPage projects={projects} drums={drums} openJobCard={setJobCard} createProject={createProject} updateProject={updateProject}/>}
 
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
@@ -651,8 +685,8 @@ function App(){
     {view==="comms" && <CommsCentre drums={filtered} openJobCard={setJobCard}/>}
     {view==="settings" && <SettingsPage/>}
 
-    {showAddWizard && <AddDrumWizard onClose={()=>setShowAddWizard(false)} onCreate={addDrumFromWizard} drums={drums}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum} drums={drums}/>}
+    {showAddWizard && <AddDrumWizard onClose={()=>setShowAddWizard(false)} onCreate={addDrumFromWizard} drums={drums} projects={projects}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects}/>}
   </main>
 }
 
@@ -675,7 +709,7 @@ function DrumCard({drum, openJobCard, updateDrum}){
 }
 
 
-function AddDrumWizard({onClose, onCreate, drums=[]}){
+function AddDrumWizard({onClose, onCreate, drums=[], projects=[]}){
   const suggestedProductionNumber = nextProductionNumber(drums);
   const suggestedCbNumber = nextCbNumber(drums);
 
@@ -695,6 +729,7 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
     timber_story:"",
     construction_note:defaultBuildSpecification("Snare"),
     veneer:[1.2,1.2,1.2,1.2,1.2],
+    project_id:"",
   });
 
   const size = buildSize(form.diameter, form.depth);
@@ -784,7 +819,17 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
       </section>
 
       <section className="wizardSection">
-        <h3>2. Construction</h3>
+        <h3>2. Kit / Project</h3>
+        <label>Link to kit or project
+          <select value={form.project_id} onChange={e=>setField("project_id",e.target.value)}>
+            <option value="">No kit / project</option>
+            {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
+      </section>
+
+      <section className="wizardSection">
+        <h3>3. Construction</h3>
         <div className="choiceRow">
           <button className={form.build_type==="Stave" ? "primary bigChoice" : "bigChoice"} onClick={()=>setField("build_type","Stave")}>Stave</button>
           <button className={form.build_type==="Ply" ? "primary bigChoice" : "bigChoice"} onClick={()=>setField("build_type","Ply")}>Ply</button>
@@ -792,7 +837,7 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
       </section>
 
       <section className="wizardSection">
-        <h3>3. Drum type and size</h3>
+        <h3>4. Drum type and size</h3>
         <div className="threeInputGrid">
           <label>Drum type
             <select value={form.drum_type} onChange={e=>setField("drum_type",e.target.value)}>
@@ -823,7 +868,7 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
       </section>
 
       <section className="wizardSection">
-        <h3>4. Timber and finish</h3>
+        <h3>5. Timber and finish</h3>
         <div className="twoInputGrid">
           <label>Material / timber
             <select value={form.timber} onChange={e=>setField("timber",e.target.value)}>
@@ -852,7 +897,7 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
       </section>
 
       <section className="wizardSection">
-        <h3>5. Manufacturing calculator</h3>
+        <h3>6. Manufacturing calculator</h3>
 
         {isPly ? <>
           <StaveSpecPanel diameter={form.diameter} drumType={form.drum_type} buildType="Ply" serial={form.serial} timber={timber} size={size}/>
@@ -871,7 +916,7 @@ function AddDrumWizard({onClose, onCreate, drums=[]}){
       </section>
 
       <section className="wizardSection">
-        <h3>6. Order and price</h3>
+        <h3>7. Order and price</h3>
 
         <div className="twoInputGrid">
           <label>Order type
@@ -993,6 +1038,42 @@ function CommsCard({drum, openJobCard}){
   </article>
 }
 
+
+function ProjectsPage({projects,drums,openJobCard,createProject,updateProject}){
+  return <section>
+    <section className="panel projectToolbar">
+      <h2>Kits / Projects</h2>
+      <button className="primary" onClick={createProject}><FolderPlus size={16}/> New Kit / Project</button>
+    </section>
+
+    <section className="templateGrid">
+      {projects.map(project=>{
+        const linked=drums
+          .filter(d=>d.project_id===project.id)
+          .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial));
+        const complete=linked.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes)).percent===100).length;
+        const overall=linked.length ? Math.round(linked.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes)).percent,0)/linked.length) : 0;
+
+        return <article className="panel projectCard" key={project.id}>
+          <h2>{project.name}</h2>
+          <div className="progress"><i style={{width:overall+"%"}}></i></div>
+          <p>{linked.length} drums · {complete} completed · {overall}% overall</p>
+
+          <label>Customer</label>
+          <input defaultValue={project.customer||""} onBlur={e=>updateProject(project.id,{customer:e.target.value})}/>
+
+          <label>Due date</label>
+          <input type="date" defaultValue={project.due_date||""} onBlur={e=>updateProject(project.id,{due_date:e.target.value||null})}/>
+
+          <div className="projectDrums">
+            {linked.map(d=><button key={d.id} onClick={()=>openJobCard(d)}>#{d.serial} · {d.size} · {d.drum_type||"Snare"}</button>)}
+          </div>
+        </article>
+      })}
+    </section>
+  </section>
+}
+
 function SettingsPage(){
   return <section className="panel">
     <h2>Settings / Rules</h2>
@@ -1003,7 +1084,7 @@ function SettingsPage(){
   </section>
 }
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum, drums=[]}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum, drums=[], projects=[]}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
@@ -1015,6 +1096,18 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [customPrice,setCustomPrice]=useState(drum.custom_price||drum.retail_price||0);
   const [shipping,setShipping]=useState(drum.shipping_cost||0);
   const [veneer,setVeneer]=useState([drum.veneer_1_thickness,drum.veneer_2_thickness,drum.veneer_3_thickness,drum.veneer_4_thickness,drum.veneer_5_thickness].map(x=>x||1.2));
+  const [draft,setDraft]=useState({
+    serial:drum.serial||"",
+    customer:drum.customer||"",
+    customer_email:drum.customer_email||"",
+    shipping_address:drum.shipping_address||"",
+    due_date:drum.due_date||"",
+    finish:drum.finish||"To Be Decided",
+    next_step:drum.next_step||"",
+    notes:drum.notes||"",
+    project_id:drum.project_id||"",
+  });
+  const [savedMessage,setSavedMessage]=useState("");
   const totalCost=templateCost(template,labourRate);
   const totalPrice=Number(customPrice||0)+Number(shipping||0);
   const profit=Number(drum.total_price||drum.retail_price||0)-totalCost;
@@ -1027,6 +1120,35 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
   async function saveVeneer(index,value){
     await updateDrum(drum.id,{[`veneer_${index+1}_thickness`]:Number(value || 0)});
+  }
+
+  async function saveAllChanges(){
+    const nextFlow=workflowState(localBuildType,checked);
+    const patch={
+      ...draft,
+      build_type:localBuildType,
+      build_client:localOwnership,
+      cb_number:localOwnership==="Brady" ? localCbNumber : "",
+      construction_note:localBuildSpec,
+      custom_price:Number(customPrice||0),
+      shipping_cost:Number(shipping||0),
+      total_price:Number(customPrice||0)+Number(shipping||0),
+      production_status:nextFlow.status,
+      next_step:nextFlow.nextStep,
+      notes:setChecklistInNotes(draft.notes,checked),
+      veneer_1_thickness:Number(veneer[0]||0),
+      veneer_2_thickness:Number(veneer[1]||0),
+      veneer_3_thickness:Number(veneer[2]||0),
+      veneer_4_thickness:Number(veneer[3]||0),
+      veneer_5_thickness:Number(veneer[4]||0),
+    };
+    const {error}=await supabase.from("drums").update(patch).eq("id",drum.id);
+    if(error){
+      setSavedMessage("Save failed");
+    }else{
+      setSavedMessage("All changes saved");
+      setTimeout(()=>setSavedMessage(""),2500);
+    }
   }
 
   async function saveWorkflow(nextChecked, changedItem=null, completed=null){
@@ -1078,7 +1200,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
     <section className="jobGrid">
       <div className="panel inner"><h2>Build / Customer Details</h2>
-        <label>Production number</label><input defaultValue={drum.serial||""} onBlur={e=>updateDrum(drum.id,{serial:e.target.value})}/>
+        <label>Production number</label><input value={draft.serial} onChange={e=>setDraft({...draft,serial:e.target.value})}/>
+        <label>Kit / Project</label><select value={draft.project_id} onChange={e=>setDraft({...draft,project_id:e.target.value})}><option value="">No kit / project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>
         <label>Ownership</label>
         <select value={localOwnership} onChange={e=>{
           const ownership=e.target.value;
@@ -1097,10 +1220,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           <label>CB Number</label>
           <input autoFocus value={localCbNumber} onChange={e=>setLocalCbNumber(e.target.value)} onBlur={e=>updateDrum(drum.id,{cb_number:e.target.value})}/>
         </>}
-        <label>Customer name</label><input defaultValue={drum.customer||""} onBlur={e=>updateDrum(drum.id,{customer:e.target.value})}/>
-        <label>Customer email</label><input defaultValue={drum.customer_email||""} onBlur={e=>updateDrum(drum.id,{customer_email:e.target.value})}/>
-        <label>Shipping address</label><textarea defaultValue={drum.shipping_address||""} onBlur={e=>updateDrum(drum.id,{shipping_address:e.target.value})}/>
-        <label>Due date</label><input type="date" defaultValue={drum.due_date||""} onBlur={e=>updateDrum(drum.id,{due_date:e.target.value||null})}/>
+        <label>Customer name</label><input value={draft.customer} onChange={e=>setDraft({...draft,customer:e.target.value})}/>
+        <label>Customer email</label><input value={draft.customer_email} onChange={e=>setDraft({...draft,customer_email:e.target.value})}/>
+        <label>Shipping address</label><textarea value={draft.shipping_address} onChange={e=>setDraft({...draft,shipping_address:e.target.value})}/>
+        <label>Due date</label><input type="date" value={draft.due_date} onChange={e=>setDraft({...draft,due_date:e.target.value})}/>
         <label>Drum price</label><input value={customPrice} onChange={e=>setCustomPrice(e.target.value)} onBlur={e=>updateDrum(drum.id,{custom_price:Number(e.target.value)})}/>
         <label>Shipping cost</label><input value={shipping} onChange={e=>setShipping(e.target.value)} onBlur={e=>updateDrum(drum.id,{shipping_cost:Number(e.target.value)})}/>
         <p><b>Total custom price: {money(totalPrice)}</b></p>
@@ -1115,7 +1238,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           setLocalBuildSpec(nextSpec);
           updateDrum(drum.id,{drum_type:newType, construction_note:nextSpec});
         }}>{drumTypeOptions.map(t=><option key={t}>{t}</option>)}</select>
-        <label>Finish</label><select defaultValue={drum.finish||"To Be Decided"} onChange={e=>updateDrum(drum.id,{finish:e.target.value})}><option>To Be Decided</option><option>Natural</option><option>Satin</option><option>High Gloss</option></select>
+        <label>Finish</label><select value={draft.finish} onChange={e=>setDraft({...draft,finish:e.target.value})}><option>To Be Decided</option><option>Natural</option><option>Satin</option><option>High Gloss</option></select>
         <label>Production status</label><input value={flow.status} readOnly/>
         <label>Next step</label><input value={flow.nextStep} readOnly/>
         <label>Timber story</label><textarea defaultValue={drum.timber_story||""} onBlur={e=>updateDrum(drum.id,{timber_story:e.target.value})}/>
@@ -1144,12 +1267,16 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           <span><b>{item}</b>{checked.has(item) && <small>{formatStageDate(history?.completed_at) || "Completed"}</small>}</span>
         </label>
       })}</div>
-      <button onClick={saveChecklist}><Save size={16}/> Sync workflow</button>
+      <button className="primary" onClick={saveAllChanges}><Save size={16}/> Save Changes</button>
     </section>
 
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
-    <section className="panel inner"><h2>Notes</h2><textarea defaultValue={drum.notes||""} onBlur={e=>updateDrum(drum.id,{notes:e.target.value})}/></section>
+    <section className="panel inner"><h2>Notes</h2><textarea value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></section>
     <section className="buttonRow"><button className="primary" onClick={()=>copyText(marketingText(drum),"Marketing")}><Camera size={16}/> Copy marketing</button><button onClick={()=>markSold(drum)}><Truck size={16}/> Mark sold / shipped</button></section>
+    <section className="jobSaveFooter">
+      <button className="primary saveChangesButton" onClick={saveAllChanges}><Save size={18}/> Save Changes</button>
+      {savedMessage && <span className="saveMessage">{savedMessage}</span>}
+    </section>
     <section className="deleteZone"><button className="dangerButton" onClick={()=>deleteDrum(drum.id)}>Delete this job card</button></section>
   </div></div>
 }

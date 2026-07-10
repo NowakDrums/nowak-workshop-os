@@ -47,3 +47,14 @@ input[readonly]{opacity:.86;background:#0f0e0b}
   font-size:12px;
   margin-top:-4px;
 }
+
+.productionToolbar,.projectToolbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.filterRow{display:flex;gap:8px;flex-wrap:wrap}
+.productionList{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.jobSaveFooter{position:sticky;bottom:0;z-index:30;background:#171511;border-top:1px solid #4c3f2d;padding:14px;margin:18px -18px -18px;display:flex;align-items:center;gap:12px}
+.saveChangesButton{flex:1;justify-content:center;font-size:17px}
+.saveMessage{color:#7fc680;font-weight:700}
+.projectDrums{display:grid;gap:6px;margin-top:12px}
+.projectDrums button{justify-content:flex-start}
+.projectCard input{width:100%;box-sizing:border-box;margin:6px 0 10px}
+@media(max-width:900px){.productionList{grid-template-columns:1fr}.productionToolbar,.projectToolbar{display:block}.filterRow{margin-top:10px}}

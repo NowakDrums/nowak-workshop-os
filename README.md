@@ -1,9 +1,17 @@
-# Nowak Workshop OS v3.1.1
+# Nowak Workshop OS v4.0
 
-Fixes:
-- Add Drum now has a clearly visible sticky `Save & Create Drum` button
-- The Add Drum modal scrolls properly on smaller laptop screens
-- New drums now begin with Production Status `Not Started`
-- Production tab now includes a `Not Started` section
-- Not Started includes drums where no manufacturing checklist item has been completed
-- No Supabase migration is required
+Major production-management update:
+
+- One Save Changes button on every Job Card
+- Save Changes writes all edited fields and synchronises workflow
+- Completed drums remain visible in Production
+- Production defaults to production-number order
+- Production filters: All, Pending, Active, Completed, Sold
+- Kits / Projects module
+- Individual drums remain separate job cards
+- Drums can be linked to one shared kit/project
+- Project progress is calculated from linked drum progress
+- Project customer and due date fields
+
+Important:
+Run `supabase/v4_0_migration.sql` once before deployment.
