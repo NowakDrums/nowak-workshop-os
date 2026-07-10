@@ -241,6 +241,11 @@ const photoMilestoneByChecklist = {
 };
 
 const photoMilestones = {
+  general:{
+    label:"Additional Build Photo",
+    prompt:"Take or upload any useful workshop photo for this drum. Add or edit the caption before storing it.",
+    social:"Another look behind the scenes at this build in the Nowak workshop. Every stage contributes to the final sound, feel and character of the finished drum.",
+  },
   wood:{
     label:"Wood / timber selected",
     prompt:"Take or upload timber selection, grain, colour and provenance photos.",
@@ -709,6 +714,7 @@ function App(){
   const [search,setSearch]=useState("");
   const [productionFilter,setProductionFilter]=useState("All");
   const [globalPhotoPrompt,setGlobalPhotoPrompt]=useState(null);
+  const [progressingDrumId,setProgressingDrumId]=useState(null);
 
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
@@ -818,35 +824,49 @@ function App(){
   }
 
   async function progressDrumFromCard(d){
-    const checked=parseChecked(d.notes);
-    const flow=workflowState(d.build_type || "Stave",checked,d.finish);
-    const nextItem=flow.steps[flow.completedCount];
-    if(!nextItem) return;
+    if(!d?.id || progressingDrumId===d.id) return false;
+    setProgressingDrumId(d.id);
+    setMessage("");
 
-    const next=new Set(checked);
-    next.add(nextItem);
-    const nextFlow=workflowState(d.build_type || "Stave",next,d.finish);
-    let history=Array.isArray(d.stage_history) ? [...d.stage_history] : [];
-    history=history.filter(entry=>entry.item!==nextItem);
-    history.push({item:nextItem,completed:true,completed_at:new Date().toISOString()});
+    try{
+      const checked=parseChecked(d.notes);
+      const flow=workflowState(d.build_type || "Stave",checked,d.finish);
+      const nextItem=flow.steps[flow.completedCount];
+      if(!nextItem) return false;
 
-    const {error}=await supabase.from("drums").update({
-      notes:setChecklistInNotes(d.notes,next),
-      production_status:nextFlow.status,
-      next_step:nextFlow.nextStep,
-      stage_history:history
-    }).eq("id",d.id);
+      const next=new Set(checked);
+      next.add(nextItem);
+      const nextFlow=workflowState(d.build_type || "Stave",next,d.finish);
+      let history=Array.isArray(d.stage_history) ? [...d.stage_history] : [];
+      history=history.filter(entry=>entry.item!==nextItem);
+      history.push({item:nextItem,completed:true,completed_at:new Date().toISOString()});
 
-    if(error){
-      setMessage("Could not progress drum: " + error.message);
-      return;
-    }
+      const updatedNotes=setChecklistInNotes(d.notes,next);
+      const {error}=await supabase.from("drums").update({
+        notes:updatedNotes,
+        production_status:nextFlow.status,
+        next_step:nextFlow.nextStep,
+        stage_history:history
+      }).eq("id",d.id);
 
-    const milestoneKey=photoMilestoneForCompletion(d,nextItem);
-    await loadAll();
+      if(error){
+        setMessage("Could not progress drum: " + error.message);
+        return false;
+      }
 
-    if(milestoneKey){
-      setGlobalPhotoPrompt({drum:{...d,notes:setChecklistInNotes(d.notes,next)},milestoneKey});
+      const updatedDrum={...d,notes:updatedNotes,production_status:nextFlow.status,next_step:nextFlow.nextStep,stage_history:history};
+      setDrums(current=>current.map(item=>item.id===d.id ? updatedDrum : item));
+
+      const milestoneKey=photoMilestoneForCompletion(updatedDrum,nextItem);
+      if(milestoneKey){
+        setGlobalPhotoPrompt({drum:updatedDrum,milestoneKey});
+      }
+      return true;
+    }catch(error){
+      setMessage("Could not progress drum: " + (error?.message || String(error)));
+      return false;
+    }finally{
+      setProgressingDrumId(null);
     }
   }
 
@@ -926,7 +946,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.3.2 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.3.3 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -967,7 +987,7 @@ function App(){
         <article className="panel bradyPanel"><h2>Brady / CB Queue</h2><b className="bigNumber">{brady}</b><p>Drums being built for Chris Brady / Brady Drums.</p></article>
       </section>
 
-      <section className="panel"><h2>Priority Jobs</h2>{filtered.filter(d=>d.next_step).slice(0,8).map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard}/>)}</section>
+      <section className="panel"><h2>Priority Jobs</h2>{filtered.filter(d=>d.next_step).slice(0,8).map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} progressDrum={progressDrumFromCard} progressing={progressingDrumId===d.id} onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}/>)}</section>
     </>}
 
     {view==="today" && <section className="batchGrid">
@@ -1003,8 +1023,9 @@ function App(){
                     <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
                     <p><b>Status:</b> {flow.status}</p>
                     <p><b>Next:</b> {flow.nextStep}</p>
-                    {flow.nextStep!=="Complete" && <button className="primary" onClick={()=>progressDrumFromCard(d)}><CheckCircle2 size={15}/> Progress: {flow.nextStep}</button>}
-                    <button onClick={()=>setJobCard(d)}>Open job card</button>
+                    {flow.nextStep!=="Complete" && <button type="button" className="primary" disabled={progressingDrumId===d.id} onClick={()=>progressDrumFromCard(d)}><CheckCircle2 size={15}/> {progressingDrumId===d.id ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
+                    <button type="button" onClick={()=>setGlobalPhotoPrompt({drum:d,milestoneKey:"general"})}><Camera size={15}/> Add Photo</button>
+                    <button type="button" onClick={()=>setJobCard(d)}>Open job card</button>
                   </article>
                 })}
               </div>
@@ -1039,6 +1060,8 @@ function App(){
         openJobCard={setJobCard}
         updateDrum={updateDrum}
         progressDrum={progressDrumFromCard}
+        progressingDrumId={progressingDrumId}
+        onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
       />
     </section>}
 
@@ -1064,7 +1087,7 @@ function App(){
 }
 
 
-function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum}){
+function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,progressingDrumId,onAddPhoto}){
   const projectMap=Object.fromEntries(projects.map(p=>[p.id,p]));
   const linkedGroups={};
   const unlinked=[];
@@ -1108,7 +1131,7 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum}){
           </div>
         </header>
         <div className="productionList kitDrumGrid">
-          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum}/>)}
+          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto}/>)}
         </div>
       </section>
     })}
@@ -1124,14 +1147,14 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum}){
       <div className="productionList">
         {[...unlinked]
           .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
-          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum}/>)}
+          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto}/>)}
       </div>
     </section>}
   </section>
 }
 
 
-function DrumCard({drum, openJobCard, updateDrum, progressDrum}){
+function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto}){
   const checked=parseChecked(drum.notes);
   const flow=workflowState(drum.build_type || "Stave",checked,drum.finish);
 
@@ -1150,8 +1173,9 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum}){
     <p><b>Estimated:</b> {flow.estimatedCompleted.toFixed(2)} hr completed · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
     <section className="cardActionRow">
-      {flow.nextStep!=="Complete" && <button className="primary" onClick={()=>progressDrum(drum)}><CheckCircle2 size={15}/> Progress: {flow.nextStep}</button>}
-      <button onClick={()=>openJobCard(drum)}>Open job card</button>
+      {flow.nextStep!=="Complete" && <button type="button" className="primary" disabled={progressing || !progressDrum} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
+      {onAddPhoto && <button type="button" onClick={()=>onAddPhoto(drum)}><Camera size={15}/> Add Photo</button>}
+      <button type="button" onClick={()=>openJobCard(drum)}>Open job card</button>
     </section>
   </article>
 }
@@ -1670,57 +1694,69 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
   const [uploaded,setUploaded]=useState([]);
 
   async function uploadPhotos(){
+    if(!drum?.id){
+      setStatus("Photo upload failed: this drum does not have a valid database ID.");
+      return;
+    }
     if(!files.length){
-      setStatus("Choose at least one photo.");
+      setStatus("Choose or take at least one photo first.");
       return;
     }
 
     setStatus("Uploading photos...");
     const saved=[];
 
-    for(const file of files){
-      const safeName=String(file.name || "photo.jpg").replace(/[^a-zA-Z0-9._-]/g,"-");
-      const path=`${drum.id}/${milestoneKey}/${Date.now()}-${safeName}`;
+    try{
+      for(let index=0; index<files.length; index+=1){
+        const file=files[index];
+        const safeName=String(file.name || `photo-${index+1}.jpg`).replace(/[^a-zA-Z0-9._-]/g,"-");
+        const uniqueId=(globalThis.crypto?.randomUUID?.() || `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`);
+        const path=`${drum.id}/${milestoneKey}/${uniqueId}-${safeName}`;
 
-      const {error:uploadError}=await supabase.storage
-        .from("drum-photos")
-        .upload(path,file,{upsert:false,contentType:file.type || undefined});
+        const {error:uploadError}=await supabase.storage
+          .from("drum-photos")
+          .upload(path,file,{
+            upsert:false,
+            cacheControl:"3600",
+            contentType:file.type || "image/jpeg"
+          });
 
-      if(uploadError){
-        const detail="Photo upload failed: " + uploadError.message;
-        setStatus(detail);
-        setMessage?.(detail);
-        return;
-      }
+        if(uploadError) throw new Error("Storage upload: " + uploadError.message);
 
-      const {data:publicData}=supabase.storage.from("drum-photos").getPublicUrl(path);
-      const publicUrl=publicData?.publicUrl || "";
+        const {data:publicData}=supabase.storage.from("drum-photos").getPublicUrl(path);
+        const publicUrl=publicData?.publicUrl || "";
 
-      const {data:photoRow,error:rowError}=await supabase
-        .from("drum_photos")
-        .insert({
+        const {error:rowError}=await supabase
+          .from("drum_photos")
+          .insert({
+            drum_id:drum.id,
+            milestone:milestoneKey,
+            storage_path:path,
+            public_url:publicUrl,
+            caption:socialText,
+          });
+
+        if(rowError) throw new Error("Photo record: " + rowError.message);
+
+        saved.push({
+          id:uniqueId,
           drum_id:drum.id,
           milestone:milestoneKey,
           storage_path:path,
           public_url:publicUrl,
           caption:socialText,
-        })
-        .select()
-        .single();
-
-      if(rowError){
-        const detail="Photo record failed: " + rowError.message;
-        setStatus(detail);
-        setMessage?.(detail);
-        return;
+        });
       }
 
-      saved.push(photoRow);
+      setUploaded(saved);
+      setFiles([]);
+      setStatus(`${saved.length} photo${saved.length===1?"":"s"} uploaded and stored successfully.`);
+      setMessage?.("");
+    }catch(error){
+      const detail="Photo upload failed: " + (error?.message || String(error));
+      setStatus(detail);
+      setMessage?.(detail);
     }
-
-    setUploaded(saved);
-    setStatus(`${saved.length} photo${saved.length===1?"":"s"} saved.`);
-    setMessage?.("");
   }
 
   function copy(text,label){
@@ -1744,8 +1780,8 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept="image/*" multiple onChange={e=>setFiles(Array.from(e.target.files || []))}/>
       {files.length>0 && <p className="okText">{files.length} photo{files.length===1?"":"s"} selected and ready to upload.</p>}
 
-      <button className="primary uploadPhotosButton" onClick={uploadPhotos}><Camera size={16}/> Upload and Store Photos</button>
-      {status && <p className={status.includes("failed") ? "dangerText" : "okText"}>{status}</p>}
+      <button type="button" className="primary uploadPhotosButton" disabled={status==="Uploading photos..."} onClick={uploadPhotos}><Camera size={16}/> {status==="Uploading photos..." ? "Uploading..." : "Upload and Store Photos"}</button>
+      {status && <p className={(status.toLowerCase().includes("failed") || status.toLowerCase().includes("error")) ? "dangerText" : "okText"}>{status}</p>}
 
       <h3>Prepopulated social message</h3>
       <textarea value={socialText} onChange={e=>setSocialText(e.target.value)}/>
@@ -2083,6 +2119,11 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       
     </section>
 
+    <section className="panel inner anytimePhotoPanel">
+      <h2>Photos at Any Stage</h2>
+      <p>Take or upload an additional build photo at any time. It will be stored against this Job Card.</p>
+      <button type="button" className="primary" onClick={()=>setPhotoPrompt({milestoneKey:"general",item:null})}><Camera size={16}/> Take or Upload a Photo</button>
+    </section>
     <DrumPhotoLibrary drumId={drum.id}/>
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
     <section className="panel inner"><h2>Notes</h2><textarea value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></section>
