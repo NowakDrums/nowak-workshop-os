@@ -1,12 +1,17 @@
-# Nowak Workshop OS v5.3.4
+# Nowak Workshop OS v5.3.5
 
-Construction and first-stage workflow refinement:
+Production filtering update:
 
-- Once a drum has been created, its construction type is locked.
-- The Job Card no longer allows switching between Stave and Ply.
-- The selected construction type is shown as a read-only field.
-- First workflow stage now displays:
-  - Ply: Veneer ready
-  - Stave: Timber cut and ready
-- Progress buttons and Production/Workshop Today use matching build-specific wording.
+- Added a Construction filter:
+  - All
+  - Stave
+  - Ply
+- Existing Status filter remains:
+  - All
+  - Pending
+  - Active
+  - Completed
+  - Sold
+- Construction and Status filters work together.
+- Example: choose Ply + Active to show only active ply builds.
 - No Supabase migration is required.

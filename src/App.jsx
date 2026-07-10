@@ -727,6 +727,7 @@ function App(){
   const [labourRate,setLabourRate]=useState(50);
   const [search,setSearch]=useState("");
   const [productionFilter,setProductionFilter]=useState("All");
+  const [constructionFilter,setConstructionFilter]=useState("All");
   const [globalPhotoPrompt,setGlobalPhotoPrompt]=useState(null);
   const [progressingDrumId,setProgressingDrumId]=useState(null);
 
@@ -960,7 +961,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.3.4 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.3.5 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1052,10 +1053,23 @@ function App(){
     {view==="production" && <section>
       <section className="panel productionToolbar">
         <h2>Production</h2>
-        <div className="filterRow">
-          {["All","Pending","Active","Completed","Sold"].map(f=>
-            <button key={f} className={productionFilter===f?"primary":""} onClick={()=>setProductionFilter(f)}>{f}</button>
-          )}
+
+        <div className="productionFilterGroup">
+          <span className="filterLabel">Construction</span>
+          <div className="filterRow">
+            {["All","Stave","Ply"].map(f=>
+              <button key={f} className={constructionFilter===f?"primary":""} onClick={()=>setConstructionFilter(f)}>{f}</button>
+            )}
+          </div>
+        </div>
+
+        <div className="productionFilterGroup">
+          <span className="filterLabel">Status</span>
+          <div className="filterRow">
+            {["All","Pending","Active","Completed","Sold"].map(f=>
+              <button key={f} className={productionFilter===f?"primary":""} onClick={()=>setProductionFilter(f)}>{f}</button>
+            )}
+          </div>
         </div>
       </section>
 
@@ -1063,6 +1077,8 @@ function App(){
         drums={[...filtered]
           .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
           .filter(d=>{
+            if(constructionFilter!=="All" && d.build_type!==constructionFilter) return false;
+
             const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish);
             if(productionFilter==="Pending") return !hasWorkflowStarted(d);
             if(productionFilter==="Active") return hasWorkflowStarted(d) && flow.percent<100 && d.sales_status!=="Sold/Shipped";

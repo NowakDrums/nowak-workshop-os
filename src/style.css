@@ -285,3 +285,21 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .fixedBuildType b{font-size:18px;color:#f4efe4}
 .fixedBuildType small{color:#a9a397}
 @media(max-width:700px){.fixedBuildType{grid-template-columns:1fr}.fixedBuildType small{display:block}}
+
+.productionFilterGroup{
+  display:grid;
+  gap:7px;
+  margin-top:12px;
+}
+.filterLabel{
+  color:#a9a397;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.productionToolbar .filterRow{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
