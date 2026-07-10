@@ -326,13 +326,86 @@ function templateCost(t, rate){
   return Number(t.hardware_cost||0)+Number(t.timber_cost||0)+Number(t.consumables||0)+Number(t.labour_hours||0)*Number(rate||50);
 }
 
-function autoPrice({build_type="Ply", finish="Satin", build_client="Nowak", order_type="Stock", size="14 x 6.5", price_rule="", drum_type="Snare"}){
+
+const nowakWebsiteSnarePrices = {
+  standard: {
+    "12x7":1125,
+    "13x7":1125,
+    "14x5":1210,
+    "14x5.5":1240,
+    "14x6":1240,
+    "14x6.5":1270,
+    "14x7":1270,
+    "14x8":1300,
+  },
+  premium: {
+    "12x7":1175,
+    "13x7":1175,
+    "14x5":1260,
+    "14x5.5":1290,
+    "14x6":1290,
+    "14x6.5":1320,
+    "14x7":1320,
+    "14x8":1355,
+  },
+  fiddleback: {
+    "12x7":1225,
+    "13x7":1225,
+    "14x5":1310,
+    "14x5.5":1340,
+    "14x6":1340,
+    "14x6.5":1370,
+    "14x7":1370,
+    "14x8":1400,
+  },
+};
+
+function normaliseWebsiteSize(size){
+  return String(size || "")
+    .toLowerCase()
+    .replace(/[″"]/g,"")
+    .replace(/\s+/g,"")
+    .replace("1/2",".5")
+    .replace("½",".5");
+}
+
+function nowakWebsiteTimberTier(timber){
+  const text=String(timber || "").toLowerCase();
+  if(text.includes("fiddleback")) return "fiddleback";
+  if(text.includes("sheoak") || text.includes("wandoo")) return "premium";
+  if(text.includes("blackbutt") || text.includes("jarrah") || text.includes("marri")) return "standard";
+  return null;
+}
+
+function nowakWebsitePrice({timber,size,finish,build_type,drum_type,build_client}){
+  if(build_client!=="Nowak" || build_type!=="Stave" || drum_type!=="Snare") return null;
+
+  const tier=nowakWebsiteTimberTier(timber);
+  const sizeKey=normaliseWebsiteSize(size);
+  const base=tier ? nowakWebsiteSnarePrices[tier]?.[sizeKey] : null;
+  if(base==null) return null;
+
+  const finishText=String(finish || "").toLowerCase();
+  if(finishText.includes("high")) return base+100;
+  if(finishText.includes("natural") || finishText.includes("satin")) return base;
+  return 0;
+}
+
+function autoPrice({
+  build_type="Ply",
+  finish="Satin",
+  build_client="Nowak",
+  order_type="Stock",
+  size="14 x 6.5",
+  price_rule="",
+  drum_type="Snare",
+  timber=""
+}){
   const finishText=String(finish || "").toLowerCase();
   const isHighGloss=finishText.includes("high");
   const isSatin=finishText.includes("satin");
 
-  // Brady shell-only wholesale pricing currently applies to snare shells only.
-  // Prices remain editable after they are calculated.
+  // Brady shell-only wholesale pricing: snare shells only.
   if(build_client==="Brady" && drum_type==="Snare"){
     if(build_type==="Stave"){
       if(isHighGloss) return 650;
@@ -347,6 +420,14 @@ function autoPrice({build_type="Ply", finish="Satin", build_client="Nowak", orde
     }
   }
 
+  // Published Nowak website price guide:
+  // block-stave snare drums, by timber, size and finish.
+  const websitePrice=nowakWebsitePrice({
+    timber,size,finish,build_type,drum_type,build_client
+  });
+  if(websitePrice!==null) return websitePrice;
+
+  // Existing fallback for configurations not listed on the public website guide.
   const isPly = build_type === "Ply";
   let base = isPly ? 1100 : 1300;
   if(isHighGloss) base += isPly ? 150 : 100;
@@ -354,7 +435,11 @@ function autoPrice({build_type="Ply", finish="Satin", build_client="Nowak", orde
   if(String(size).startsWith("12")) base -= 100;
   if(["20","22","24"].some(d=>String(size).startsWith(d))) base += 350;
 
-  const ruleKey = price_rule || (build_client==="Brady" ? "Brady Wholesale" : (order_type==="Custom" ? "Nowak Custom" : "Nowak Stock"));
+  const ruleKey = price_rule || (
+    build_client==="Brady"
+      ? "Brady Wholesale"
+      : (order_type==="Custom" ? "Nowak Custom" : "Nowak Stock")
+  );
   const rule = priceRules[ruleKey] || priceRules["Nowak Stock"];
   return Math.round(base * rule.wholesaleFactor * rule.customFactor);
 }
@@ -663,7 +748,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.1.4 — updated Brady snare-shell pricing.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.2 — Nowak website price-guide auto pricing.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -867,7 +952,7 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
   const timber = form.timber === "Custom / Other" ? form.customTimber : form.timber;
   const isPly = form.build_type === "Ply";
   const lengths = adjustedLengths(form.veneer, size);
-  const calculatedPrice = autoPrice({...form,size});
+  const calculatedPrice = autoPrice({...form,size,timber});
   const total = Number(calculatedPrice||0) + Number(form.shipping_cost||0);
 
   function setField(key,value){
@@ -1075,8 +1160,13 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
           Select Satin or High Gloss to calculate the wholesale price.
         </p>}
 
+        {form.build_client==="Nowak" && form.build_type==="Stave" && form.drum_type==="Snare" && <p className="pricingNote">
+          Nowak retail price is being calculated from the current published website price guide for recognised timbers and sizes.
+          Natural and Satin use the listed base price; High Gloss adds $100.
+        </p>}
+
         <div className="resultList twoCols">
-          <div><b>Calculated price</b><span>{money(calculatedPrice)}</span></div>
+          <div><b>Calculated price</b><span>{money(calculatedPrice)}</span><small>{form.build_client==="Nowak" && form.build_type==="Stave" && form.drum_type==="Snare" && nowakWebsitePrice({...form,size,timber})!==null ? "Website Price Guide" : "Workshop pricing rule"}</small></div>
           <div><b>Total</b><span>{money(total)}</span></div>
         </div>
       </section>

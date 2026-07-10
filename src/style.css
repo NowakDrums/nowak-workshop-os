@@ -129,3 +129,10 @@ input[readonly]{opacity:.86;background:#0f0e0b}
   background:rgba(43,99,142,.13);
   color:#d8efff;
 }
+
+.resultList small{
+  display:block;
+  margin-top:4px;
+  color:#a9a397;
+  font-size:11px;
+}
