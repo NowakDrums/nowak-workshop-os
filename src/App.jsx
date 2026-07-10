@@ -748,7 +748,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.2 — Nowak website price-guide auto pricing.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.2.1 — completed Nowak drum serial-number field.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -912,6 +912,7 @@ function DrumCard({drum, openJobCard, updateDrum}){
     {drum.build_client==="Brady" && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
     <span>{drum.size} · {drum.drum_type || "Snare"} · {drum.build_type}</span>
     <span className="badge">{displaySalesBadge(drum)}</span>
+    {drum.build_client==="Nowak" && drum.nowak_serial && <span className="nowakSerialBadge">Serial {drum.nowak_serial}</span>}
     <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
     <p><b>Status:</b> {flow.status}</p>
     <p><b>Next:</b> {flow.nextStep}</p>
@@ -1405,6 +1406,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     next_step:drum.next_step||"",
     notes:drum.notes||"",
     project_id:drum.project_id||"",
+    nowak_serial:drum.nowak_serial||"",
   });
   const [savedMessage,setSavedMessage]=useState("");
   const [projectMessage,setProjectMessage]=useState("");
@@ -1458,6 +1460,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       due_date:draft.due_date || null,
       finish:draft.finish,
       project_id:draft.project_id || null,
+      nowak_serial:draft.nowak_serial || null,
       build_type:localBuildType,
       build_client:localOwnership,
       cb_number:localOwnership==="Brady" ? localCbNumber : "",
@@ -1632,6 +1635,17 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
     <section className="panel inner"><h2>Notes</h2><textarea value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></section>
     <section className="buttonRow"><button className="primary" onClick={()=>copyText(marketingText(drum),"Marketing")}><Camera size={16}/> Copy marketing</button><button onClick={()=>markSold(drum)}><Truck size={16}/> Mark sold / shipped</button></section>
+    {localOwnership==="Nowak" && flow.percent===100 && <section className="panel inner nowakSerialPanel">
+      <h2>Nowak Drum Serial Number</h2>
+      <p>This drum is complete. Enter the final Nowak serial number assigned to the finished drum.</p>
+      <label>Nowak serial number</label>
+      <input
+        value={draft.nowak_serial}
+        onChange={e=>setDraft({...draft,nowak_serial:e.target.value})}
+        placeholder="Enter final Nowak serial number"
+      />
+    </section>}
+
     <section className="jobSaveFooter">
       <button className="primary saveChangesButton" onClick={saveAllChanges}><Save size={18}/> Save Changes</button>
       {savedMessage && <span className="saveMessage">{savedMessage}</span>}

@@ -136,3 +136,22 @@ input[readonly]{opacity:.86;background:#0f0e0b}
   color:#a9a397;
   font-size:11px;
 }
+
+.nowakSerialPanel{
+  border-color:#d3aa5d!important;
+  background:rgba(211,170,93,.08);
+}
+.nowakSerialPanel input{
+  font-size:18px;
+  font-weight:700;
+}
+.nowakSerialBadge{
+  display:inline-block;
+  width:max-content;
+  border:1px solid #d3aa5d;
+  border-radius:999px;
+  padding:4px 8px;
+  color:#f4d89c;
+  font-size:12px;
+  font-weight:700;
+}
