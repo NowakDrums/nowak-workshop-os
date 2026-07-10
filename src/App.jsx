@@ -644,7 +644,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.1 — working Job Card kit dropdown and Add Another Drum workflow.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.1.1 — single Job Card Save Changes button.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1445,7 +1445,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           <span><b>{item}</b>{checked.has(item) && <small>{formatStageDate(history?.completed_at) || "Completed"}</small>}</span>
         </label>
       })}</div>
-      <button className="primary" onClick={saveAllChanges}><Save size={16}/> Save Changes</button>
+      
     </section>
 
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
