@@ -21,6 +21,7 @@ const checklist = [
   "Timber / veneer ready","Glue up complete","Machined","Sanded",
   "Bearing edges cut","Snare beds cut","Drilled","Inside oiled / sealed",
   "Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4",
+  "Danish oil 1","Danish oil 2","Danish oil 3",
   "Cure complete","Polished","Assembled","Photos taken","Website listing",
   "Facebook / Instagram","YouTube demo","Packed","Shipped"
 ];
@@ -41,6 +42,9 @@ const workflowEstimates = {
     "Poly coat 2":0.20,
     "Poly coat 3":0.20,
     "Poly coat 4":0.20,
+    "Danish oil 1":0.25,
+    "Danish oil 2":0.25,
+    "Danish oil 3":0.25,
     "Cure complete":0,
     "Polished":1.00,
     "Assembled":0.75,
@@ -64,6 +68,9 @@ const workflowEstimates = {
     "Poly coat 2":0.20,
     "Poly coat 3":0.20,
     "Poly coat 4":0.20,
+    "Danish oil 1":0.25,
+    "Danish oil 2":0.25,
+    "Danish oil 3":0.25,
     "Cure complete":0,
     "Polished":1.00,
     "Assembled":0.75,
@@ -90,6 +97,9 @@ const workflowLabels = {
   "Poly coat 2": {status:"Polyurethane Coat 2 Complete", next:"Spray polyurethane coat 3"},
   "Poly coat 3": {status:"Polyurethane Coat 3 Complete", next:"Spray polyurethane coat 4"},
   "Poly coat 4": {status:"Final Coat Complete", next:"Allow the finish to cure"},
+  "Danish oil 1": {status:"Danish Oil Coat 1 Complete", next:"Apply Danish oil coat 2"},
+  "Danish oil 2": {status:"Danish Oil Coat 2 Complete", next:"Apply Danish oil coat 3"},
+  "Danish oil 3": {status:"Danish Oil Complete", next:"Allow the finish to cure"},
   "Cure complete": {status:"Finish Cured", next:"Polish the shell"},
   "Polished": {status:"Polishing Complete", next:"Assemble the drum"},
   "Assembled": {status:"Drum Assembled", next:"Take final photographs"},
@@ -101,16 +111,28 @@ const workflowLabels = {
   "Shipped": {status:"Sold / Shipped", next:"Complete"},
 };
 
-function applicableChecklist(buildType){
-  return checklist.filter(item=>!(buildType==="Ply" && item==="Machined"));
+function applicableChecklist(buildType, finish=""){
+  const isNatural=String(finish || "").toLowerCase().includes("natural");
+
+  return checklist.filter(item=>{
+    if(buildType==="Ply" && item==="Machined") return false;
+
+    if(isNatural){
+      if(["Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4"].includes(item)) return false;
+    }else{
+      if(["Danish oil 1","Danish oil 2","Danish oil 3"].includes(item)) return false;
+    }
+
+    return true;
+  });
 }
 
 function hasWorkflowStarted(drum){
   return parseChecked(drum.notes).size > 0;
 }
 
-function workflowState(buildType, checked){
-  const steps=applicableChecklist(buildType);
+function workflowState(buildType, checked, finish=""){
+  const steps=applicableChecklist(buildType,finish);
   let completedCount=0;
   for(const step of steps){
     if(checked.has(step)) completedCount += 1;
@@ -748,7 +770,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.2.1 — completed Nowak drum serial-number field.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.2.2 — natural-finish Danish oil workflow.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -792,7 +814,7 @@ function App(){
       <section className="panel"><h2>Priority Jobs</h2>{filtered.filter(d=>d.next_step).slice(0,8).map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard}/>)}</section>
     </>}
 
-    {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{displaySalesBadge(d)}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{workflowState(d.build_type||"Stave",parseChecked(d.notes)).status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
+    {view==="today" && <section className="batchGrid">{Object.entries(batches).map(([name,items])=><section className="panel" key={name}><h2>{name}</h2><p>{items.length} drum(s) ready.</p>{items.map(d=><article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard")} key={d.id}><b>#{d.serial} {d.timber}</b>{d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}<span>{d.size} · {d.drum_type || "Snare"} · {d.build_type}</span><span className="badge">{displaySalesBadge(d)}</span><div className="progress"><i style={{width:stagePercent(d.production_status)+"%"}}></i></div><p>{workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish).status}</p><button className="primary" onClick={()=>completeDrum(d)}><CheckCircle2 size={16}/> Complete this drum</button><button onClick={()=>setJobCard(d)}>Open job card</button></article>)}</section>)}</section>}
 
     {view==="production" && <section>
       <section className="panel productionToolbar">
@@ -808,7 +830,7 @@ function App(){
         drums={[...filtered]
           .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
           .filter(d=>{
-            const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes));
+            const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish);
             if(productionFilter==="Pending") return !hasWorkflowStarted(d);
             if(productionFilter==="Active") return hasWorkflowStarted(d) && flow.percent<100 && d.sales_status!=="Sold/Shipped";
             if(productionFilter==="Completed") return flow.percent===100 && d.sales_status!=="Sold/Shipped";
@@ -864,9 +886,9 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum}){
   return <section className="productionGroups">
     {groups.map(({project,items})=>{
       const overall=items.length
-        ? Math.round(items.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes)).percent,0)/items.length)
+        ? Math.round(items.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish).percent,0)/items.length)
         : 0;
-      const complete=items.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes)).percent===100).length;
+      const complete=items.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish).percent===100).length;
 
       return <section className="kitProductionGroup" key={project.id}>
         <header className="kitGroupHeader">
@@ -905,7 +927,7 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum}){
 
 function DrumCard({drum, openJobCard, updateDrum}){
   const checked=parseChecked(drum.notes);
-  const flow=workflowState(drum.build_type || "Stave",checked);
+  const flow=workflowState(drum.build_type || "Stave",checked,drum.finish);
 
   return <article className={"card clickable " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard")} onClick={()=>openJobCard(drum)}>
     <b>#{drum.serial} {drum.timber}</b>
@@ -1347,8 +1369,8 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
         const linked=drums
           .filter(d=>d.project_id===project.id)
           .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial));
-        const complete=linked.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes)).percent===100).length;
-        const overall=linked.length ? Math.round(linked.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes)).percent,0)/linked.length) : 0;
+        const complete=linked.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish).percent===100).length;
+        const overall=linked.length ? Math.round(linked.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish).percent,0)/linked.length) : 0;
 
         return <article className="panel projectCard" key={project.id}>
           <h2>{project.name}</h2>
@@ -1390,7 +1412,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
   const [localBuildSpec,setLocalBuildSpec]=useState(drum.construction_note || defaultBuildSpecification(drum.drum_type || "Snare"));
   const [checked,setChecked]=useState(parseChecked(drum.notes));
-  const flow=workflowState(localBuildType,checked);
+  const flow=workflowState(localBuildType,checked,draft.finish);
   const [timeAmount,setTimeAmount]=useState(0.5);
   const [timeLabel,setTimeLabel]=useState("Workshop time");
   const [customPrice,setCustomPrice]=useState(drum.custom_price||drum.retail_price||0);
@@ -1449,7 +1471,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   }
 
   async function saveAllChanges(){
-    const nextFlow=workflowState(localBuildType,checked);
+    const nextFlow=workflowState(localBuildType,checked,draft.finish);
     setSavedMessage("Saving...");
 
     const patch={
@@ -1500,7 +1522,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   }
 
   async function saveWorkflow(nextChecked, changedItem=null, completed=null){
-    const nextFlow=workflowState(localBuildType,nextChecked);
+    const nextFlow=workflowState(localBuildType,nextChecked,draft.finish);
     let history=Array.isArray(drum.stage_history) ? [...drum.stage_history] : [];
 
     if(changedItem){
@@ -1621,8 +1643,11 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     {localBuildType==="Ply" && <section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={drum.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
 
     <section className="panel inner"><h2>Manufacturing Checklist</h2>
+      {String(draft.finish||"").toLowerCase().includes("natural") && <p className="naturalFinishNote">
+        Natural finish workflow: 3 × Danish oil coats. Sealer and polyurethane coats are not required.
+      </p>}
       <p>Ticking an item automatically updates Production Status, Next Step, estimated labour and its completion date.</p>
-      <div className="checkGrid">{applicableChecklist(localBuildType).map(item=>{
+      <div className="checkGrid">{applicableChecklist(localBuildType,draft.finish).map(item=>{
         const history=historyForItem(drum.stage_history,item);
         return <label className="checkItem workflowCheckItem" key={item}>
           <input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>

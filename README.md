@@ -1,15 +1,18 @@
-# Nowak Workshop OS v5.2.1
+# Nowak Workshop OS v5.2.2
 
-Adds the final Nowak drum serial number.
+Natural finish workflow update:
 
-Behaviour:
-- The serial-number panel appears only when:
-  - Ownership is Nowak, and
-  - The manufacturing workflow is 100% complete.
-- The final Nowak serial number remains editable.
-- It is saved using the normal Save Changes button.
-- Once entered, the serial is also displayed on the Production card.
-- Brady and Unallocated drums do not show this field.
+- Natural finish drums no longer show:
+  - Sealer coat
+  - Poly coat 1
+  - Poly coat 2
+  - Poly coat 3
+  - Poly coat 4
+- Natural finish drums now show:
+  - Danish oil 1
+  - Danish oil 2
+  - Danish oil 3
+- Production status, next step, percentage complete and estimated labour follow the selected finish.
+- Satin and High Gloss drums continue to use the sealer and polyurethane workflow.
 
-Important:
-Run `supabase/v5_2_1_migration.sql` once before deployment.
+No Supabase migration required.

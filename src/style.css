@@ -155,3 +155,12 @@ input[readonly]{opacity:.86;background:#0f0e0b}
   font-size:12px;
   font-weight:700;
 }
+
+.naturalFinishNote{
+  margin:8px 0 12px;
+  padding:10px 12px;
+  border:1px solid #d3aa5d;
+  border-radius:10px;
+  background:rgba(211,170,93,.08);
+  color:#f1dfb7;
+}
