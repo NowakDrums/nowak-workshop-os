@@ -470,9 +470,20 @@ function App(){
       supabase.from("sales").select("*").order("sold_at",{ascending:false}),
       supabase.from("projects").select("*").order("created_at",{ascending:false})
     ]);
-    const errors=[d.error,h.error,t.error,s.error,p.error].filter(Boolean);
-    if(errors.length) setMessage(errors.map(e=>e.message).join(" | "));
-    else { setDrums(d.data||[]); setHardware(h.data||[]); setTemplates(t.data||[]); setSales(s.data||[]); setProjects(p.data||[]); }
+    setDrums(d.data||[]);
+    setHardware(h.data||[]);
+    setTemplates(t.data||[]);
+    setSales(s.data||[]);
+    setProjects(p.data||[]);
+
+    const coreErrors=[d.error,h.error,t.error,s.error].filter(Boolean);
+    if(coreErrors.length){
+      setMessage(coreErrors.map(e=>e.message).join(" | "));
+    }else if(p.error){
+      setMessage("Kits / Projects needs the v5.0 Supabase setup: " + p.error.message);
+    }else{
+      setMessage("");
+    }
     setLoading(false);
   }
 
@@ -493,31 +504,44 @@ function App(){
 
 
   async function createProject(nameOverride=""){
-    const name=nameOverride || window.prompt("Kit / project name");
+    const name=(nameOverride || window.prompt("Kit / project name") || "").trim();
     if(!name) return null;
     const {data,error}=await supabase.from("projects").insert({name}).select().single();
     if(error){
-      setMessage(error.message);
+      setMessage("Could not create kit/project: " + error.message);
       return null;
     }
-    setProjects(current=>[data,...current]);
+    setProjects(current=>[data,...current.filter(p=>p.id!==data.id)]);
+    setMessage("");
     return data;
   }
 
   async function linkDrumsToProject(drumIds,projectId){
-    if(!projectId || !drumIds.length) return;
+    if(!projectId || !drumIds.length) return false;
     const {error}=await supabase.from("drums").update({project_id:projectId}).in("id",drumIds);
-    if(error) setMessage(error.message); else await loadAll();
+    if(error){
+      setMessage("Could not link drums: " + error.message);
+      return false;
+    }
+    await loadAll();
+    return true;
   }
 
   async function unlinkDrumFromProject(drumId){
     const {error}=await supabase.from("drums").update({project_id:null}).eq("id",drumId);
-    if(error) setMessage(error.message); else await loadAll();
+    if(error){
+      setMessage("Could not unlink drum: " + error.message);
+      return false;
+    }
+    await loadAll();
+    return true;
   }
 
   async function updateProject(id,patch){
-    const {error}=await supabase.from("projects").update(patch).eq("id",id);
-    if(error) setMessage(error.message); else await loadAll();
+    const cleanPatch={...patch};
+    if("due_date" in cleanPatch) cleanPatch.due_date=cleanPatch.due_date || null;
+    const {error}=await supabase.from("projects").update(cleanPatch).eq("id",id);
+    if(error) setMessage("Could not save project: " + error.message); else await loadAll();
   }
 
   async function updateDrum(id,patch){
@@ -619,7 +643,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v4.1 — create kits while adding drums and link existing drum cards.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.0 — repaired saving and reliable kit/project linking.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1080,8 +1104,11 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
       alert("Select at least one drum.");
       return;
     }
-    await linkDrumsToProject(selectedDrums,selectedProject);
-    setSelectedDrums([]);
+    const success=await linkDrumsToProject(selectedDrums,selectedProject);
+    if(success){
+      setSelectedDrums([]);
+      alert("Selected drums linked to the kit/project.");
+    }
   }
 
   const projectName=id=>projects.find(p=>p.id===id)?.name || "No kit / project";
@@ -1094,6 +1121,11 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
       </div>
       <button className="primary" onClick={createProject}><FolderPlus size={16}/> New Kit / Project</button>
     </section>
+
+    {projects.length===0 && <section className="panel warning">
+      <h2>No kits or projects yet</h2>
+      <p>Click New Kit / Project first. If creation fails, run the included v5.0 Supabase setup.</p>
+    </section>}
 
     <section className="panel linkExistingPanel">
       <h2>Link Existing Drums</h2>
@@ -1204,8 +1236,16 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
   async function saveAllChanges(){
     const nextFlow=workflowState(localBuildType,checked);
+    setSavedMessage("Saving...");
+
     const patch={
-      ...draft,
+      serial:draft.serial,
+      customer:draft.customer,
+      customer_email:draft.customer_email,
+      shipping_address:draft.shipping_address,
+      due_date:draft.due_date || null,
+      finish:draft.finish,
+      project_id:draft.project_id || null,
       build_type:localBuildType,
       build_client:localOwnership,
       cb_number:localOwnership==="Brady" ? localCbNumber : "",
@@ -1222,13 +1262,26 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       veneer_4_thickness:Number(veneer[3]||0),
       veneer_5_thickness:Number(veneer[4]||0),
     };
-    const {error}=await supabase.from("drums").update(patch).eq("id",drum.id);
+
+    const {data,error}=await supabase.from("drums").update(patch).eq("id",drum.id).select("id").single();
+
     if(error){
-      setSavedMessage("Save failed");
-    }else{
-      setSavedMessage("All changes saved");
-      setTimeout(()=>setSavedMessage(""),2500);
+      const detail="Save failed: " + error.message;
+      setSavedMessage(detail);
+      setMessage(detail);
+      return;
     }
+
+    if(!data){
+      const detail="Save failed: Supabase did not return the updated drum. Check database permissions.";
+      setSavedMessage(detail);
+      setMessage(detail);
+      return;
+    }
+
+    setMessage("");
+    setSavedMessage("All changes saved");
+    setTimeout(()=>setSavedMessage(""),2500);
   }
 
   async function saveWorkflow(nextChecked, changedItem=null, completed=null){
@@ -1242,12 +1295,20 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       }
     }
 
-    await updateDrum(drum.id,{
-      notes:setChecklistInNotes(drum.notes,nextChecked),
+    const {error}=await supabase.from("drums").update({
+      notes:setChecklistInNotes(draft.notes,nextChecked),
       production_status:nextFlow.status,
       next_step:nextFlow.nextStep,
       stage_history:history
-    });
+    }).eq("id",drum.id);
+    if(error){
+      const detail="Workflow save failed: " + error.message;
+      setSavedMessage(detail);
+      setMessage(detail);
+    }else{
+      setDraft(current=>({...current,notes:setChecklistInNotes(current.notes,nextChecked)}));
+      setMessage("");
+    }
   }
 
   async function saveChecklist(){

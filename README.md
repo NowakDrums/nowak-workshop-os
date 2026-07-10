@@ -1,13 +1,20 @@
-# Nowak Workshop OS v4.1
+# Nowak Workshop OS v5.0
 
-Kit / Project workflow improvements:
+This release repairs the two reported problems:
 
-- Create a new kit/project directly while adding a new drum
-- Choose an existing kit/project in the Add Drum wizard
-- Link multiple existing drum cards to a kit after they have already been created
-- Move drums from one kit to another by linking them to the new project
-- Unlink individual drums from a kit
-- Each linked drum retains its own production number, workflow and job card
-- Kit progress is calculated from all linked drums
+## Save Changes
+- Empty due dates are now saved as database NULL values.
+- No-project selections are now saved as database NULL values instead of an invalid blank UUID.
+- A successful save is verified by Supabase.
+- Failed saves display the exact database error instead of only saying "Save failed".
 
-No new Supabase migration is required beyond the v4.0 migration.
+## Kits / Projects
+- Includes a comprehensive Supabase setup script.
+- Ensures the projects table, project_id field and stage_history field exist.
+- Adds the RLS policies needed by the current browser-based Workshop OS.
+- Creating, linking, moving and unlinking drums now reports success or the exact failure.
+- Existing individual drum cards can be selected in bulk and linked to a project.
+- New drums can be assigned to an existing or newly created project.
+
+## Installation
+Run `supabase/v5_0_setup.sql` in Supabase SQL Editor, then upload the app to GitHub.

@@ -70,3 +70,5 @@ input[readonly]{opacity:.86;background:#0f0e0b}
 .linkedDrumRow{display:grid;grid-template-columns:1fr auto;gap:6px}
 .unlinkButton{background:#3b211d;color:#ffb0a8}
 @media(max-width:900px){.drumLinkGrid{grid-template-columns:1fr}.linkedDrumRow{grid-template-columns:1fr}}
+
+.saveMessage{white-space:normal;overflow-wrap:anywhere}
