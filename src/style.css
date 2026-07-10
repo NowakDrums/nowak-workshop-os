@@ -120,3 +120,12 @@ input[readonly]{opacity:.86;background:#0f0e0b}
 @media(max-width:900px){
   .kitGroupHeader{grid-template-columns:1fr}
 }
+
+.pricingNote{
+  margin:12px 0;
+  padding:10px 12px;
+  border:1px solid #5eb9ff;
+  border-radius:10px;
+  background:rgba(43,99,142,.13);
+  color:#d8efff;
+}

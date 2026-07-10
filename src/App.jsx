@@ -326,11 +326,30 @@ function templateCost(t, rate){
   return Number(t.hardware_cost||0)+Number(t.timber_cost||0)+Number(t.consumables||0)+Number(t.labour_hours||0)*Number(rate||50);
 }
 
-function autoPrice({build_type="Ply", finish="Satin", build_client="Nowak", order_type="Stock", size="14 x 6.5", price_rule=""}){
+function autoPrice({build_type="Ply", finish="Satin", build_client="Nowak", order_type="Stock", size="14 x 6.5", price_rule="", drum_type="Snare"}){
+  const finishText=String(finish || "").toLowerCase();
+  const isHighGloss=finishText.includes("high");
+  const isSatin=finishText.includes("satin");
+
+  // Brady shell-only wholesale pricing currently applies to snare shells only.
+  // Prices remain editable after they are calculated.
+  if(build_client==="Brady" && drum_type==="Snare"){
+    if(build_type==="Stave"){
+      if(isHighGloss) return 650;
+      if(isSatin) return 600;
+      return 0;
+    }
+
+    if(build_type==="Ply"){
+      if(isHighGloss) return 450;
+      if(isSatin) return 400;
+      return 0;
+    }
+  }
+
   const isPly = build_type === "Ply";
-  const highGloss = String(finish).toLowerCase().includes("high");
   let base = isPly ? 1100 : 1300;
-  if(highGloss) base += isPly ? 150 : 100;
+  if(isHighGloss) base += isPly ? 150 : 100;
   if(String(size).startsWith("13")) base -= 50;
   if(String(size).startsWith("12")) base -= 100;
   if(["20","22","24"].some(d=>String(size).startsWith(d))) base += 350;
@@ -644,7 +663,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.1.3 — linked drums grouped visually by kit/project.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.1.4 — updated Brady snare-shell pricing.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1050,6 +1069,11 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
             <input value={form.shipping_cost} onChange={e=>setField("shipping_cost",e.target.value)} />
           </label>
         </div>
+
+        {form.build_client==="Brady" && form.drum_type==="Snare" && <p className="pricingNote">
+          Brady snare shell pricing: Stave Satin $600 · Stave High Gloss $650 · Ply Satin $400 · Ply High Gloss $450.
+          Select Satin or High Gloss to calculate the wholesale price.
+        </p>}
 
         <div className="resultList twoCols">
           <div><b>Calculated price</b><span>{money(calculatedPrice)}</span></div>

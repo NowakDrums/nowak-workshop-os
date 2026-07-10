@@ -1,12 +1,16 @@
-# Nowak Workshop OS v5.1.3
+# Nowak Workshop OS v5.1.4
 
-Production visual grouping update:
+Brady snare-shell pricing update:
 
-- Drums linked to the same Kit / Project are displayed inside one shared bordered group.
-- Each group shows the project name as a heading.
-- Project group displays drum count, completed count and overall progress.
-- Linked drums retain their individual cards and production numbers.
-- Unlinked drums appear in a separate Individual Drums section.
-- Existing Production filters still work.
+- Stave Satin: $600
+- Stave High Gloss: $650
+- Ply Satin: $400
+- Ply High Gloss: $450
+
+Rules:
+- Applies only when Ownership is Brady and Drum Type is Snare.
+- Prices are shell-only wholesale prices.
+- To Be Decided or Natural returns $0 until Satin or High Gloss is selected.
+- Calculated prices remain editable.
 
 No Supabase migration required.
