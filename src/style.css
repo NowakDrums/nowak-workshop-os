@@ -72,3 +72,8 @@ input[readonly]{opacity:.86;background:#0f0e0b}
 @media(max-width:900px){.drumLinkGrid{grid-template-columns:1fr}.linkedDrumRow{grid-template-columns:1fr}}
 
 .saveMessage{white-space:normal;overflow-wrap:anywhere}
+
+.projectMessage,.successText{display:block;color:#7fc680;font-weight:700;margin:6px 0}
+.linkedKitPanel{margin-top:10px;padding:12px;background:#171511;border:1px solid #382f22;border-radius:12px}
+.linkedKitDrums{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.linkedKitDrums button{font-size:12px}

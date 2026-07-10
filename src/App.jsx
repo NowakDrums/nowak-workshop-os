@@ -454,6 +454,7 @@ function App(){
   const [projects,setProjects]=useState([]);
   const [jobCard,setJobCard]=useState(null);
   const [showAddWizard,setShowAddWizard]=useState(false);
+  const [addWizardPreset,setAddWizardPreset]=useState({});
   const [loading,setLoading]=useState(false);
   const [message,setMessage]=useState("");
   const [labourRate,setLabourRate]=useState(50);
@@ -643,7 +644,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.0 — repaired saving and reliable kit/project linking.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.1 — working Job Card kit dropdown and Add Another Drum workflow.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -660,7 +661,7 @@ function App(){
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
       <button className={view==="comms"?"active":""} onClick={()=>setView("comms")}><Mail size={16}/> Comms</button>
       <button className={view==="settings"?"active":""} onClick={()=>setView("settings")}><Settings size={16}/> Settings</button>
-      <button onClick={()=>setShowAddWizard(true)}><Plus size={16}/> Add Drum</button>
+      <button onClick={()=>{setAddWizardPreset({});setShowAddWizard(true);}}><Plus size={16}/> Add Drum</button>
     </nav>
 
     <div className="searchBar"><Search size={16}/><input placeholder="Search drums, timber, customer, CB number, email, status..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
@@ -725,8 +726,8 @@ function App(){
     {view==="comms" && <CommsCentre drums={filtered} openJobCard={setJobCard}/>}
     {view==="settings" && <SettingsPage/>}
 
-    {showAddWizard && <AddDrumWizard onClose={()=>setShowAddWizard(false)} onCreate={addDrumFromWizard} drums={drums} projects={projects} createProject={createProject}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects}/>}
+    {showAddWizard && <AddDrumWizard onClose={()=>{setShowAddWizard(false);setAddWizardPreset({});}} onCreate={addDrumFromWizard} drums={drums} projects={projects} createProject={createProject} preset={addWizardPreset}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}}/>}
   </main>
 }
 
@@ -749,13 +750,13 @@ function DrumCard({drum, openJobCard, updateDrum}){
 }
 
 
-function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject}){
+function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject, preset={}}){
   const suggestedProductionNumber = nextProductionNumber(drums);
   const suggestedCbNumber = nextCbNumber(drums);
 
   const [form,setForm]=useState({
     serial:suggestedProductionNumber,
-    build_client:"Unallocated",
+    build_client:preset.build_client || "Unallocated",
     cb_number:"",
     build_type:"Stave",
     drum_type:"Snare",
@@ -763,13 +764,17 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject}
     depth:"6 1/2",
     timber:"Jarrah",
     customTimber:"",
-    finish:"To Be Decided",
+    finish:preset.finish || "To Be Decided",
     order_type:"Stock",
     shipping_cost:0,
     timber_story:"",
     construction_note:defaultBuildSpecification("Snare"),
     veneer:[1.2,1.2,1.2,1.2,1.2],
-    project_id:"",
+    project_id:preset.project_id || "",
+    customer:preset.customer || "",
+    customer_email:preset.customer_email || "",
+    shipping_address:preset.shipping_address || "",
+    due_date:preset.due_date || "",
   });
 
   const size = buildSize(form.diameter, form.depth);
@@ -860,6 +865,7 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject}
 
       <section className="wizardSection">
         <h3>2. Kit / Project</h3>
+        {preset.project_id && <p className="successText">This new drum will be added to {projects.find(p=>p.id===preset.project_id)?.name || "the selected kit/project"}.</p>}
         <p>Leave this blank for a single drum, choose an existing kit, or create a new one now.</p>
         <label>Link to kit or project
           <select value={form.project_id} onChange={e=>setField("project_id",e.target.value)}>
@@ -1117,7 +1123,7 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
     <section className="panel projectToolbar">
       <div>
         <h2>Kits / Projects</h2>
-        <p>Create a kit, then link any existing individual drum cards to it. Each drum keeps its own job card and production number.</p>
+        <p>You can link drums here in bulk, or open any Job Card and use its Kit / Project dropdown. Each drum keeps its own job card and production number.</p>
       </div>
       <button className="primary" onClick={createProject}><FolderPlus size={16}/> New Kit / Project</button>
     </section>
@@ -1196,7 +1202,7 @@ function SettingsPage(){
   </section>
 }
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum, drums=[], projects=[]}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum, drums=[], projects=[], createProject, onAddDrumToProject}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
@@ -1220,6 +1226,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     project_id:drum.project_id||"",
   });
   const [savedMessage,setSavedMessage]=useState("");
+  const [projectMessage,setProjectMessage]=useState("");
   const totalCost=templateCost(template,labourRate);
   const totalPrice=Number(customPrice||0)+Number(shipping||0);
   const profit=Number(drum.total_price||drum.retail_price||0)-totalCost;
@@ -1232,6 +1239,30 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
   async function saveVeneer(index,value){
     await updateDrum(drum.id,{[`veneer_${index+1}_thickness`]:Number(value || 0)});
+  }
+
+  async function assignProject(value){
+    if(value==="__create__"){
+      const name=window.prompt("New kit / project name");
+      if(!name) return;
+      const created=await createProject(name);
+      if(!created) return;
+      value=created.id;
+    }
+
+    setDraft(current=>({...current,project_id:value}));
+    setProjectMessage("Saving project link...");
+
+    const {error}=await supabase.from("drums").update({project_id:value || null}).eq("id",drum.id);
+    if(error){
+      const detail="Could not link project: " + error.message;
+      setProjectMessage(detail);
+      return;
+    }
+
+    const label=value ? (projects.find(p=>p.id===value)?.name || "project") : "No kit / project";
+    setProjectMessage(value ? "Linked to " + label : "Removed from kit/project");
+    setTimeout(()=>setProjectMessage(""),2500);
   }
 
   async function saveAllChanges(){
@@ -1342,7 +1373,13 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <section className="jobGrid">
       <div className="panel inner"><h2>Build / Customer Details</h2>
         <label>Production number</label><input value={draft.serial} onChange={e=>setDraft({...draft,serial:e.target.value})}/>
-        <label>Kit / Project</label><select value={draft.project_id} onChange={e=>setDraft({...draft,project_id:e.target.value})}><option value="">No kit / project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        <label>Kit / Project</label>
+        <select value={draft.project_id} onChange={e=>assignProject(e.target.value)}>
+          <option value="">No kit / project</option>
+          {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          <option value="__create__">+ Create New Kit / Project</option>
+        </select>
+        {projectMessage && <small className="projectMessage">{projectMessage}</small>}
         <label>Ownership</label>
         <select value={localOwnership} onChange={e=>{
           const ownership=e.target.value;
