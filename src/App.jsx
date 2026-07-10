@@ -644,7 +644,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.1.2 — fixed Job Card save error handling.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.1.3 — linked drums grouped visually by kit/project.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -700,21 +700,21 @@ function App(){
         </div>
       </section>
 
-      <section className="panel">
-        <div className="productionList">
-          {[...filtered]
-            .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
-            .filter(d=>{
-              const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes));
-              if(productionFilter==="Pending") return !hasWorkflowStarted(d);
-              if(productionFilter==="Active") return hasWorkflowStarted(d) && flow.percent<100 && d.sales_status!=="Sold/Shipped";
-              if(productionFilter==="Completed") return flow.percent===100 && d.sales_status!=="Sold/Shipped";
-              if(productionFilter==="Sold") return d.sales_status==="Sold/Shipped";
-              return true;
-            })
-            .map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} updateDrum={updateDrum}/>)}
-        </div>
-      </section>
+      <ProductionGroups
+        drums={[...filtered]
+          .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
+          .filter(d=>{
+            const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes));
+            if(productionFilter==="Pending") return !hasWorkflowStarted(d);
+            if(productionFilter==="Active") return hasWorkflowStarted(d) && flow.percent<100 && d.sales_status!=="Sold/Shipped";
+            if(productionFilter==="Completed") return flow.percent===100 && d.sales_status!=="Sold/Shipped";
+            if(productionFilter==="Sold") return d.sales_status==="Sold/Shipped";
+            return true;
+          })}
+        projects={projects}
+        openJobCard={setJobCard}
+        updateDrum={updateDrum}
+      />
     </section>}
 
     {view==="projects" && <ProjectsPage projects={projects} drums={drums} openJobCard={setJobCard} createProject={createProject} updateProject={updateProject} linkDrumsToProject={linkDrumsToProject} unlinkDrumFromProject={unlinkDrumFromProject}/>}
@@ -729,6 +729,73 @@ function App(){
     {showAddWizard && <AddDrumWizard onClose={()=>{setShowAddWizard(false);setAddWizardPreset({});}} onCreate={addDrumFromWizard} drums={drums} projects={projects} createProject={createProject} preset={addWizardPreset}/>}
     {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}}/>}
   </main>
+}
+
+
+function ProductionGroups({drums,projects,openJobCard,updateDrum}){
+  const projectMap=Object.fromEntries(projects.map(p=>[p.id,p]));
+  const linkedGroups={};
+  const unlinked=[];
+
+  drums.forEach(d=>{
+    if(d.project_id){
+      linkedGroups[d.project_id] ??=[];
+      linkedGroups[d.project_id].push(d);
+    }else{
+      unlinked.push(d);
+    }
+  });
+
+  const groups=Object.entries(linkedGroups)
+    .map(([projectId,items])=>({
+      project:projectMap[projectId] || {id:projectId,name:"Unnamed Kit / Project"},
+      items:[...items].sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
+    }))
+    .sort((a,b)=>{
+      const aMin=Math.min(...a.items.map(d=>extractNumber(d.serial)));
+      const bMin=Math.min(...b.items.map(d=>extractNumber(d.serial)));
+      return aMin-bMin;
+    });
+
+  return <section className="productionGroups">
+    {groups.map(({project,items})=>{
+      const overall=items.length
+        ? Math.round(items.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes)).percent,0)/items.length)
+        : 0;
+      const complete=items.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes)).percent===100).length;
+
+      return <section className="kitProductionGroup" key={project.id}>
+        <header className="kitGroupHeader">
+          <div>
+            <span className="kitEyebrow">KIT / PROJECT</span>
+            <h2>{project.name}</h2>
+            <p>{items.length} drums · {complete} completed · {overall}% overall</p>
+          </div>
+          <div className="kitGroupProgress">
+            <div className="progress"><i style={{width:overall+"%"}}></i></div>
+          </div>
+        </header>
+        <div className="productionList kitDrumGrid">
+          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum}/>)}
+        </div>
+      </section>
+    })}
+
+    {unlinked.length>0 && <section className="individualProductionGroup">
+      <header className="kitGroupHeader individualHeader">
+        <div>
+          <span className="kitEyebrow">INDIVIDUAL DRUMS</span>
+          <h2>Not Linked to a Kit / Project</h2>
+          <p>{unlinked.length} drums</p>
+        </div>
+      </header>
+      <div className="productionList">
+        {[...unlinked]
+          .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
+          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum}/>)}
+      </div>
+    </section>}
+  </section>
 }
 
 
