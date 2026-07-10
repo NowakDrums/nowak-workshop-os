@@ -58,3 +58,15 @@ input[readonly]{opacity:.86;background:#0f0e0b}
 .projectDrums button{justify-content:flex-start}
 .projectCard input{width:100%;box-sizing:border-box;margin:6px 0 10px}
 @media(max-width:900px){.productionList{grid-template-columns:1fr}.productionToolbar,.projectToolbar{display:block}.filterRow{margin-top:10px}}
+
+.linkExistingPanel{margin-bottom:16px}
+.linkAction{display:flex;align-items:end}
+.linkAction button{width:100%;justify-content:center}
+.drumLinkGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.drumLinkItem{display:flex!important;gap:9px;align-items:flex-start;background:#171511;border:1px solid #382f22;border-radius:12px;padding:10px;cursor:pointer}
+.drumLinkItem.selected{border-color:#d3aa5d;background:#2b251a}
+.drumLinkItem input{width:auto!important;margin-top:3px!important}
+.drumLinkItem span,.drumLinkItem b,.drumLinkItem small{display:block}
+.linkedDrumRow{display:grid;grid-template-columns:1fr auto;gap:6px}
+.unlinkButton{background:#3b211d;color:#ffb0a8}
+@media(max-width:900px){.drumLinkGrid{grid-template-columns:1fr}.linkedDrumRow{grid-template-columns:1fr}}

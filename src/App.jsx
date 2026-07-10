@@ -492,10 +492,26 @@ function App(){
   const photoQueue=active.filter(d=>d.production_status==="Finished / Ready to Sell").length;
 
 
-  async function createProject(){
-    const name=window.prompt("Kit / project name");
-    if(!name) return;
-    const {error}=await supabase.from("projects").insert({name});
+  async function createProject(nameOverride=""){
+    const name=nameOverride || window.prompt("Kit / project name");
+    if(!name) return null;
+    const {data,error}=await supabase.from("projects").insert({name}).select().single();
+    if(error){
+      setMessage(error.message);
+      return null;
+    }
+    setProjects(current=>[data,...current]);
+    return data;
+  }
+
+  async function linkDrumsToProject(drumIds,projectId){
+    if(!projectId || !drumIds.length) return;
+    const {error}=await supabase.from("drums").update({project_id:projectId}).in("id",drumIds);
+    if(error) setMessage(error.message); else await loadAll();
+  }
+
+  async function unlinkDrumFromProject(drumId){
+    const {error}=await supabase.from("drums").update({project_id:null}).eq("id",drumId);
     if(error) setMessage(error.message); else await loadAll();
   }
 
@@ -603,7 +619,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v4.0 — unified Save Changes, sorted production and linked kits/projects.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v4.1 — create kits while adding drums and link existing drum cards.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -676,7 +692,7 @@ function App(){
       </section>
     </section>}
 
-    {view==="projects" && <ProjectsPage projects={projects} drums={drums} openJobCard={setJobCard} createProject={createProject} updateProject={updateProject}/>}
+    {view==="projects" && <ProjectsPage projects={projects} drums={drums} openJobCard={setJobCard} createProject={createProject} updateProject={updateProject} linkDrumsToProject={linkDrumsToProject} unlinkDrumFromProject={unlinkDrumFromProject}/>}
 
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
@@ -685,7 +701,7 @@ function App(){
     {view==="comms" && <CommsCentre drums={filtered} openJobCard={setJobCard}/>}
     {view==="settings" && <SettingsPage/>}
 
-    {showAddWizard && <AddDrumWizard onClose={()=>setShowAddWizard(false)} onCreate={addDrumFromWizard} drums={drums} projects={projects}/>}
+    {showAddWizard && <AddDrumWizard onClose={()=>setShowAddWizard(false)} onCreate={addDrumFromWizard} drums={drums} projects={projects} createProject={createProject}/>}
     {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects}/>}
   </main>
 }
@@ -709,7 +725,7 @@ function DrumCard({drum, openJobCard, updateDrum}){
 }
 
 
-function AddDrumWizard({onClose, onCreate, drums=[], projects=[]}){
+function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject}){
   const suggestedProductionNumber = nextProductionNumber(drums);
   const suggestedCbNumber = nextCbNumber(drums);
 
@@ -820,12 +836,19 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[]}){
 
       <section className="wizardSection">
         <h3>2. Kit / Project</h3>
+        <p>Leave this blank for a single drum, choose an existing kit, or create a new one now.</p>
         <label>Link to kit or project
           <select value={form.project_id} onChange={e=>setField("project_id",e.target.value)}>
             <option value="">No kit / project</option>
             {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </label>
+        <button type="button" onClick={async()=>{
+          const name=window.prompt("New kit / project name");
+          if(!name) return;
+          const created=await createProject(name);
+          if(created) setField("project_id",created.id);
+        }}><FolderPlus size={16}/> Create New Kit / Project</button>
       </section>
 
       <section className="wizardSection">
@@ -1039,11 +1062,64 @@ function CommsCard({drum, openJobCard}){
 }
 
 
-function ProjectsPage({projects,drums,openJobCard,createProject,updateProject}){
+
+function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,linkDrumsToProject,unlinkDrumFromProject}){
+  const [selectedProject,setSelectedProject]=useState(projects[0]?.id || "");
+  const [selectedDrums,setSelectedDrums]=useState([]);
+
+  function toggleDrum(id){
+    setSelectedDrums(current=>current.includes(id) ? current.filter(x=>x!==id) : [...current,id]);
+  }
+
+  async function linkSelected(){
+    if(!selectedProject){
+      alert("Choose a kit or project first.");
+      return;
+    }
+    if(!selectedDrums.length){
+      alert("Select at least one drum.");
+      return;
+    }
+    await linkDrumsToProject(selectedDrums,selectedProject);
+    setSelectedDrums([]);
+  }
+
+  const projectName=id=>projects.find(p=>p.id===id)?.name || "No kit / project";
+
   return <section>
     <section className="panel projectToolbar">
-      <h2>Kits / Projects</h2>
+      <div>
+        <h2>Kits / Projects</h2>
+        <p>Create a kit, then link any existing individual drum cards to it. Each drum keeps its own job card and production number.</p>
+      </div>
       <button className="primary" onClick={createProject}><FolderPlus size={16}/> New Kit / Project</button>
+    </section>
+
+    <section className="panel linkExistingPanel">
+      <h2>Link Existing Drums</h2>
+      <div className="twoInputGrid">
+        <label>Choose kit / project
+          <select value={selectedProject} onChange={e=>setSelectedProject(e.target.value)}>
+            <option value="">Choose a kit / project</option>
+            {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
+        <div className="linkAction">
+          <button className="primary" onClick={linkSelected}><Layers3 size={16}/> Link Selected Drums</button>
+        </div>
+      </div>
+
+      <div className="drumLinkGrid">
+        {[...drums].sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial)).map(d=>
+          <label className={"drumLinkItem "+(selectedDrums.includes(d.id)?"selected":"")} key={d.id}>
+            <input type="checkbox" checked={selectedDrums.includes(d.id)} onChange={()=>toggleDrum(d.id)}/>
+            <span>
+              <b>#{d.serial} · {d.size} · {d.drum_type||"Snare"}</b>
+              <small>{d.timber} · Currently: {projectName(d.project_id)}</small>
+            </span>
+          </label>
+        )}
+      </div>
     </section>
 
     <section className="templateGrid">
@@ -1066,7 +1142,11 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject}){
           <input type="date" defaultValue={project.due_date||""} onBlur={e=>updateProject(project.id,{due_date:e.target.value||null})}/>
 
           <div className="projectDrums">
-            {linked.map(d=><button key={d.id} onClick={()=>openJobCard(d)}>#{d.serial} · {d.size} · {d.drum_type||"Snare"}</button>)}
+            {linked.length===0 && <p>No drums linked yet.</p>}
+            {linked.map(d=><div className="linkedDrumRow" key={d.id}>
+              <button onClick={()=>openJobCard(d)}>#{d.serial} · {d.size} · {d.drum_type||"Snare"}</button>
+              <button className="unlinkButton" onClick={()=>unlinkDrumFromProject(d.id)}>Unlink</button>
+            </div>)}
           </div>
         </article>
       })}
