@@ -1381,7 +1381,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.1.2 — separate ply and stave sanding queues in Workshop Today.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.1.3 — removed the duplicate Stored Build Photos & Videos section.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -3494,21 +3494,6 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       <p>Take or upload an additional build photo at any time. It will be stored against this Job Card.</p>
       <button type="button" className="primary" onClick={()=>setPhotoPrompt({milestoneKey:"general",item:null})}><Camera size={16}/> Take or Upload a Photo</button>
     </section>
-    <DrumPhotoLibrary
-      drum={{
-        ...drum,
-        ...draft,
-        build_client:localOwnership,
-        build_type:localBuildType,
-        sales_status:localOwnership==="Nowak"
-          ? (draft.order_type==="Custom" ? "Custom Order" : "Stock")
-          : localOwnership==="Brady"
-            ? "Brady Production"
-            : "Unallocated"
-      }}
-      setMessage={setMessage}
-      onAddPhoto={(stageDrum,milestoneKey)=>setPhotoPrompt({drum:stageDrum,milestoneKey})}
-    />
     <StageCommunications
       drum={{
         ...drum,

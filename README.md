@@ -1,14 +1,16 @@
-# Nowak Workshop OS v6.1.2
+# Nowak Workshop OS v6.1.3
 
-## Workshop Today sanding queues
+## Job Card cleanup
 
-Ply and stave drums are no longer grouped together under one generic sanding section.
+Removed the duplicate `Stored Build Photos & Videos` section from the Job Card.
 
-They now appear as:
+Media remains available in the places where it is most useful:
 
-- Ply Shell Sanding — Fresh from the Mould
-- Stave Shell Sanding — After Machining
+- Launch Pack stages
+- Finish Reveal
+- Completed Drum
+- Stage Communications
 
-The production checklist remains unchanged. This update only improves the Workshop Today grouping so the two different stages of work are clear.
+No photos or videos are deleted. This update only removes the duplicate display section and its repeated email/social buttons.
 
 No Supabase migration is required.
