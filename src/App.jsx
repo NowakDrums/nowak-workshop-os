@@ -1343,7 +1343,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.0.6 — Jarrah and Marri Fiddleback timber options and website pricing.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.0.7 — deployment fix plus editable timber and Fiddleback options.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -3145,7 +3145,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       </div>
 
       <div className="panel inner"><h2>Build Details</h2>
-        <label>Size</label><SizeEditor drum={...drum,timber:draft.timber} updateDrum={updateDrum}/>
+        <label>Size</label><SizeEditor drum={{...drum,timber:draft.timber}} updateDrum={updateDrum}/>
         <label>Timber type</label>
         <select value={draft.timber} onChange={e=>setDraft({...draft,timber:e.target.value})}>
           {!timberOptions.includes(draft.timber) && draft.timber && <option value={draft.timber}>{draft.timber}</option>}
