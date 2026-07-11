@@ -1,30 +1,41 @@
-# Nowak Workshop OS v6.0.2
+# Nowak Workshop OS v6.0.3
 
-## Fixed
+Permanent stage communications for stored photos.
 
-### Correct completed-build photo title
-The completed shell/photo prompt now uses the drum ownership:
+## Stage Communications
+A new section appears on every Job Card and groups stored photos by milestone.
 
-- Brady build: `Brady Shell Complete`
-- Nowak custom: `Nowak Custom Drum Complete`
-- Nowak stock: `Nowak Drum Complete`
-- Unallocated: `Shell Complete`
+Each photographed stage can be reopened later. Closing the original photo prompt no longer removes access to the communication tools.
 
-Brady prompts are internal documentation only and no longer show social or customer-email content.
+### Nowak Custom
+- View stored photos
+- Add more photos
+- Download photos
+- Open prefilled customer email
+- Copy Facebook post
+- Copy Instagram caption
+- Preview both social drafts
 
-### Save & Close
-The Save & Close handler is now correctly asynchronous. It waits for Supabase to confirm the save before closing the Job Card.
+### Nowak Stock and Unallocated
+- View stored photos
+- Add more photos
+- Download photos
+- Copy Facebook post
+- Copy Instagram caption
 
-Buttons show `Saving...` and are disabled while the save is in progress, preventing duplicate clicks.
+### Brady
+- View stored photos
+- Add more photos
+- Download photos
+- Internal documentation only
+- No email or social drafts
 
-### Mobile footer
-The oversized sticky footer has been replaced with a compact control bar:
+## Email attachments
+Browser email links cannot automatically attach files. Use `Download Photos`, open the prefilled email, and attach the downloaded images manually.
 
-- Save
-- Save & Close
-- Close
+## Completed-drum wording
+Completion emails now say:
 
-It remains accessible at the bottom without covering as much of the Job Card.
+`We have included a selection of photos showing the completed drum and its journey through the workshop.`
 
-## Supabase
-No new migration is required after v6.0.0.
+No Supabase migration is required.

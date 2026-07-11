@@ -386,10 +386,16 @@ function milestoneMessage(drum,milestoneKey){
   const customer=allocatedCustomerName(drum);
   const descriptor=`${drum.timber || ""} ${drum.size || ""} ${drum.drum_type || "drum"}`.trim();
 
+  const isComplete=["shellcomplete","drumcomplete","launch_final"].includes(milestoneKey);
+  const photoLine=isComplete
+    ? "We have included a selection of photos showing the completed drum and its journey through the workshop."
+    : "We have included a few photos so you can follow the build as it progresses.";
+
   return {
     social:`${m.social}\n\n${descriptor}\n\nBuilt in Western Australia by Nowak Drum Company.`,
+    instagram:`${m.social}\n\n${descriptor}\n\n#NowakDrums #AustralianHardwoods #HandmadeDrums #MadeInAustralia`,
     emailSubject:`Your ${descriptor} – ${m.label}`,
-    emailBody:`Hi ${customer || "there"},\n\nA quick update from the Nowak workshop.\n\n${m.social}\n\nWe have attached a few photos so you can follow the build as it progresses.\n\nThanks again for choosing Nowak Drum Company.\n\nKelly & Kyle`,
+    emailBody:`Hi ${customer || "there"},\n\nA quick update from the Nowak workshop.\n\n${m.social}\n\n${photoLine}\n\nThanks again for choosing Nowak Drum Company.\n\nKelly & Kyle`,
   };
 }
 
@@ -1321,7 +1327,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.0.2 — corrected photo prompts, Save & Close and compact mobile footer.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.0.3 — permanent stage email and social actions for stored photos.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -2464,6 +2470,150 @@ function DrumPhotoLibrary({drumId}){
 }
 
 
+function StageCommunications({drum,setMessage,onAddPhoto}){
+  const [photos,setPhotos]=useState([]);
+  const [expanded,setExpanded]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  async function load(){
+    setLoading(true);
+    const {data,error}=await supabase
+      .from("drum_photos")
+      .select("*")
+      .eq("drum_id",drum.id)
+      .order("created_at",{ascending:true});
+
+    if(error){
+      setMessage?.("Could not load stage photos: "+error.message);
+      setPhotos([]);
+    }else{
+      setPhotos(data || []);
+    }
+    setLoading(false);
+  }
+
+  useEffect(()=>{ load(); },[drum.id]);
+
+  const grouped=photos.reduce((acc,photo)=>{
+    const key=photo.milestone || "general";
+    if(!acc[key]) acc[key]=[];
+    acc[key].push(photo);
+    return acc;
+  },{});
+
+  const stageOrder=["wood","blank","machined","sealer","shellcomplete","drumcomplete","general"];
+  const stageKeys=[
+    ...stageOrder.filter(key=>grouped[key]?.length),
+    ...Object.keys(grouped).filter(key=>!stageOrder.includes(key) && !key.startsWith("launch_"))
+  ];
+
+  function stageLabel(key){
+    if(key==="shellcomplete"){
+      if(drum.build_client==="Brady") return "Brady Shell Complete";
+      if(drum.build_client==="Nowak") return isCustomCustomerDrum(drum) ? "Nowak Custom Drum Complete" : "Nowak Drum Complete";
+      return "Shell Complete";
+    }
+    return photoMilestones[key]?.label || key.replaceAll("_"," ");
+  }
+
+  function copy(text,label){
+    navigator.clipboard?.writeText(text);
+    setMessage?.(label+" copied.");
+  }
+
+  function downloadPhotos(items,label){
+    if(!items.length) return;
+    items.forEach((photo,index)=>{
+      const link=document.createElement("a");
+      link.href=photo.public_url;
+      link.download=`${String(drum.serial || "drum").replace(/[^a-zA-Z0-9_-]/g,"-")}-${label.replace(/[^a-zA-Z0-9_-]/g,"-")}-${index+1}.jpg`;
+      link.target="_blank";
+      link.rel="noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    });
+    setMessage?.(`${items.length} photo${items.length===1?"":"s"} opened for download. Attach them manually to the email.`);
+  }
+
+  if(stageKeys.length===0){
+    return <section className="panel inner stageCommsPanel">
+      <div className="stageCommsHeader">
+        <div>
+          <span className="launchPackEyebrow">STORED CONTENT</span>
+          <h2>Stage Communications</h2>
+        </div>
+        <button onClick={load}>{loading?"Loading...":"Refresh"}</button>
+      </div>
+      <p>No stored milestone photos yet. Add photos to a stage and its email/social options will appear here.</p>
+    </section>
+  }
+
+  return <section className="panel inner stageCommsPanel">
+    <div className="stageCommsHeader">
+      <div>
+        <span className="launchPackEyebrow">STORED CONTENT</span>
+        <h2>Stage Communications</h2>
+        <p>Reopen any photographed stage to email the customer or create social content.</p>
+      </div>
+      <button onClick={load}>{loading?"Loading...":"Refresh"}</button>
+    </div>
+
+    <div className="stageCommsList">
+      {stageKeys.map(key=>{
+        const items=grouped[key] || [];
+        const open=expanded===key;
+        const message=milestoneMessage(drum,key);
+        const isBrady=drum.build_client==="Brady";
+        const canEmail=!isBrady && isCustomCustomerDrum(drum);
+        const canSocial=!isBrady;
+        const mailto=`mailto:${encodeURIComponent(drum.customer_email || "")}?subject=${encodeURIComponent(message.emailSubject)}&body=${encodeURIComponent(message.emailBody)}`;
+
+        return <article className="stageCommsCard" key={key}>
+          <button className="stageCommsSummary" onClick={()=>setExpanded(open?"":key)}>
+            <span>
+              <b>{stageLabel(key)}</b>
+              <small>{items.length} stored photo{items.length===1?"":"s"}</small>
+            </span>
+            <span>{open?"Hide":"Open"}</span>
+          </button>
+
+          {open && <div className="stageCommsBody">
+            <div className="stageCommsThumbs">
+              {items.map(photo=><a href={photo.public_url} target="_blank" rel="noreferrer" key={photo.id}>
+                <img src={photo.public_url} alt={stageLabel(key)}/>
+              </a>)}
+            </div>
+
+            <div className="stageCommsActions">
+              <button onClick={()=>downloadPhotos(items,stageLabel(key))}>Download Photos</button>
+              <button onClick={()=>onAddPhoto?.(drum,key)}>Add More Photos</button>
+              {canSocial && <button onClick={()=>copy(message.social,"Facebook post")}>Copy Facebook</button>}
+              {canSocial && <button onClick={()=>copy(message.instagram,"Instagram caption")}>Copy Instagram</button>}
+              {canEmail && <a className={"buttonLike "+(!drum.customer_email?"disabledLink":"")} href={drum.customer_email?mailto:undefined}>
+                <Mail size={15}/> Open Customer Email
+              </a>}
+            </div>
+
+            {isBrady && <p className="internalOnlyNotice"><b>Internal documentation only.</b> No email or social post is generated for Brady builds.</p>}
+            {canEmail && !drum.customer_email && <p className="dangerText">No customer email is saved on this Job Card.</p>}
+            {canEmail && <p className="calcNote">Email opens with the subject and message prefilled. Download the stored photos first, then attach them manually in Mail.</p>}
+
+            {canSocial && <details className="stageDraftPreview">
+              <summary>Preview Facebook / Instagram text</summary>
+              <h4>Facebook</h4>
+              <pre>{message.social}</pre>
+              <h4>Instagram</h4>
+              <pre>{message.instagram}</pre>
+            </details>}
+          </div>}
+        </article>
+      })}
+    </div>
+  </section>
+}
+
+
 function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
   const cameraInputRef=useRef(null);
   const libraryInputRef=useRef(null);
@@ -3063,6 +3213,21 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       <button type="button" className="primary" onClick={()=>setPhotoPrompt({milestoneKey:"general",item:null})}><Camera size={16}/> Take or Upload a Photo</button>
     </section>
     <DrumPhotoLibrary drumId={drum.id}/>
+    <StageCommunications
+      drum={{
+        ...drum,
+        ...draft,
+        build_client:localOwnership,
+        build_type:localBuildType,
+        sales_status:localOwnership==="Nowak"
+          ? (draft.order_type==="Custom" ? "Custom Order" : "Stock")
+          : localOwnership==="Brady"
+            ? "Brady Production"
+            : "Unallocated"
+      }}
+      setMessage={setMessage}
+      onAddPhoto={(stageDrum,milestoneKey)=>setPhotoPrompt({drum:stageDrum,milestoneKey})}
+    />
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
     <section className="panel inner"><h2>Notes</h2><textarea value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></section>
     <section className="panel inner completionActionsPanel">
