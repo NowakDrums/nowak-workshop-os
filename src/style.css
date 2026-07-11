@@ -303,3 +303,29 @@ button:disabled{opacity:.55;cursor:not-allowed}
   gap:8px;
   flex-wrap:wrap;
 }
+
+.launchPackPanel{border:2px solid #d3aa5d!important;background:linear-gradient(180deg,rgba(211,170,93,.10),rgba(23,21,17,.96))}
+.launchPackHeader{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.launchPackHeader h2{margin:2px 0}
+.launchPackHeader>b{font-size:24px;color:#f4d89c}
+.launchPackEyebrow{font-size:11px;letter-spacing:.14em;font-weight:800;color:#d3aa5d}
+.launchStageGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:14px 0}
+.launchStageCard{border:1px solid #4b4235;border-radius:12px;padding:12px;background:#171511}
+.launchStageCard.complete{border-color:#7fc680;background:rgba(127,198,128,.07)}
+.launchStageCard h3{margin:0 0 6px}
+.launchStageCard p{min-height:52px}
+.launchStageCard small{display:block;color:#a9a397;margin-bottom:8px}
+.launchStageCard button{width:100%;justify-content:center}
+.launchChecklist{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+.launchChecklist span{padding:5px 9px;border:1px solid #4b4235;border-radius:999px;font-size:12px}
+.generateLaunchButton{width:100%;justify-content:center}
+.launchDraftPreview{margin-top:12px}
+.launchDraftPreview>div{display:flex;justify-content:space-between;border-top:1px solid #382f22;padding:7px 0}
+.launchMediaBg{z-index:50}
+.launchMediaModal{max-width:680px}
+.marketingDraftCard textarea{min-height:260px}
+.marketingDraftCard input,.marketingDraftCard textarea{width:100%;box-sizing:border-box}
+.marketingDraftGrid{grid-template-columns:repeat(2,1fr)}
+@media(max-width:900px){
+  .launchStageGrid,.marketingDraftGrid{grid-template-columns:1fr}
+}

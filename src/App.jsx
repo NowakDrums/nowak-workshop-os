@@ -326,6 +326,104 @@ function milestoneMessage(drum,milestoneKey){
   };
 }
 
+
+const launchPackStages = [
+  {
+    key:"launch_timber",
+    label:"Timber",
+    prompt:"Take 1–3 photos of the timber or veneer before cutting.",
+    accept:"image/*",
+    recommended:"1–3 photos",
+  },
+  {
+    key:"launch_machined",
+    label:"Machined Shell",
+    prompt:"Take 2–4 photos of the machined shell: overall, inside, grain and close-up.",
+    accept:"image/*",
+    recommended:"2–4 photos",
+  },
+  {
+    key:"launch_reveal",
+    label:"Finish Reveal",
+    prompt:"High Gloss: record a 10–20 second shell reveal video. Satin or Natural: take 2–3 reveal photos.",
+    accept:"image/*,video/*",
+    recommended:"1 video or 2–3 photos",
+  },
+  {
+    key:"launch_final",
+    label:"Completed Drum",
+    prompt:"Capture approximately 8–10 final photos: hero, front, side, badge, grain, bearing edge, inside, hardware and lifestyle.",
+    accept:"image/*",
+    recommended:"8–10 photos",
+  },
+];
+
+function launchPackFacebook(drum){
+  const size=drum.size || "";
+  const timber=drum.timber || "";
+  const finish=drum.finish || "";
+  const type=drum.drum_type || "Snare";
+  const construction=drum.build_type || "";
+  const production=drum.serial || "";
+  return `Introducing Production #${production}
+
+This ${size} ${timber} ${construction.toLowerCase()} ${type.toLowerCase()} began with carefully selected Australian timber before being shaped, finished and assembled by hand in our Western Australian workshop.
+
+Swipe through the photos to follow the journey from the original timber, through the machined shell and finish reveal, to the completed drum.
+
+Specifications
+• ${size}
+• ${timber}
+• ${construction}
+• ${finish} finish
+• Handmade in Western Australia
+
+For enquiries about a custom Australian hardwood drum, send us a message.
+
+#NowakDrums #AustralianHardwoods #HandmadeDrums #MadeInWesternAustralia`;
+}
+
+function launchPackInstagram(drum){
+  const size=drum.size || "";
+  const timber=drum.timber || "";
+  const finish=drum.finish || "";
+  const construction=drum.build_type || "";
+  return `From timber to finished instrument.
+
+${size} ${timber} ${construction} drum in ${finish} finish, handmade in Western Australia.
+
+Swipe through the build journey.
+
+#NowakDrums #AustralianHardwoods #CustomDrums #DrumBuilder #MadeInAustralia #Handcrafted`;
+}
+
+function launchPackCustomerEmail(drum){
+  const name=allocatedCustomerName(drum) || "there";
+  const descriptor=`${drum.timber || ""} ${drum.size || ""} ${drum.drum_type || "drum"}`.trim();
+  return {
+    subject:`Your ${descriptor} is complete`,
+    body:`Hi ${name},
+
+Your ${descriptor} is now complete.
+
+We have put together a selection of photos showing the journey from the original timber through machining, finishing and final assembly. It has been a pleasure building this drum for you, and we are looking forward to seeing it in your hands.
+
+We will be in touch shortly with the final delivery or shipping details.
+
+Thanks again for choosing Nowak Drum Company.
+
+Kelly & Kyle`,
+  };
+}
+
+function launchPackWebsite(drum){
+  return `${drum.size || ""} ${drum.timber || ""} ${drum.build_type || ""} ${drum.drum_type || "Drum"}
+
+Handcrafted in Western Australia from carefully selected ${drum.timber || "Australian hardwood"}. This ${drum.size || ""} drum features a ${drum.finish || ""} finish and was individually built, machined, finished and assembled in the Nowak workshop.
+
+Each Nowak drum is made in small numbers with a focus on timber character, precision and a distinctive musical voice.`;
+}
+
 const diameterSpecs = {
   "8":  { rough:"20.64 cm", finished:"20.00 cm" },
   "10": { rough:"25.72 cm", finished:"25.08 cm" },
@@ -961,7 +1059,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.3.5 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.4.0 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -977,6 +1075,7 @@ function App(){
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
       <button className={view==="comms"?"active":""} onClick={()=>setView("comms")}><Mail size={16}/> Comms</button>
+      <button className={view==="marketing"?"active":""} onClick={()=>setView("marketing")}><Share2 size={16}/> Marketing</button>
       <button className={view==="settings"?"active":""} onClick={()=>setView("settings")}><Settings size={16}/> Settings</button>
       <button onClick={()=>{setAddWizardPreset({});setShowAddWizard(true);}}><Plus size={16}/> Add Drum</button>
     </nav>
@@ -1102,6 +1201,7 @@ function App(){
     {view==="inventory" && <Inventory hardware={hardware} updateHardware={updateHardware} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
     {view==="comms" && <CommsCentre drums={filtered} openJobCard={setJobCard}/>}
+    {view==="marketing" && <MarketingCentre drums={drums} openJobCard={setJobCard} setMessage={setMessage}/>} 
     {view==="settings" && <SettingsPage/>}
 
     {globalPhotoPrompt && <MilestonePhotoModal
@@ -1565,6 +1665,238 @@ function CommsCard({drum, openJobCard}){
   </article>
 }
 
+
+
+function LaunchMediaModal({drum,stage,onClose,onUploaded,setMessage}){
+  const cameraInputRef=useRef(null);
+  const libraryInputRef=useRef(null);
+  const [files,setFiles]=useState([]);
+  const [status,setStatus]=useState("");
+
+  async function upload(){
+    if(!files.length){
+      setStatus("Choose or take at least one file first.");
+      return;
+    }
+
+    setStatus("Uploading...");
+    try{
+      for(let index=0; index<files.length; index+=1){
+        const file=files[index];
+        const safeName=String(file.name || `launch-${index+1}`).replace(/[^a-zA-Z0-9._-]/g,"-");
+        const uniqueId=globalThis.crypto?.randomUUID?.() || `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`;
+        const path=`${drum.id}/${stage.key}/${uniqueId}-${safeName}`;
+        const mediaType=String(file.type || "").startsWith("video/") ? "video" : "image";
+
+        const {error:uploadError}=await supabase.storage
+          .from("drum-photos")
+          .upload(path,file,{
+            upsert:false,
+            cacheControl:"3600",
+            contentType:file.type || undefined
+          });
+        if(uploadError) throw new Error(uploadError.message);
+
+        const {data:publicData}=supabase.storage.from("drum-photos").getPublicUrl(path);
+        const publicUrl=publicData?.publicUrl || "";
+
+        const {error:rowError}=await supabase.from("drum_photos").insert({
+          drum_id:drum.id,
+          milestone:stage.key,
+          storage_path:path,
+          public_url:publicUrl,
+          caption:stage.prompt,
+          media_type:mediaType,
+        });
+        if(rowError) throw new Error(rowError.message);
+      }
+
+      setStatus(`${files.length} file${files.length===1?"":"s"} uploaded and stored.`);
+      setMessage?.("");
+      onUploaded?.();
+      setTimeout(onClose,700);
+    }catch(error){
+      const detail="Launch Pack upload failed: " + (error?.message || String(error));
+      setStatus(detail);
+      setMessage?.(detail);
+    }
+  }
+
+  return <div className="modalBg launchMediaBg" onClick={onClose}>
+    <div className="modal launchMediaModal" onClick={e=>e.stopPropagation()}>
+      <button className="close" onClick={onClose}>×</button>
+      <h2>{stage.label}</h2>
+      <p>{stage.prompt}</p>
+      <p className="calcNote">Recommended: {stage.recommended}</p>
+
+      <div className="photoChoiceButtons">
+        <button className="primary" onClick={()=>cameraInputRef.current?.click()}><Camera size={16}/> Take Photo / Video</button>
+        <button onClick={()=>libraryInputRef.current?.click()}><Plus size={16}/> Choose Existing</button>
+      </div>
+
+      <input className="hiddenFileInput" ref={cameraInputRef} type="file" accept={stage.accept} capture="environment" onChange={e=>setFiles(Array.from(e.target.files || []))}/>
+      <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept={stage.accept} multiple onChange={e=>setFiles(Array.from(e.target.files || []))}/>
+
+      {files.length>0 && <p className="okText">{files.length} file{files.length===1?"":"s"} selected.</p>}
+      <button className="primary uploadPhotosButton" disabled={status==="Uploading..."} onClick={upload}>
+        <Camera size={16}/> {status==="Uploading..." ? "Uploading..." : "Upload and Store"}
+      </button>
+      {status && <p className={status.includes("failed")?"dangerText":"okText"}>{status}</p>}
+    </div>
+  </div>
+}
+
+function LaunchPackSection({drum,setMessage}){
+  const [media,setMedia]=useState([]);
+  const [drafts,setDrafts]=useState([]);
+  const [selectedStage,setSelectedStage]=useState(null);
+  const [status,setStatus]=useState("");
+
+  async function load(){
+    const [{data:mediaData,error:mediaError},{data:draftData,error:draftError}]=await Promise.all([
+      supabase.from("drum_photos").select("*").eq("drum_id",drum.id).in("milestone",launchPackStages.map(s=>s.key)),
+      supabase.from("launch_pack_drafts").select("*").eq("drum_id",drum.id).order("created_at",{ascending:false}),
+    ]);
+    if(mediaError) setMessage?.("Could not load Launch Pack media: "+mediaError.message);
+    if(draftError) setMessage?.("Could not load Launch Pack drafts: "+draftError.message);
+    setMedia(mediaData || []);
+    setDrafts(draftData || []);
+  }
+
+  useEffect(()=>{ load(); },[drum.id]);
+
+  const counts=Object.fromEntries(launchPackStages.map(stage=>[
+    stage.key,
+    media.filter(item=>item.milestone===stage.key).length
+  ]));
+  const completedStages=launchPackStages.filter(stage=>counts[stage.key]>0).length;
+  const generated=drafts.length>0;
+  const progress=Math.round(((completedStages + (generated?1:0))/5)*100);
+
+  async function generate(){
+    setStatus("Generating drafts...");
+    const email=launchPackCustomerEmail(drum);
+    const rows=[
+      {drum_id:drum.id,platform:"Facebook",status:"Draft",content:launchPackFacebook(drum),subject:null},
+      {drum_id:drum.id,platform:"Instagram",status:"Draft",content:launchPackInstagram(drum),subject:null},
+      {drum_id:drum.id,platform:"Website",status:"Draft",content:launchPackWebsite(drum),subject:null},
+    ];
+    if(drum.sales_status==="Custom Order"){
+      rows.push({drum_id:drum.id,platform:"Customer Email",status:"Draft",content:email.body,subject:email.subject});
+    }
+
+    const {error}=await supabase.from("launch_pack_drafts").insert(rows);
+    if(error){
+      const detail="Could not generate Launch Pack: "+error.message;
+      setStatus(detail);
+      setMessage?.(detail);
+      return;
+    }
+
+    setStatus("Launch Pack drafts created.");
+    await load();
+  }
+
+  return <section className="panel inner launchPackPanel">
+    <div className="launchPackHeader">
+      <div>
+        <span className="launchPackEyebrow">NOWAK MARKETING</span>
+        <h2>Launch Pack</h2>
+      </div>
+      <b>{progress}%</b>
+    </div>
+    <div className="progress large"><i style={{width:progress+"%"}}></i></div>
+
+    <div className="launchStageGrid">
+      {launchPackStages.map(stage=><article className={"launchStageCard "+(counts[stage.key]?"complete":"")} key={stage.key}>
+        <h3>{stage.label}</h3>
+        <p>{stage.prompt}</p>
+        <small>{counts[stage.key]} file{counts[stage.key]===1?"":"s"} stored</small>
+        <button onClick={()=>setSelectedStage(stage)}><Camera size={15}/> Add Media</button>
+      </article>)}
+    </div>
+
+    <section className="launchChecklist">
+      <span>{counts.launch_timber>0?"✓":"□"} Timber</span>
+      <span>{counts.launch_machined>0?"✓":"□"} Machined</span>
+      <span>{counts.launch_reveal>0?"✓":"□"} Reveal</span>
+      <span>{counts.launch_final>0?"✓":"□"} Final photos</span>
+      <span>{generated?"✓":"□"} Launch generated</span>
+    </section>
+
+    <button className="primary generateLaunchButton" disabled={completedStages<4 || generated} onClick={generate}>
+      <Share2 size={16}/> {generated ? "Launch Pack Generated" : completedStages<4 ? "Complete all media stages first" : "Generate Launch Pack"}
+    </button>
+    {status && <p className={status.includes("Could not")?"dangerText":"okText"}>{status}</p>}
+
+    {drafts.length>0 && <section className="launchDraftPreview">
+      <h3>Generated Drafts</h3>
+      {drafts.map(draft=><div key={draft.id}><b>{draft.platform}</b><span>{draft.status}</span></div>)}
+      <p className="calcNote">Open the Marketing tab to proofread and approve drafts.</p>
+    </section>}
+
+    {selectedStage && <LaunchMediaModal drum={drum} stage={selectedStage} onClose={()=>setSelectedStage(null)} onUploaded={load} setMessage={setMessage}/>}
+  </section>
+}
+
+function MarketingCentre({drums,openJobCard,setMessage}){
+  const [drafts,setDrafts]=useState([]);
+  const [folder,setFolder]=useState("Draft");
+  const [editing,setEditing]=useState(null);
+
+  async function load(){
+    const {data,error}=await supabase.from("launch_pack_drafts").select("*").order("created_at",{ascending:false});
+    if(error) setMessage?.("Could not load marketing drafts: "+error.message);
+    setDrafts(data || []);
+  }
+  useEffect(()=>{ load(); },[]);
+
+  async function updateDraft(id,patch){
+    const {error}=await supabase.from("launch_pack_drafts").update(patch).eq("id",id);
+    if(error) setMessage?.("Could not update draft: "+error.message);
+    else await load();
+  }
+
+  const drumMap=Object.fromEntries(drums.map(d=>[d.id,d]));
+  const visible=drafts.filter(d=>d.status===folder);
+
+  return <section>
+    <section className="panel productionToolbar">
+      <h2>Marketing</h2>
+      <p>Proofread Launch Pack drafts before release. Nothing is published automatically.</p>
+      <div className="filterRow">
+        {["Draft","Ready","Published","Archived"].map(item=>
+          <button key={item} className={folder===item?"primary":""} onClick={()=>setFolder(item)}>{item}</button>
+        )}
+      </div>
+    </section>
+
+    <section className="templateGrid marketingDraftGrid">
+      {visible.length===0 && <article className="panel"><p>No {folder.toLowerCase()} items.</p></article>}
+      {visible.map(draft=>{
+        const drum=drumMap[draft.drum_id] || {};
+        return <article className="panel marketingDraftCard" key={draft.id}>
+          <div className="cardHeading">
+            <h2>{draft.platform}</h2>
+            <span className="badge">{draft.status}</span>
+          </div>
+          <p><b>Production #{drum.serial || "—"}</b> · {drum.timber || ""} {drum.size || ""}</p>
+          {draft.subject && <><label>Subject</label><input value={editing?.id===draft.id ? editing.subject : draft.subject} onChange={e=>setEditing({...draft,subject:e.target.value,content:editing?.id===draft.id?editing.content:draft.content})}/></>}
+          <label>Content</label>
+          <textarea value={editing?.id===draft.id ? editing.content : draft.content} onChange={e=>setEditing({...draft,content:e.target.value,subject:editing?.id===draft.id?editing.subject:draft.subject})}/>
+          <section className="buttonRow">
+            <button onClick={()=>openJobCard(drum)}>Open Job Card</button>
+            <button onClick={()=>navigator.clipboard?.writeText(editing?.id===draft.id ? editing.content : draft.content)}>Copy</button>
+            {editing?.id===draft.id && <button onClick={()=>{updateDraft(draft.id,{content:editing.content,subject:editing.subject});setEditing(null);}}>Save Edit</button>}
+            {folder==="Draft" && <button className="primary" onClick={()=>updateDraft(draft.id,{status:"Ready"})}>Approve</button>}
+            {folder==="Ready" && <button className="primary" onClick={()=>updateDraft(draft.id,{status:"Published",published_at:new Date().toISOString()})}>Mark Published</button>}
+            {folder!=="Archived" && <button onClick={()=>updateDraft(draft.id,{status:"Archived"})}>Archive</button>}
+          </section>
+        </article>
+      })}
+    </section>
+  </section>
+}
 
 
 function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,linkDrumsToProject,unlinkDrumFromProject}){
@@ -2149,6 +2481,14 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       })}</div>
       
     </section>
+
+    {localOwnership==="Nowak" && <LaunchPackSection drum={{
+      ...drum,
+      ...draft,
+      build_client:localOwnership,
+      build_type:localBuildType,
+      sales_status:draft.order_type==="Custom" ? "Custom Order" : "Stock"
+    }} setMessage={setMessage}/>}
 
     <section className="panel inner anytimePhotoPanel">
       <h2>Photos at Any Stage</h2>
