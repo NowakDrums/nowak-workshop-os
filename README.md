@@ -1,25 +1,36 @@
-# Nowak Workshop OS v5.4.7
+# Nowak Workshop OS v5.4.8
 
-Sold and Shipped routing fix.
+Unified drum lifecycle status fix.
 
-## Mark Sold
-- Saves the sale, shipping and payment details.
-- Closes the Job Card.
-- Opens Production automatically.
-- Selects the Sold tab.
-- The drum appears immediately in Sold.
+## Why this was needed
+The original `sales_status` field was also being used for Stock, Custom and Brady classifications. That allowed Job Card saves and old status values to conflict with Complete, Sold and Shipped.
 
-## Mark Shipped
-- Closes the Job Card.
-- Opens Production automatically.
-- Selects the Shipped tab.
+## New lifecycle field
+A dedicated `lifecycle_status` field now controls:
 
-## Stale Job Card protection
-Before saving a Job Card, NBS now checks the current database sales status.
-A stale open card can no longer change a Sold or Shipped drum back to Stock or Custom.
+- Completed
+- Sold
+- Shipped
 
-## Production visibility
-Production filtering now works from the complete drum list.
-Dashboard counts continue to use only unsold/unshipped operational drums.
+The existing `sales_status` field remains for compatibility with the older application and order classification.
 
-No new Supabase migration is required after v5.4.6.
+## Behaviour
+- Complete writes `lifecycle_status = Completed`
+- Sold writes `lifecycle_status = Sold`
+- Shipped writes `lifecycle_status = Shipped`
+- Production tabs filter from lifecycle status only
+- Status buttons only change screens after Supabase confirms the update
+- The app updates the card immediately after a successful save
+- Job Card saves preserve the current lifecycle status
+
+## Existing records
+The migration backfills existing records:
+- legacy Sold/Shipped → Shipped
+- Sold → Sold
+- Shipped → Shipped
+- Manufacturing Complete → Completed
+
+This should move Production #144 into Shipped after the migration, because its previous combined Sold/Shipped status represents a fully shipped drum.
+
+## Supabase
+Run `supabase/v5_4_8_lifecycle_status.sql` once before deploying v5.4.8.

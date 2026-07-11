@@ -142,12 +142,24 @@ function hasProductionNumber(drum){
   return /^\s*#?\d+\s*$/.test(String(drum?.serial || ""));
 }
 
+function drumLifecycleStatus(drum){
+  const explicit=String(drum?.lifecycle_status || "").trim();
+  if(explicit) return explicit;
+
+  const legacy=String(drum?.sales_status || "").trim();
+  if(legacy==="Shipped") return "Shipped";
+  if(legacy==="Sold") return "Sold";
+  if(legacy==="Sold/Shipped") return "Shipped";
+  if(drum?.production_status==="Manufacturing Complete") return "Completed";
+  return "";
+}
+
 function isSoldStatus(drum){
-  return drum?.sales_status==="Sold";
+  return drumLifecycleStatus(drum)==="Sold";
 }
 
 function isShippedStatus(drum){
-  return drum?.sales_status==="Shipped" || drum?.sales_status==="Sold/Shipped";
+  return drumLifecycleStatus(drum)==="Shipped";
 }
 
 function isManufacturingComplete(drum){
@@ -875,7 +887,16 @@ function App(){
       supabase.from("sales").select("*").order("sold_at",{ascending:false}),
       supabase.from("projects").select("*").order("created_at",{ascending:false})
     ]);
-    setDrums(d.data||[]);
+    const loadedDrums=(d.data||[]).map(item=>{
+      if(item.lifecycle_status) return item;
+      if(item.sales_status==="Shipped") return {...item,lifecycle_status:"Shipped"};
+      if(item.sales_status==="Sold") return {...item,lifecycle_status:"Sold"};
+      if(item.sales_status==="Sold/Shipped") return {...item,lifecycle_status:"Shipped"};
+      if(item.production_status==="Manufacturing Complete") return {...item,lifecycle_status:"Completed"};
+      return item;
+    });
+
+    setDrums(loadedDrums);
     setHardware(h.data||[]);
     setTemplates(t.data||[]);
     setSales(s.data||[]);
@@ -951,14 +972,31 @@ function App(){
   }
 
   async function updateDrum(id,patch){
-    if("custom_price" in patch || "shipping_cost" in patch){
+    const nextPatch={...patch};
+
+    if("custom_price" in nextPatch || "shipping_cost" in nextPatch){
       const existing = drums.find(d=>d.id===id) || {};
-      const customPrice = "custom_price" in patch ? Number(patch.custom_price||0) : Number(existing.custom_price||0);
-      const shipping = "shipping_cost" in patch ? Number(patch.shipping_cost||0) : Number(existing.shipping_cost||0);
-      patch.total_price = customPrice + shipping;
+      const customPrice = "custom_price" in nextPatch ? Number(nextPatch.custom_price||0) : Number(existing.custom_price||0);
+      const shipping = "shipping_cost" in nextPatch ? Number(nextPatch.shipping_cost||0) : Number(existing.shipping_cost||0);
+      nextPatch.total_price = customPrice + shipping;
     }
-    const {error}=await supabase.from("drums").update(patch).eq("id",id);
-    if(error) setMessage(error.message); else await loadAll();
+
+    const {data,error}=await supabase
+      .from("drums")
+      .update(nextPatch)
+      .eq("id",id)
+      .select("*")
+      .single();
+
+    if(error){
+      setMessage("Drum update failed: "+error.message);
+      return false;
+    }
+
+    setDrums(current=>current.map(item=>item.id===id ? {...item,...data} : item));
+    setJobCard(current=>current?.id===id ? {...current,...data} : current);
+    setMessage("");
+    return true;
   }
 
   async function deleteDrum(id){
@@ -1176,14 +1214,17 @@ function App(){
       }
     }
 
-    await updateDrum(d.id,{
-      sales_status:"Sold",
+    const soldSaved=await updateDrum(d.id,{
+      lifecycle_status:"Sold",
+      sales_status:"Sold/Shipped",
       production_status:"Manufacturing Complete",
       next_step:"Prepare for shipping",
       custom_price:salePrice,
       shipping_cost:shippingCharged,
       total_price:revenue
     });
+
+    if(!soldSaved) return;
 
     setMessage(
       `Marked sold. Revenue ${money(revenue)} · Shipping ${money(shippingCharged)} charged / ${money(actualShippingCost)} cost · Estimated profit ${money(profit)} · ${paymentStatus}`
@@ -1197,11 +1238,14 @@ function App(){
     const confirmed=window.confirm("Mark this drum as shipped?");
     if(!confirmed) return;
 
-    await updateDrum(d.id,{
-      sales_status:"Shipped",
+    const shippedSaved=await updateDrum(d.id,{
+      lifecycle_status:"Shipped",
+      sales_status:"Sold/Shipped",
       production_status:"Manufacturing Complete",
       next_step:"Complete"
     });
+
+    if(!shippedSaved) return;
 
     setJobCard(null);
     setView("production");
@@ -1212,7 +1256,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.4.7 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.4.8 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1331,11 +1375,12 @@ function App(){
             if(constructionFilter!=="All" && d.build_type!==constructionFilter) return false;
 
             const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish);
-            if(productionFilter==="Pending") return !hasWorkflowStarted(d) && !isSoldStatus(d) && !isShippedStatus(d);
-            if(productionFilter==="Active") return hasWorkflowStarted(d) && !isManufacturingComplete(d) && !isSoldStatus(d) && !isShippedStatus(d);
-            if(productionFilter==="Completed") return isManufacturingComplete(d) && !isSoldStatus(d) && !isShippedStatus(d);
-            if(productionFilter==="Sold") return isSoldStatus(d);
-            if(productionFilter==="Shipped") return isShippedStatus(d);
+            const lifecycle=drumLifecycleStatus(d);
+            if(productionFilter==="Pending") return !hasWorkflowStarted(d) && !["Completed","Sold","Shipped"].includes(lifecycle);
+            if(productionFilter==="Active") return hasWorkflowStarted(d) && !["Completed","Sold","Shipped"].includes(lifecycle);
+            if(productionFilter==="Completed") return lifecycle==="Completed" || (isManufacturingComplete(d) && !["Sold","Shipped"].includes(lifecycle));
+            if(productionFilter==="Sold") return lifecycle==="Sold";
+            if(productionFilter==="Shipped") return lifecycle==="Shipped";
             return true;
           })}
         projects={projects}
@@ -2564,7 +2609,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
     const {data:currentStatusRow,error:statusError}=await supabase
       .from("drums")
-      .select("sales_status")
+      .select("sales_status,lifecycle_status")
       .eq("id",drum.id)
       .single();
 
@@ -2576,6 +2621,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     }
 
     const currentSalesStatus=currentStatusRow?.sales_status || drum.sales_status;
+    const currentLifecycleStatus=currentStatusRow?.lifecycle_status || drum.lifecycle_status || "";
 
     const patch={
       serial:draft.serial,
@@ -2588,6 +2634,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       nowak_serial:draft.nowak_serial || null,
       build_type:localBuildType,
       build_client:localOwnership,
+      lifecycle_status:currentLifecycleStatus || null,
       sales_status:(currentSalesStatus==="Sold" || currentSalesStatus==="Shipped" || currentSalesStatus==="Sold/Shipped")
         ? currentSalesStatus
         : localOwnership==="Brady"
@@ -2659,6 +2706,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     const patch={
       notes:completedNotes,
       stage_history:history,
+      lifecycle_status:"Completed",
       production_status:"Manufacturing Complete",
       next_step:"Marketing / launch optional",
     };
