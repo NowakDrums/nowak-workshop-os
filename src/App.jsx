@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
-  Settings, Layers3, FolderPlus
+  Settings, Layers3, FolderPlus, BarChart3
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import "./style.css";
@@ -1381,7 +1381,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.1.5 — corrected remaining-time estimates and simplified time reporting.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.2.0 — new Workshop Summary with daily hours, value, sales and profit.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1396,6 +1396,7 @@ function App(){
       <button className={view==="veneer"?"active":""} onClick={()=>setView("veneer")}><Ruler size={16}/> Veneer Calc</button>
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
+      <button className={view==="summary"?"active":""} onClick={()=>setView("summary")}><BarChart3 size={16}/> Workshop Summary</button>
       <button className={view==="comms"?"active":""} onClick={()=>setView("comms")}><Mail size={16}/> Comms & Marketing</button>
       <button className={view==="settings"?"active":""} onClick={()=>setView("settings")}><Settings size={16}/> Settings</button>
       <button onClick={()=>{setAddWizardPreset({});setShowAddWizard(true);}}><Plus size={16}/> Add Drum</button>
@@ -1540,6 +1541,7 @@ function App(){
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
     {view==="inventory" && <Inventory hardware={hardware} updateHardware={updateHardware} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
+    {view==="summary" && <WorkshopSummary drums={drums} sales={sales} labourRate={labourRate}/>}
     {view==="comms" && <CommsMarketingCentre
       filteredDrums={filtered}
       allDrums={drums}
@@ -1972,6 +1974,301 @@ function VeneerCalculator({drums, updateDrum, openJobCard}){
 }
 
 function VeneerResult({lengths}){ return <div className="resultList">{lengths.map((l,i)=><div key={i}><b>Layer {i+1}</b><span>{l.toFixed(1)} mm</span></div>)}</div> }
+
+
+function localDateKey(value){
+  if(!value) return "";
+  const date=value instanceof Date ? value : new Date(value);
+  if(Number.isNaN(date.getTime())) return "";
+  const year=date.getFullYear();
+  const month=String(date.getMonth()+1).padStart(2,"0");
+  const day=String(date.getDate()).padStart(2,"0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfLocalDay(date){
+  const copy=new Date(date);
+  copy.setHours(0,0,0,0);
+  return copy;
+}
+
+function workshopPeriodStart(period){
+  const now=startOfLocalDay(new Date());
+  if(period==="Today") return now;
+  if(period==="This Week"){
+    const day=(now.getDay()+6)%7;
+    const start=new Date(now);
+    start.setDate(now.getDate()-day);
+    return start;
+  }
+  if(period==="This Month") return new Date(now.getFullYear(),now.getMonth(),1);
+  return new Date(2000,0,1);
+}
+
+function parseActualTimeEntries(drum){
+  const rows=[];
+  const lines=String(drum.notes || "").split("\n");
+
+  lines.forEach(line=>{
+    const match=line.match(/^(\d{4}-\d{2}-\d{2}):\s*(.*?)\s+(-?\d+(?:\.\d+)?)\s*hr\s*$/i);
+    if(!match) return;
+    const hours=Number(match[3]);
+    if(!Number.isFinite(hours)) return;
+    rows.push({
+      date:match[1],
+      hours,
+      label:match[2].trim() || "Workshop time",
+      drumId:drum.id,
+      serial:drum.serial,
+      timber:drum.timber,
+      buildType:drum.build_type || "Stave",
+    });
+  });
+
+  return rows;
+}
+
+function estimatedStageEvents(drum){
+  const estimates=workflowEstimates[drum.build_type || "Stave"] || workflowEstimates.Stave;
+  const history=Array.isArray(drum.stage_history) ? drum.stage_history : [];
+  const seen=new Set();
+  const rows=[];
+
+  history.forEach(entry=>{
+    if(!entry?.completed || !entry?.completed_at || !entry?.item || seen.has(entry.item)) return;
+    seen.add(entry.item);
+    const hours=Number(estimates[entry.item] || 0);
+    rows.push({
+      date:localDateKey(entry.completed_at),
+      hours,
+      item:entry.item,
+      drumId:drum.id,
+      serial:drum.serial,
+      timber:drum.timber,
+      buildType:drum.build_type || "Stave",
+      completedDrum:entry.item==="Assembled",
+    });
+  });
+
+  return rows;
+}
+
+function saleDateKey(sale){
+  return localDateKey(sale.sold_at || sale.created_at || sale.updated_at);
+}
+
+function WorkshopSummary({drums,sales,labourRate}){
+  const [period,setPeriod]=useState("This Month");
+  const [dailyRange,setDailyRange]=useState(30);
+  const start=workshopPeriodStart(period);
+  const end=new Date();
+  end.setHours(23,59,59,999);
+
+  const actualEntries=useMemo(()=>drums.flatMap(parseActualTimeEntries),[drums]);
+  const stageEvents=useMemo(()=>drums.flatMap(estimatedStageEvents),[drums]);
+
+  const withinPeriod=dateKey=>{
+    if(!dateKey) return false;
+    const date=new Date(`${dateKey}T00:00:00`);
+    return date>=start && date<=end;
+  };
+
+  const periodActual=actualEntries.filter(row=>withinPeriod(row.date));
+  const periodStages=stageEvents.filter(row=>withinPeriod(row.date));
+  const periodSales=sales.filter(sale=>withinPeriod(saleDateKey(sale)));
+
+  const estimatedHours=periodStages.reduce((sum,row)=>sum+row.hours,0);
+  const actualHours=periodActual.reduce((sum,row)=>sum+row.hours,0);
+  const labourValue=estimatedHours*Number(labourRate||0);
+  const actualLabourValue=actualHours*Number(labourRate||0);
+  const salesRevenue=periodSales.reduce((sum,sale)=>sum+Number(sale.total_revenue ?? sale.sale_price ?? 0),0);
+  const salesProfit=periodSales.reduce((sum,sale)=>sum+Number(sale.profit || 0),0);
+  const drumsCompleted=new Set(periodStages.filter(row=>row.completedDrum).map(row=>row.drumId)).size;
+  const drumsProgressed=new Set(periodStages.map(row=>row.drumId)).size;
+
+  const constructionBreakdown=["Stave","Ply"].map(type=>{
+    const stages=periodStages.filter(row=>row.buildType===type);
+    const actual=periodActual.filter(row=>row.buildType===type);
+    return {
+      type,
+      estimated:stages.reduce((sum,row)=>sum+row.hours,0),
+      actual:actual.reduce((sum,row)=>sum+row.hours,0),
+      drums:new Set(stages.map(row=>row.drumId)).size,
+    };
+  });
+
+  const taskBreakdown=Object.entries(periodStages.reduce((group,row)=>{
+    group[row.item]=(group[row.item] || 0)+row.hours;
+    return group;
+  },{}))
+    .map(([task,hours])=>({task,hours}))
+    .sort((a,b)=>b.hours-a.hours);
+
+  const dailyMap={};
+  const addDay=date=>{
+    if(!dailyMap[date]){
+      dailyMap[date]={
+        date,
+        estimated:0,
+        actual:0,
+        drums:new Set(),
+        completed:new Set(),
+        revenue:0,
+        profit:0,
+      };
+    }
+    return dailyMap[date];
+  };
+
+  stageEvents.forEach(row=>{
+    const day=addDay(row.date);
+    day.estimated+=row.hours;
+    day.drums.add(row.drumId);
+    if(row.completedDrum) day.completed.add(row.drumId);
+  });
+
+  actualEntries.forEach(row=>{
+    addDay(row.date).actual+=row.hours;
+  });
+
+  sales.forEach(sale=>{
+    const date=saleDateKey(sale);
+    if(!date) return;
+    const day=addDay(date);
+    day.revenue+=Number(sale.total_revenue ?? sale.sale_price ?? 0);
+    day.profit+=Number(sale.profit || 0);
+  });
+
+  const dailyCutoff=startOfLocalDay(new Date());
+  dailyCutoff.setDate(dailyCutoff.getDate()-(dailyRange-1));
+
+  const dailyRows=Object.values(dailyMap)
+    .filter(row=>new Date(`${row.date}T00:00:00`)>=dailyCutoff)
+    .sort((a,b)=>b.date.localeCompare(a.date));
+
+  function exportCsv(){
+    const header=["Date","Estimated Hours Completed","Actual Hours Logged","Labour Value","Drums Progressed","Drums Completed","Sales Revenue","Estimated Profit"];
+    const rows=dailyRows.map(row=>[
+      row.date,
+      row.estimated.toFixed(2),
+      row.actual.toFixed(2),
+      (row.estimated*Number(labourRate||0)).toFixed(2),
+      row.drums.size,
+      row.completed.size,
+      row.revenue.toFixed(2),
+      row.profit.toFixed(2),
+    ]);
+    const csv=[header,...rows].map(row=>row.map(value=>`"${String(value).replaceAll('"','""')}"`).join(",")).join("\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement("a");
+    link.href=url;
+    link.download=`nowak-workshop-summary-${localDateKey(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return <section className="workshopSummary">
+    <section className="panel summaryHeader">
+      <div>
+        <span className="launchPackEyebrow">WORKSHOP PERFORMANCE</span>
+        <h2>Workshop Summary</h2>
+        <p>Estimated production value, recorded workshop time, completed work and sales in one place.</p>
+      </div>
+      <div className="summaryHeaderActions">
+        <div className="filterRow">
+          {["Today","This Week","This Month","All Time"].map(item=>
+            <button key={item} className={period===item?"primary":""} onClick={()=>setPeriod(item)}>{item}</button>
+          )}
+        </div>
+        <button onClick={exportCsv}>Export CSV</button>
+      </div>
+    </section>
+
+    <section className="stats summaryStats">
+      <div><b>{estimatedHours.toFixed(2)}</b><span>Estimated hours completed</span></div>
+      <div><b>{actualHours.toFixed(2)}</b><span>Actual hours logged</span></div>
+      <div><b>{money(labourValue)}</b><span>Estimated labour value</span></div>
+      <div><b>{money(actualLabourValue)}</b><span>Actual logged labour value</span></div>
+      <div><b>{drumsProgressed}</b><span>Drums progressed</span></div>
+      <div><b>{drumsCompleted}</b><span>Drums assembled</span></div>
+      <div><b>{money(salesRevenue)}</b><span>Sales revenue</span></div>
+      <div><b>{money(salesProfit)}</b><span>Estimated sales profit</span></div>
+    </section>
+
+    <section className="summaryGrid">
+      <article className="panel">
+        <h2>Construction Breakdown</h2>
+        <div className="summaryBreakdown">
+          {constructionBreakdown.map(row=><div key={row.type}>
+            <b>{row.type}</b>
+            <span>{row.estimated.toFixed(2)} estimated hr</span>
+            <span>{row.actual.toFixed(2)} actual hr</span>
+            <span>{row.drums} drum{row.drums===1?"":"s"} progressed</span>
+          </div>)}
+        </div>
+      </article>
+
+      <article className="panel">
+        <h2>Work Completed by Task</h2>
+        {taskBreakdown.length===0
+          ? <p>No dated stage completions in this period.</p>
+          : <div className="summaryTaskList">{taskBreakdown.map(row=><div key={row.task}>
+              <span>{row.task}</span><b>{row.hours.toFixed(2)} hr</b>
+            </div>)}</div>}
+      </article>
+    </section>
+
+    <section className="panel">
+      <div className="summaryTableHeader">
+        <div>
+          <h2>Daily Summary</h2>
+          <p>Based on dated stage history, actual-time notes and sales records.</p>
+        </div>
+        <select value={dailyRange} onChange={e=>setDailyRange(Number(e.target.value))}>
+          <option value={7}>Last 7 days</option>
+          <option value={30}>Last 30 days</option>
+          <option value={90}>Last 90 days</option>
+          <option value={365}>Last 12 months</option>
+        </select>
+      </div>
+
+      <div className="tableWrap">
+        <table>
+          <thead><tr>
+            <th>Date</th>
+            <th>Est. hours</th>
+            <th>Actual hours</th>
+            <th>Labour value</th>
+            <th>Drums progressed</th>
+            <th>Completed</th>
+            <th>Sales</th>
+            <th>Profit</th>
+          </tr></thead>
+          <tbody>
+            {dailyRows.length===0 && <tr><td colSpan="8">No dated activity found for this range.</td></tr>}
+            {dailyRows.map(row=><tr key={row.date}>
+              <td>{new Intl.DateTimeFormat("en-AU",{day:"numeric",month:"short",year:"numeric"}).format(new Date(`${row.date}T00:00:00`))}</td>
+              <td>{row.estimated.toFixed(2)}</td>
+              <td>{row.actual.toFixed(2)}</td>
+              <td>{money(row.estimated*Number(labourRate||0))}</td>
+              <td>{row.drums.size}</td>
+              <td>{row.completed.size}</td>
+              <td>{money(row.revenue)}</td>
+              <td>{money(row.profit)}</td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section className="panel summaryMethodNote">
+      <h3>How the figures are calculated</h3>
+      <p><b>Estimated hours completed</b> come from each production stage’s saved completion date. <b>Actual hours</b> only appear when time is entered with Add actual time. <b>Sales and profit</b> come from saved sales records.</p>
+      <p>Older work without dated stage history or actual-time entries cannot be assigned accurately to a specific day, so it may not appear in the daily table.</p>
+    </section>
+  </section>
+}
 
 function Inventory({hardware, updateHardware, lowStock, inventoryValue}){ return <section className="panel"><h2>Hardware Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p><div className="tableWrap"><table><thead><tr><th>Part</th><th>Code</th><th>Finish</th><th>Size</th><th>Qty</th><th>Reorder</th><th>Landed AUD</th><th>Status</th></tr></thead><tbody>{hardware.map(p=><tr key={p.id}><td>{p.part_name}<br/><small>{p.category}</small></td><td>{p.code}</td><td>{p.finish}</td><td>{p.size}</td><td><input value={p.qty_on_hand??0} onChange={e=>updateHardware(p.id,{qty_on_hand:Number(e.target.value)})}/></td><td>{p.reorder_level}</td><td>{money(p.landed_cost_aud)}</td><td>{Number(p.qty_on_hand||0)<=Number(p.reorder_level||0)?<span className="dangerText">Order</span>:<span className="okText">OK</span>}</td></tr>)}</tbody></table></div></section> }
 
