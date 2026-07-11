@@ -372,7 +372,17 @@ function isCustomCustomerDrum(drum){
 }
 
 function milestoneMessage(drum,milestoneKey){
-  const m=photoMilestones[milestoneKey] || photoMilestones.blank;
+  const base=photoMilestones[milestoneKey] || photoMilestones.blank;
+  const m={
+    ...base,
+    label:milestoneKey==="shellcomplete"
+      ? drum.build_client==="Brady"
+        ? "Brady Shell Complete"
+        : drum.build_client==="Nowak"
+          ? (isCustomCustomerDrum(drum) ? "Nowak Custom Drum Complete" : "Nowak Drum Complete")
+          : "Shell Complete"
+      : base.label,
+  };
   const customer=allocatedCustomerName(drum);
   const descriptor=`${drum.timber || ""} ${drum.size || ""} ${drum.drum_type || "drum"}`.trim();
 
@@ -1311,7 +1321,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.0.1 — reliable checklist saving and separated production, fulfilment and marketing.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.0.2 — corrected photo prompts, Save & Close and compact mobile footer.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -2457,8 +2467,18 @@ function DrumPhotoLibrary({drumId}){
 function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
   const cameraInputRef=useRef(null);
   const libraryInputRef=useRef(null);
-  const milestone=photoMilestones[milestoneKey] || photoMilestones.blank;
-  const message=milestoneMessage(drum,milestoneKey);
+  const baseMilestone=photoMilestones[milestoneKey] || photoMilestones.blank;
+  const milestone={
+    ...baseMilestone,
+    label:milestoneKey==="shellcomplete"
+      ? drum.build_client==="Brady"
+        ? "Brady Shell Complete"
+        : drum.build_client==="Nowak"
+          ? (isCustomCustomerDrum(drum) ? "Nowak Custom Drum Complete" : "Nowak Drum Complete")
+          : "Shell Complete"
+      : baseMilestone.label,
+  };
+  const message=milestoneMessage({...drum},milestoneKey);
   const [files,setFiles]=useState([]);
   const [socialText,setSocialText]=useState(message.social);
   const [emailSubject,setEmailSubject]=useState(message.emailSubject);
@@ -2557,11 +2577,13 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       <button type="button" className="primary uploadPhotosButton" disabled={status==="Uploading photos..."} onClick={uploadPhotos}><Camera size={16}/> {status==="Uploading photos..." ? "Uploading..." : "Upload and Store Photos"}</button>
       {status && <p className={(status.toLowerCase().includes("failed") || status.toLowerCase().includes("error")) ? "dangerText" : "okText"}>{status}</p>}
 
-      <h3>Prepopulated social message</h3>
-      <textarea value={socialText} onChange={e=>setSocialText(e.target.value)}/>
-      <button onClick={()=>copy(socialText,"Social message")}>Copy social message</button>
+      {drum.build_client!=="Brady" && <>
+        <h3>Prepopulated social message</h3>
+        <textarea value={socialText} onChange={e=>setSocialText(e.target.value)}/>
+        <button onClick={()=>copy(socialText,"Social message")}>Copy social message</button>
+      </>}
 
-      {isCustomCustomerDrum(drum) && <>
+      {drum.build_client!=="Brady" && isCustomCustomerDrum(drum) && <>
         <h3>Customer update email</h3>
         {!customerEmail && <p className="dangerText">No customer email is saved yet. Enter it below before opening the email.</p>}
         <label>Customer email address</label>
@@ -2619,6 +2641,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     order_type:drum.sales_status==="Custom Order" ? "Custom" : "Stock",
   });
   const [savedMessage,setSavedMessage]=useState("");
+  const [isSaving,setIsSaving]=useState(false);
   const [projectMessage,setProjectMessage]=useState("");
   const [photoPrompt,setPhotoPrompt]=useState(null);
   const flow=workflowState(localBuildType,checked,draft.finish);
@@ -2661,6 +2684,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   }
 
   async function saveAllChanges(){
+    if(isSaving) return false;
+    setIsSaving(true);
     const nextFlow=workflowState(localBuildType,checked,draft.finish);
     setSavedMessage("Saving...");
 
@@ -2674,6 +2699,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       const detail="Save failed: "+statusError.message;
       setSavedMessage(detail);
       setMessage(detail);
+      setIsSaving(false);
       return false;
     }
 
@@ -2736,6 +2762,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       const detail="Save failed: " + error.message;
       setSavedMessage(detail);
       setMessage(detail);
+      setIsSaving(false);
       return false;
     }
 
@@ -2743,6 +2770,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       const detail="Save failed: Supabase did not return the updated drum. Check database permissions.";
       setSavedMessage(detail);
       setMessage(detail);
+      setIsSaving(false);
       return false;
     }
 
@@ -2751,6 +2779,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     setMessage("");
     setSavedMessage(data.lifecycle_status==="Shipped" ? "Saved — moved to Shipped" : "All changes saved");
     setTimeout(()=>setSavedMessage(""),3000);
+    setIsSaving(false);
     return true;
   }
 
@@ -3107,11 +3136,11 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       setMessage={setMessage}
     />}
 
-    <section className="jobSaveFooter">
+    <section className="jobSaveFooter compactJobFooter">
       <div className="jobFooterButtons">
-        <button className="primary saveChangesButton" onClick={saveAllChanges}><Save size={18}/> Save Changes</button>
-        <button className="primary saveCloseButton" onClick={saveAndClose}><Save size={18}/> Save & Close</button>
-        <button className="closeJobButton" onClick={onClose}>Close</button>
+        <button className="saveChangesButton" disabled={isSaving} onClick={saveAllChanges}><Save size={15}/> {isSaving ? "Saving..." : "Save"}</button>
+        <button className="primary saveCloseButton" disabled={isSaving} onClick={saveAndClose}><Save size={15}/> Save & Close</button>
+        <button className="closeJobButton" disabled={isSaving} onClick={onClose}>Close</button>
       </div>
       {savedMessage && <span className="saveMessage">{savedMessage}</span>}
     </section>

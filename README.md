@@ -1,28 +1,30 @@
-# Nowak Workshop OS v6.0.1
-
-Checklist saving and workflow separation fix.
+# Nowak Workshop OS v6.0.2
 
 ## Fixed
-- Save Changes now verifies the updated drum row from Supabase.
-- Save & Close only closes after Supabase confirms the save.
-- Checkbox changes show Saving checklist, Checklist saved, or Saved — moved to Shipped.
-- Reopening the Job Card shows the stored checkbox values.
 
-## Workflow separation
-Production ends at Assembled and controls production percentage and estimated workshop time.
+### Correct completed-build photo title
+The completed shell/photo prompt now uses the drum ownership:
 
-Fulfilment contains:
-- Photos taken
-- Packed
-- Shipped
+- Brady build: `Brady Shell Complete`
+- Nowak custom: `Nowak Custom Drum Complete`
+- Nowak stock: `Nowak Drum Complete`
+- Unallocated: `Shell Complete`
 
-Optional Marketing contains:
-- Website listing
-- Facebook / Instagram
-- YouTube demo
+Brady prompts are internal documentation only and no longer show social or customer-email content.
 
-Fulfilment and marketing no longer add production hours.
+### Save & Close
+The Save & Close handler is now correctly asynchronous. It waits for Supabase to confirm the save before closing the Job Card.
 
-Completed, Sold and Shipped drums show 0.00 production hours remaining.
+Buttons show `Saving...` and are disabled while the save is in progress, preventing duplicate clicks.
 
-No new Supabase migration is required after v6.0.0.
+### Mobile footer
+The oversized sticky footer has been replaced with a compact control bar:
+
+- Save
+- Save & Close
+- Close
+
+It remains accessible at the bottom without covering as much of the Job Card.
+
+## Supabase
+No new migration is required after v6.0.0.
