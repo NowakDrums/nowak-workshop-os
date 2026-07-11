@@ -555,3 +555,9 @@ button:disabled{opacity:.55;cursor:not-allowed}
   color:#a9dbfa;
   background:rgba(97,184,238,.10);
 }
+
+.lifecycleStoredLine{
+  margin-top:-6px;
+  color:#9f9789;
+  font-size:11px;
+}

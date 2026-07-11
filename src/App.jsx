@@ -1136,14 +1136,29 @@ function App(){
       ...extraPatch,
     };
 
-    // Keep the legacy field compatible with older versions of the app.
+    // Preserve compatibility with previous releases.
     if(status==="Sold" || status==="Shipped"){
       patch.sales_status="Sold/Shipped";
     }
 
-    const saved=await updateDrum(d.id,patch);
-    if(!saved) return false;
+    const {data,error}=await supabase
+      .from("drums")
+      .update(patch)
+      .eq("id",d.id)
+      .select("*")
+      .single();
 
+    if(error){
+      setMessage(`Could not mark drum ${status.toLowerCase()}: ${error.message}`);
+      return false;
+    }
+
+    if(!data || drumLifecycleStatus(data)!==status){
+      setMessage(`The database did not confirm the ${status} status. Please run the v6 Supabase migration.`);
+      return false;
+    }
+
+    setDrums(current=>current.map(item=>item.id===d.id ? {...item,...data} : item));
     setJobCard(null);
     setView("production");
     setProductionFilter(status);
@@ -1153,12 +1168,12 @@ function App(){
   async function markSold(d){
     const defaultSalePrice=Number(d.custom_price || d.retail_price || 0);
     const saleEntry=prompt("Drum selling price (excluding shipping)?", defaultSalePrice);
-    if(saleEntry===null) return;
+    if(saleEntry===null) return false;
 
     const salePrice=Number(saleEntry);
     if(Number.isNaN(salePrice) || salePrice<0){
       setMessage("Please enter a valid selling price.");
-      return;
+      return false;
     }
 
     const defaultShippingCharged=Number(d.shipping_cost || 0);
@@ -1166,31 +1181,31 @@ function App(){
       "Shipping charged to customer? Enter 0 for free shipping or local pickup.",
       defaultShippingCharged
     );
-    if(shippingChargedEntry===null) return;
+    if(shippingChargedEntry===null) return false;
 
     const shippingCharged=Number(shippingChargedEntry);
     if(Number.isNaN(shippingCharged) || shippingCharged<0){
       setMessage("Please enter a valid shipping amount charged to the customer.");
-      return;
+      return false;
     }
 
     const actualShippingEntry=prompt(
       "Actual shipping cost to Nowak? Enter 0 for local pickup or if not known yet.",
       0
     );
-    if(actualShippingEntry===null) return;
+    if(actualShippingEntry===null) return false;
 
     const actualShippingCost=Number(actualShippingEntry);
     if(Number.isNaN(actualShippingCost) || actualShippingCost<0){
       setMessage("Please enter a valid actual shipping cost.");
-      return;
+      return false;
     }
 
     const paymentEntry=prompt(
       "Payment status?\n\nEnter: Paid in Full, Deposit Paid, Invoice Sent, or Awaiting Payment",
       "Paid in Full"
     );
-    if(paymentEntry===null) return;
+    if(paymentEntry===null) return false;
 
     const paymentStatus=String(paymentEntry || "Awaiting Payment").trim();
     const costBasis=templateCost(templateMap[d.template_name],labourRate);
@@ -1198,7 +1213,17 @@ function App(){
     const shippingProfit=shippingCharged-actualShippingCost;
     const profit=revenue-costBasis-actualShippingCost;
 
-    const saleRecord={
+    // IMPORTANT: save the lifecycle first. A sales-table issue must never stop
+    // the drum moving into the Sold tab.
+    const soldSaved=await setDrumLifecycle(d,"Sold",{
+      custom_price:salePrice,
+      shipping_cost:shippingCharged,
+      total_price:revenue
+    });
+
+    if(!soldSaved) return false;
+
+    const fullSaleRecord={
       serial:d.serial,
       timber:d.timber,
       customer:d.customer,
@@ -1210,53 +1235,61 @@ function App(){
       total_revenue:revenue,
       cost_basis:costBasis,
       profit,
-      notes:"Marked sold from Workshop OS"
+      notes:"Marked sold from Workshop OS v6"
     };
 
-    const {data:existingSale,error:lookupError}=await supabase
-      .from("sales")
-      .select("id")
-      .eq("drum_id",d.id)
-      .limit(1);
+    const basicSaleRecord={
+      serial:d.serial,
+      timber:d.timber,
+      customer:d.customer,
+      sale_price:salePrice,
+      cost_basis:costBasis,
+      profit,
+      notes:`Marked sold from Workshop OS v6. Shipping charged: ${shippingCharged}. Actual shipping cost: ${actualShippingCost}. Payment: ${paymentStatus}.`
+    };
 
-    if(lookupError){
-      setMessage(lookupError.message);
-      return;
-    }
+    let financialWarning="";
 
-    if(existingSale?.length){
-      const {error:updateSaleError}=await supabase
+    try{
+      const {data:existingSale,error:lookupError}=await supabase
         .from("sales")
-        .update(saleRecord)
-        .eq("drum_id",d.id);
+        .select("id")
+        .eq("drum_id",d.id)
+        .limit(1);
 
-      if(updateSaleError){
-        setMessage(updateSaleError.message);
-        return;
-      }
-    }else{
-      const {error:insertError}=await supabase.from("sales").insert({
-        drum_id:d.id,
-        ...saleRecord
-      });
+      if(lookupError) throw lookupError;
 
-      if(insertError){
-        setMessage(insertError.message);
-        return;
+      const saveFull=async()=>{
+        if(existingSale?.length){
+          return await supabase.from("sales").update(fullSaleRecord).eq("drum_id",d.id);
+        }
+        return await supabase.from("sales").insert({drum_id:d.id,...fullSaleRecord});
+      };
+
+      let {error:saleError}=await saveFull();
+
+      // Backwards-compatible fallback for databases that have not yet added
+      // the extended shipping/payment columns.
+      if(saleError){
+        const fallback=existingSale?.length
+          ? await supabase.from("sales").update(basicSaleRecord).eq("drum_id",d.id)
+          : await supabase.from("sales").insert({drum_id:d.id,...basicSaleRecord});
+
+        if(fallback.error){
+          financialWarning=` Sale status was saved, but the financial record could not be saved: ${fallback.error.message}`;
+        }else{
+          financialWarning=" Sale status was saved. Shipping and payment details were stored in the sales notes; run the v6 migration to enable dedicated fields.";
+        }
       }
+    }catch(error){
+      financialWarning=` Sale status was saved, but the financial record could not be saved: ${error?.message || String(error)}`;
     }
-
-    const soldSaved=await setDrumLifecycle(d,"Sold",{
-      custom_price:salePrice,
-      shipping_cost:shippingCharged,
-      total_price:revenue
-    });
-
-    if(!soldSaved) return;
 
     setMessage(
-      `Marked sold. Revenue ${money(revenue)} · Shipping ${money(shippingCharged)} charged / ${money(actualShippingCost)} cost · Estimated profit ${money(profit)} · ${paymentStatus}`
+      `Marked sold. Revenue ${money(revenue)} · Shipping ${money(shippingCharged)} charged / ${money(actualShippingCost)} cost · Estimated profit ${money(profit)} · ${paymentStatus}.${financialWarning}`
     );
+
+    return true;
   }
 
   async function markShipped(d){
@@ -1269,7 +1302,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.5.0 — unified Complete, Sold and Shipped status engine.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.0.0 — reliable lifecycle and sale-record stability release.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1516,6 +1549,7 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     {drum.build_client==="Nowak" && drum.nowak_serial && <span className="nowakSerialBadge">Serial {drum.nowak_serial}</span>}
     <div className="progress"><i style={{width:(isManufacturingComplete(drum)?100:flow.percent)+"%"}}></i></div>
     <p><b>Status:</b> {isShippedStatus(drum) ? "Shipped" : isSoldStatus(drum) ? "Sold" : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status}</p>
+    {drum.lifecycle_status && <p className="lifecycleStoredLine"><b>Stored lifecycle:</b> {drum.lifecycle_status}</p>}
     <p><b>Next:</b> {isShippedStatus(drum) ? "Complete" : isSoldStatus(drum) ? "Ship the drum" : isManufacturingComplete(drum) ? "Marketing / launch optional" : flow.nextStep}</p>
     <p><b>Estimated:</b> {flow.estimatedCompleted.toFixed(2)} hr completed · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>

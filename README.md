@@ -1,42 +1,38 @@
-# Nowak Workshop OS v5.5.0 — Lifecycle Stability Release
+# Nowak Workshop OS v6.0.0 — Stability Release
 
-This release fixes the Complete, Sold and Shipped workflow without changing the visual structure of the app.
+This release fixes the recurring issue where a drum could be marked Sold but remain in Completed.
 
-## Main fix
+## Root cause fixed
 
-The previous Shipped button was not connected to the App-level shipping function. It could display in the Job Card but could not reliably update the database.
+Earlier releases attempted to save the financial sales record before changing the drum lifecycle. If the `sales` table was missing one of the newer shipping/payment columns, the process stopped before the drum was marked Sold.
 
-v5.5.0 now uses one lifecycle engine for:
+v6 changes the order:
 
-- Completed
-- Sold
-- Shipped
+1. The drum lifecycle is saved and verified first.
+2. The drum immediately moves to the Sold tab.
+3. The financial sales record is saved afterwards.
+4. If the extended sales columns are unavailable, the app falls back to the older sales structure and preserves shipping/payment information in Notes.
 
-All three actions:
-1. write the dedicated `lifecycle_status`,
-2. confirm Supabase accepted the update,
-3. update the app immediately,
-4. close the Job Card,
-5. open the correct Production tab.
-
-## Production #144
-
-The migration includes the confirmed correction:
-
-- Lifecycle: Shipped
-- Legacy sales status: Sold/Shipped
-- Production status: Manufacturing Complete
-- Next: Complete
-
-After running the migration and deploying v5.5.0, #144 should appear in the Shipped tab.
+A sales-table issue can no longer prevent the drum moving to Sold.
 
 ## Installation
 
-1. Run `supabase/v5_5_0_lifecycle_stability.sql`.
-2. Confirm the result includes #144 with `lifecycle_status = Shipped`.
+1. Run:
+   `supabase/v6_0_0_comprehensive_stability.sql`
+2. Confirm:
+   `v6.0.0 comprehensive stability setup complete`
 3. Deploy this ZIP to Vercel.
 4. Confirm the banner says:
-   `v5.5.0 — unified Complete, Sold and Shipped status engine.`
+   `v6.0.0 — reliable lifecycle and sale-record stability release.`
 5. Hard refresh Safari with Command + Option + R.
 
-No other workflow, Launch Pack, media or communication features were removed.
+## Testing Production #142
+
+Open #142 and press Sold again. The drum should:
+- close the Job Card,
+- open Production,
+- select Sold,
+- display a Sold lifecycle badge.
+
+The included diagnostic SQL can be used to inspect the stored database status:
+`supabase/diagnose_production_142.sql`
