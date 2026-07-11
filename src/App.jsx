@@ -1000,6 +1000,58 @@ function App(){
   const cureQueue=active.filter(d=>["Polyurethane Coat 4","Finished Spraying / Curing"].includes(d.production_status)).length;
   const photoQueue=active.filter(d=>d.production_status==="Finished / Ready to Sell").length;
   const outstandingFinalWork=filtered.filter(d=>outstandingWorkFromNotes(d.notes));
+  const staveInProduction=drums.filter(d=>
+    d.build_type==="Stave" &&
+    !isManufacturingComplete(d) &&
+    !isSoldStatus(d) &&
+    !isShippedStatus(d)
+  ).length;
+  const plyInProduction=drums.filter(d=>
+    d.build_type==="Ply" &&
+    !isManufacturingComplete(d) &&
+    !isSoldStatus(d) &&
+    !isShippedStatus(d)
+  ).length;
+  const completedStock=drums.filter(d=>
+    drumLifecycleStatus(d)==="Completed" &&
+    d.build_client==="Nowak" &&
+    d.sales_status!=="Custom Order"
+  ).length;
+
+  function dueWithinDays(d,days){
+    if(!d.due_date) return false;
+    const due=new Date(`${d.due_date}T23:59:59`);
+    const now=new Date();
+    const limit=new Date();
+    limit.setDate(limit.getDate()+days);
+    return due>=now && due<=limit;
+  }
+
+  function attentionReasons(d){
+    const reasons=[];
+    const due=d.due_date ? new Date(`${d.due_date}T23:59:59`) : null;
+    if(due && due<new Date() && !isShippedStatus(d)) reasons.push("Overdue");
+    else if(dueWithinDays(d,7) && !isShippedStatus(d)) reasons.push("Due within 7 days");
+
+    if(outstandingWorkFromNotes(d.notes)) reasons.push(outstandingWorkFromNotes(d.notes));
+    if(isSoldStatus(d) && !isShippedStatus(d)) reasons.push("Sold — awaiting shipment");
+
+    const isNowakCustom=d.build_client==="Nowak" && d.sales_status==="Custom Order";
+    if(isNowakCustom && !String(d.customer || "").trim()) reasons.push("Customer name missing");
+    if(isNowakCustom && !String(d.customer_email || "").trim()) reasons.push("Customer email missing");
+
+    return reasons;
+  }
+
+  const needsAttention=drums
+    .map(d=>({drum:d,reasons:attentionReasons(d)}))
+    .filter(item=>item.reasons.length>0)
+    .sort((a,b)=>{
+      const aOverdue=a.reasons.includes("Overdue");
+      const bOverdue=b.reasons.includes("Overdue");
+      if(aOverdue!==bOverdue) return aOverdue ? -1 : 1;
+      return productionPriorityCompare(a.drum,b.drum);
+    });
 
 
   async function createProject(nameOverride=""){
@@ -1379,9 +1431,16 @@ function App(){
 
   function copyText(text,label){ navigator.clipboard?.writeText(text); alert(label + " copied"); }
 
+  function openProductionView({status="All",construction="All",searchValue=""}={}){
+    setProductionFilter(status);
+    setConstructionFilter(construction);
+    setSearch(searchValue);
+    setView("production");
+  }
+
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.2.0 — new Workshop Summary with daily hours, value, sales and profit.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.2.1 — expanded Dashboard and genuine Needs Attention queue.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1406,24 +1465,81 @@ function App(){
     {loading && <section className="panel">Loading...</section>}
 
     {view==="dashboard" && <>
-      <section className="stats">
-        <div><b>{active.length}</b><span>Active drums</span></div>
-        <div><b>{active.filter(d=>d.sales_status==="Custom Order").length}</b><span>Custom orders</span></div>
-        <div><b>{brady}</b><span>Brady / CB drums</span></div>
-        <div><b>{overdue}</b><span>Overdue jobs</span></div>
-        <div><b>{money(retail)}</b><span>Potential retail</span></div>
-        <div><b>{money(inventoryValue)}</b><span>Hardware stock value</span></div>
-        <div><b>{money(retail-cost)}</b><span>Estimated gross profit</span></div>
-        <div><b>{Object.keys(batches).length}</b><span>Suggested batches</span></div>
+      <section className="panel dashboardIntro">
+        <div>
+          <span className="launchPackEyebrow">CURRENT WORKSHOP SNAPSHOT</span>
+          <h2>Dashboard</h2>
+          <p>Live operational figures. Use Workshop Summary for daily, weekly and monthly performance.</p>
+        </div>
+        <button onClick={()=>setView("summary")}><BarChart3 size={16}/> Open Workshop Summary</button>
+      </section>
+
+      <section className="stats dashboardStats">
+        <button className="dashboardStatCard" onClick={()=>openProductionView()}>
+          <b>{active.length}</b><span>Active drums</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>{setSearch("");setView("orders");}}>
+          <b>{active.filter(d=>d.sales_status==="Custom Order").length}</b><span>Custom orders</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>openProductionView({searchValue:"Brady"})}>
+          <b>{brady}</b><span>Brady / CB drums</span>
+        </button>
+        <button className="dashboardStatCard attentionStatCard" onClick={()=>{setSearch("");setView("orders");}}>
+          <b>{overdue}</b><span>Overdue jobs</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>openProductionView()}>
+          <b>{money(retail)}</b><span>Potential retail</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>setView("inventory")}>
+          <b>{money(inventoryValue)}</b><span>Hardware stock value</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>setView("summary")}>
+          <b>{money(retail-cost)}</b><span>Estimated gross profit</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>openProductionView({status:"Active",construction:"Stave"})}>
+          <b>{staveInProduction}</b><span>Stave drums in production</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>openProductionView({status:"Active",construction:"Ply"})}>
+          <b>{plyInProduction}</b><span>Ply drums in production</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>openProductionView({status:"Completed",construction:"All"})}>
+          <b>{completedStock}</b><span>Completed drums in stock</span>
+        </button>
       </section>
 
       <section className="quickGrid">
         <article className="panel"><h2>Cure Queue</h2><b className="bigNumber">{cureQueue}</b><p>Drums curing or waiting to polish.</p></article>
         <article className="panel"><h2>Photo / Marketing Queue</h2><b className="bigNumber">{photoQueue}</b><p>Finished drums needing photos, website, social or YouTube.</p></article>
-        <article className="panel bradyPanel"><h2>Brady / CB Queue</h2><b className="bigNumber">{brady}</b><p>Drums being built for Chris Brady / Brady Drums.</p></article>
+        <article className="panel bradyPanel"><h2>Suggested Work Batches</h2><b className="bigNumber">{Object.keys(batches).length}</b><p>Current Workshop Today task groups.</p></article>
       </section>
 
-      <section className="panel"><h2>Priority Jobs</h2>{filtered.filter(d=>d.next_step).slice(0,8).map(d=><DrumCard key={d.id} drum={d} openJobCard={setJobCard} progressDrum={progressDrumFromCard} progressing={progressingDrumId===d.id} onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}/>)}</section>
+      <section className="panel needsAttentionPanel">
+        <div className="needsAttentionHeader">
+          <div>
+            <span className="launchPackEyebrow">ACTION REQUIRED</span>
+            <h2>Needs Attention</h2>
+            <p>Only drums with a clear operational issue appear here.</p>
+          </div>
+          <b>{needsAttention.length}</b>
+        </div>
+
+        {needsAttention.length===0
+          ? <p className="okText">Nothing currently needs attention.</p>
+          : <div className="needsAttentionList">
+              {needsAttention.map(({drum,reasons})=><article className="attentionJobCard" key={drum.id}>
+                <div className="attentionJobHeader">
+                  <div>
+                    <b>#{drum.serial} {drum.timber}</b>
+                    <span>{drum.size} · {drum.build_type} · {allocatedCustomerName(drum) || displaySalesBadge(drum)}</span>
+                  </div>
+                  <button onClick={()=>setJobCard(drum)}>Open Job Card</button>
+                </div>
+                <div className="attentionReasonRow">
+                  {reasons.map(reason=><span className={"attentionReason "+(reason==="Overdue"?"urgentAttention":"")} key={reason}>{reason}</span>)}
+                </div>
+              </article>)}
+            </div>}
+      </section>
     </>}
 
     {view==="today" && <section className="batchGrid">

@@ -1,30 +1,40 @@
-# Nowak Workshop OS v6.2.0
+# Nowak Workshop OS v6.2.1
 
-## Workshop Summary
+## Expanded Dashboard
 
-A new Workshop Summary tab provides:
+The Dashboard now provides the current workshop snapshot:
 
-- Today, This Week, This Month and All Time views
-- Estimated production hours completed
-- Actual workshop hours logged
-- Estimated labour value created
-- Actual logged labour value
-- Drums progressed
-- Drums assembled
-- Sales revenue
-- Estimated sales profit
-- Stave versus Ply breakdown
-- Work completed by task
-- Daily activity table
-- CSV export
+- Active drums
+- Custom orders
+- Brady / CB drums
+- Overdue jobs
+- Potential retail
+- Hardware stock value
+- Estimated gross profit
+- Stave drums in production
+- Ply drums in production
+- Completed drums in stock
 
-## Calculation sources
+The relevant cards are clickable and open Production, Orders, Inventory or Workshop Summary.
 
-- Estimated hours are calculated from each dated stage-history completion and the existing workshop estimates.
-- Actual hours are calculated from entries created through Add actual time.
-- Sales and profit come from the existing sales records.
-- Labour value uses the current labour rate in Costing.
+## Needs Attention
 
-Historical activity without a saved completion date or actual-time entry cannot be allocated reliably to a specific day.
+The old Priority Jobs section has been removed.
+
+A drum only appears under Needs Attention when it has a clear issue:
+
+- Overdue
+- Due within seven days
+- Outstanding final work
+- Sold but awaiting shipment
+- Missing customer name on a Nowak custom order
+- Missing customer email on a Nowak custom order
+
+This avoids duplicating Workshop Today and makes the Dashboard genuinely action-focused.
+
+## Dashboard versus Workshop Summary
+
+- Dashboard: current operational snapshot
+- Workshop Summary: performance over time
 
 No Supabase migration is required.
