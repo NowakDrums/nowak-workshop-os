@@ -822,3 +822,35 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .outstandingWorkAlert{margin:8px 0}
 .outstandingTodayPanel{border-color:#e4b85d!important}
 @media(max-width:700px){.outstandingWorkHeader{display:grid}.outstandingWorkBadge{width:max-content}}
+
+/* v6.1.1 communication actions beside stored media */
+.storedMediaActions,
+.mediaCommunicationActions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px;
+  margin-top:7px;
+}
+.storedMediaActions button,
+.storedMediaActions .buttonLike,
+.mediaCommunicationActions button,
+.mediaCommunicationActions .buttonLike{
+  width:100%;
+  min-height:36px;
+  justify-content:center;
+  font-size:.82rem;
+}
+.mediaCommunicationActions{
+  margin:10px 0;
+  padding-top:9px;
+  border-top:1px solid #40382d;
+}
+.mediaCommunicationActions .internalOnlyNotice{
+  grid-column:1/-1;
+}
+@media(max-width:700px){
+  .storedMediaActions,
+  .mediaCommunicationActions{
+    grid-template-columns:1fr;
+  }
+}

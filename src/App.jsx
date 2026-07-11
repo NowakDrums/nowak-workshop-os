@@ -1371,7 +1371,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.1.0 — outstanding final work tracking for completed drums.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.1.1 — email and social actions wherever media is displayed.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -2304,6 +2304,19 @@ function LaunchPackSection({drum,setMessage}){
             })}
           </div>}
 
+          {stageMedia.length>0 && (()=> {
+            const actions=communicationActionsForDrum(drum,stage.key);
+            return <div className="mediaCommunicationActions">
+              <button onClick={()=>downloadStoredMedia(stageMedia,drum,stage.label,setMessage)}>Download Media</button>
+              {actions.canEmail && <a className={"buttonLike "+(!drum.customer_email?"disabledLink":"")} href={drum.customer_email?actions.mailto:undefined}>
+                <Mail size={14}/> Open Customer Email
+              </a>}
+              {actions.canSocial && <button onClick={()=>{navigator.clipboard?.writeText(actions.message.social);setMessage?.("Facebook caption copied.");}}>Copy Facebook Caption</button>}
+              {actions.canSocial && <button onClick={()=>{navigator.clipboard?.writeText(actions.message.instagram);setMessage?.("Instagram caption copied.");}}>Copy Instagram Caption</button>}
+              {actions.isBrady && <span className="internalOnlyNotice">Internal documentation only.</span>}
+            </div>
+          })()}
+
           <button onClick={()=>setSelectedStage(stage)}><Camera size={15}/> {stageMedia.length ? "Add More Media" : "Add Media"}</button>
         </article>
       })}
@@ -2501,7 +2514,48 @@ function SettingsPage(){
   </section>
 }
 
-function DrumPhotoLibrary({drumId}){
+
+function communicationMilestoneKey(key){
+  const map={
+    launch_timber:"wood",
+    launch_machined:"machined",
+    launch_reveal:"sealer",
+    launch_final:"drumcomplete",
+  };
+  return map[key] || key || "general";
+}
+
+function communicationActionsForDrum(drum,key){
+  const message=milestoneMessage(drum,communicationMilestoneKey(key));
+  const isBrady=drum.build_client==="Brady";
+  return {
+    message,
+    canEmail:!isBrady && isCustomCustomerDrum(drum),
+    canSocial:!isBrady,
+    isBrady,
+    mailto:`mailto:${encodeURIComponent(drum.customer_email || "")}?subject=${encodeURIComponent(message.emailSubject)}&body=${encodeURIComponent(message.emailBody)}`,
+  };
+}
+
+function downloadStoredMedia(items,drum,label,setMessage){
+  if(!items?.length) return;
+  items.forEach((item,index)=>{
+    const url=item.public_url;
+    if(!url) return;
+    const extension=(String(item.storage_path || url).match(/\.(mp4|mov|m4v|webm|png|jpe?g|heic)$/i)?.[1] || "jpg").toLowerCase();
+    const link=document.createElement("a");
+    link.href=url;
+    link.download=`${String(drum.serial || "drum").replace(/[^a-zA-Z0-9_-]/g,"-")}-${String(label || "media").replace(/[^a-zA-Z0-9_-]/g,"-")}-${index+1}.${extension}`;
+    link.target="_blank";
+    link.rel="noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  });
+  setMessage?.(`${items.length} media file${items.length===1?"":"s"} opened for download.`);
+}
+
+function DrumPhotoLibrary({drum,setMessage,onAddPhoto}){
   const [photos,setPhotos]=useState([]);
   const [loadingPhotos,setLoadingPhotos]=useState(false);
   const [libraryStatus,setLibraryStatus]=useState("");
@@ -2511,7 +2565,7 @@ function DrumPhotoLibrary({drumId}){
     const {data,error}=await supabase
       .from("drum_photos")
       .select("*")
-      .eq("drum_id",drumId)
+      .eq("drum_id",drum.id)
       .order("created_at",{ascending:false});
 
     if(error){
@@ -2524,7 +2578,7 @@ function DrumPhotoLibrary({drumId}){
     setLoadingPhotos(false);
   }
 
-  useEffect(()=>{ loadPhotos(); },[drumId]);
+  useEffect(()=>{ loadPhotos(); },[drum.id]);
 
   async function deleteStoredMedia(item){
     const confirmed=window.confirm("Delete this stored photo or video?");
@@ -2562,6 +2616,8 @@ function DrumPhotoLibrary({drumId}){
       <div className="photoLibraryGrid">
         {photos.map(photo=>{
           const isVideo=photo.media_type==="video" || /\.(mp4|mov|m4v|webm)$/i.test(photo.storage_path || photo.public_url || "");
+          const label=photoMilestones[photo.milestone]?.label || launchPackStages.find(stage=>stage.key===photo.milestone)?.label || photo.milestone;
+          const actions=communicationActionsForDrum(drum,photo.milestone);
           return <div className="storedMediaCard" key={photo.id}>
             <a href={photo.public_url} target="_blank" rel="noreferrer">
               {isVideo
@@ -2569,8 +2625,19 @@ function DrumPhotoLibrary({drumId}){
                 : <img src={photo.public_url} alt={photo.milestone}/>}
               {isVideo && <span className="videoMediaBadge">VIDEO</span>}
             </a>
-            <span>{photoMilestones[photo.milestone]?.label || launchPackStages.find(stage=>stage.key===photo.milestone)?.label || photo.milestone}</span>
-            <button className="mediaDeleteButton" onClick={()=>deleteStoredMedia(photo)}>Delete</button>
+            <span>{label}</span>
+            <div className="storedMediaActions">
+              <a className="buttonLike" href={photo.public_url} target="_blank" rel="noreferrer">Open Media</a>
+              <button onClick={()=>downloadStoredMedia([photo],drum,label,setMessage)}>Download</button>
+              {actions.canEmail && <a className={"buttonLike "+(!drum.customer_email?"disabledLink":"")} href={drum.customer_email?actions.mailto:undefined}>
+                <Mail size={14}/> Customer Email
+              </a>}
+              {actions.canSocial && <button onClick={()=>{navigator.clipboard?.writeText(actions.message.social);setMessage?.("Facebook caption copied.");}}>Copy Facebook Caption</button>}
+              {actions.canSocial && <button onClick={()=>{navigator.clipboard?.writeText(actions.message.instagram);setMessage?.("Instagram caption copied.");}}>Copy Instagram Caption</button>}
+              {onAddPhoto && <button onClick={()=>onAddPhoto(drum,photo.milestone)}>Add More Media</button>}
+              <button className="mediaDeleteButton" onClick={()=>deleteStoredMedia(photo)}>Delete</button>
+            </div>
+            {actions.isBrady && <small className="internalOnlyNotice">Internal documentation only.</small>}
           </div>
         })}
       </div>
@@ -3417,7 +3484,21 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       <p>Take or upload an additional build photo at any time. It will be stored against this Job Card.</p>
       <button type="button" className="primary" onClick={()=>setPhotoPrompt({milestoneKey:"general",item:null})}><Camera size={16}/> Take or Upload a Photo</button>
     </section>
-    <DrumPhotoLibrary drumId={drum.id}/>
+    <DrumPhotoLibrary
+      drum={{
+        ...drum,
+        ...draft,
+        build_client:localOwnership,
+        build_type:localBuildType,
+        sales_status:localOwnership==="Nowak"
+          ? (draft.order_type==="Custom" ? "Custom Order" : "Stock")
+          : localOwnership==="Brady"
+            ? "Brady Production"
+            : "Unallocated"
+      }}
+      setMessage={setMessage}
+      onAddPhoto={(stageDrum,milestoneKey)=>setPhotoPrompt({drum:stageDrum,milestoneKey})}
+    />
     <StageCommunications
       drum={{
         ...drum,
