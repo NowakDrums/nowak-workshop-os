@@ -1,25 +1,21 @@
-# Nowak Workshop OS v5.4.4
+# Nowak Workshop OS v5.4.5
 
-Production completion and Job Card usability update.
+Separate completion, sale and shipping states.
 
-## Manufacturing completion
-- Added `Mark Drum Complete`.
-- Completes the manufacturing workflow through Assembly.
-- Launch Pack, social media, website and YouTube stages remain optional.
-- Completed drums move to the Completed tab even without marketing content.
+## Job Card completion controls
+- Complete
+- Sold
+- Shipped
 
-## Sold / Shipped
-- Sold/Shipped drums always appear in the Sold tab.
-- Saving a Job Card no longer accidentally changes Sold/Shipped back to Stock or Custom.
+## Production tabs
+- Completed: manufacturing complete but not sold
+- Sold: sold but not yet shipped
+- Shipped: shipped drums
 
-## Production order
-- Drums with valid numeric production numbers appear first.
-- Allocated drums appear before Unallocated/Pending drums.
-- Numbered drums remain in production-number order.
-
-## Job Card footer
-- Save Changes
-- Save & Close
-- Close
+## Behaviour
+- Marking Sold records or updates the sale price and moves the drum to Sold.
+- Marking Shipped moves it to Shipped.
+- Existing `Sold/Shipped` records are treated as Shipped for backwards compatibility.
+- Saving a Job Card preserves its Sold or Shipped status.
 
 No Supabase migration is required.

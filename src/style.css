@@ -517,3 +517,16 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .jobFooterButtons{grid-template-columns:1fr}
   .closeJobButton{min-width:0}
 }
+
+.completionStatusButtons{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+}
+.completionStatusButtons button{
+  justify-content:center;
+  min-height:44px;
+}
+@media(max-width:700px){
+  .completionStatusButtons{grid-template-columns:1fr}
+}

@@ -142,8 +142,16 @@ function hasProductionNumber(drum){
   return /^\s*#?\d+\s*$/.test(String(drum?.serial || ""));
 }
 
+function isSoldStatus(drum){
+  return drum?.sales_status==="Sold";
+}
+
+function isShippedStatus(drum){
+  return drum?.sales_status==="Shipped" || drum?.sales_status==="Sold/Shipped";
+}
+
 function isManufacturingComplete(drum){
-  if(drum?.sales_status==="Sold/Shipped") return true;
+  if(isSoldStatus(drum) || isShippedStatus(drum)) return true;
   if(drum?.production_status==="Manufacturing Complete") return true;
   const checked=parseChecked(drum?.notes);
   return checked.has("Assembled");
@@ -1072,22 +1080,88 @@ function App(){
   }
 
   async function markSold(d){
-    const price=Number(prompt("Sale price?",d.total_price || d.custom_price || d.retail_price || 0));
-    if(!price) return;
+    const existingPrice=Number(d.total_price || d.custom_price || d.retail_price || 0);
+    const entered=prompt("Sale price?", existingPrice);
+    if(entered===null) return;
+
+    const price=Number(entered);
+    if(Number.isNaN(price) || price<0){
+      setMessage("Please enter a valid sale price.");
+      return;
+    }
+
     const c=templateCost(templateMap[d.template_name],labourRate);
-    const {error}=await supabase.from("sales").insert({
-      drum_id:d.id,serial:d.serial,timber:d.timber,customer:d.customer,
-      sale_price:price,cost_basis:c,profit:price-c,notes:"Marked sold from Workshop OS"
+
+    const {data:existingSale,error:lookupError}=await supabase
+      .from("sales")
+      .select("id")
+      .eq("drum_id",d.id)
+      .limit(1);
+
+    if(lookupError){
+      setMessage(lookupError.message);
+      return;
+    }
+
+    if(existingSale?.length){
+      const {error:updateSaleError}=await supabase
+        .from("sales")
+        .update({
+          serial:d.serial,
+          timber:d.timber,
+          customer:d.customer,
+          sale_price:price,
+          cost_basis:c,
+          profit:price-c,
+          notes:"Marked sold from Workshop OS"
+        })
+        .eq("drum_id",d.id);
+
+      if(updateSaleError){
+        setMessage(updateSaleError.message);
+        return;
+      }
+    }else{
+      const {error:insertError}=await supabase.from("sales").insert({
+        drum_id:d.id,
+        serial:d.serial,
+        timber:d.timber,
+        customer:d.customer,
+        sale_price:price,
+        cost_basis:c,
+        profit:price-c,
+        notes:"Marked sold from Workshop OS"
+      });
+
+      if(insertError){
+        setMessage(insertError.message);
+        return;
+      }
+    }
+
+    await updateDrum(d.id,{
+      sales_status:"Sold",
+      production_status:"Manufacturing Complete",
+      next_step:"Prepare for shipping"
     });
-    if(error) setMessage(error.message);
-    else await updateDrum(d.id,{sales_status:"Sold/Shipped",production_status:"Sold/Shipped"});
+  }
+
+  async function markShipped(d){
+    const confirmed=window.confirm("Mark this drum as shipped?");
+    if(!confirmed) return;
+
+    await updateDrum(d.id,{
+      sales_status:"Shipped",
+      production_status:"Manufacturing Complete",
+      next_step:"Complete"
+    });
   }
 
   function copyText(text,label){ navigator.clipboard?.writeText(text); alert(label + " copied"); }
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.4.4 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.4.5 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1192,7 +1266,7 @@ function App(){
         <div className="productionFilterGroup">
           <span className="filterLabel">Status</span>
           <div className="filterRow">
-            {["All","Pending","Active","Completed","Sold"].map(f=>
+            {["All","Pending","Active","Completed","Sold","Shipped"].map(f=>
               <button key={f} className={productionFilter===f?"primary":""} onClick={()=>setProductionFilter(f)}>{f}</button>
             )}
           </div>
@@ -1206,10 +1280,11 @@ function App(){
             if(constructionFilter!=="All" && d.build_type!==constructionFilter) return false;
 
             const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish);
-            if(productionFilter==="Pending") return !hasWorkflowStarted(d) && d.sales_status!=="Sold/Shipped";
-            if(productionFilter==="Active") return hasWorkflowStarted(d) && !isManufacturingComplete(d) && d.sales_status!=="Sold/Shipped";
-            if(productionFilter==="Completed") return isManufacturingComplete(d) && d.sales_status!=="Sold/Shipped";
-            if(productionFilter==="Sold") return d.sales_status==="Sold/Shipped";
+            if(productionFilter==="Pending") return !hasWorkflowStarted(d) && !isSoldStatus(d) && !isShippedStatus(d);
+            if(productionFilter==="Active") return hasWorkflowStarted(d) && !isManufacturingComplete(d) && !isSoldStatus(d) && !isShippedStatus(d);
+            if(productionFilter==="Completed") return isManufacturingComplete(d) && !isSoldStatus(d) && !isShippedStatus(d);
+            if(productionFilter==="Sold") return isSoldStatus(d);
+            if(productionFilter==="Shipped") return isShippedStatus(d);
             return true;
           })}
         projects={projects}
@@ -1330,8 +1405,8 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     <span className="badge">{displaySalesBadge(drum)}</span>
     {drum.build_client==="Nowak" && drum.nowak_serial && <span className="nowakSerialBadge">Serial {drum.nowak_serial}</span>}
     <div className="progress"><i style={{width:(isManufacturingComplete(drum)?100:flow.percent)+"%"}}></i></div>
-    <p><b>Status:</b> {drum.sales_status==="Sold/Shipped" ? "Sold / Shipped" : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status}</p>
-    <p><b>Next:</b> {drum.sales_status==="Sold/Shipped" ? "Complete" : isManufacturingComplete(drum) ? "Marketing / launch optional" : flow.nextStep}</p>
+    <p><b>Status:</b> {isShippedStatus(drum) ? "Shipped" : isSoldStatus(drum) ? "Sold" : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status}</p>
+    <p><b>Next:</b> {isShippedStatus(drum) ? "Complete" : isSoldStatus(drum) ? "Ship the drum" : isManufacturingComplete(drum) ? "Marketing / launch optional" : flow.nextStep}</p>
     <p><b>Estimated:</b> {flow.estimatedCompleted.toFixed(2)} hr completed · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
     <section className="cardActionRow">
@@ -2447,8 +2522,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       nowak_serial:draft.nowak_serial || null,
       build_type:localBuildType,
       build_client:localOwnership,
-      sales_status:drum.sales_status==="Sold/Shipped"
-        ? "Sold/Shipped"
+      sales_status:(drum.sales_status==="Sold" || drum.sales_status==="Shipped" || drum.sales_status==="Sold/Shipped")
+        ? drum.sales_status
         : localOwnership==="Brady"
           ? "Brady Production"
           : localOwnership==="Unallocated"
@@ -2733,13 +2808,36 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <section className="panel inner completionActionsPanel">
       <h2>Completion</h2>
       <p>Manufacturing can be completed without finishing the Launch Pack or social-media stages.</p>
-      <div className="buttonRow">
-        {!isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)}) &&
-          <button className="primary" onClick={markManufacturingComplete}><CheckCircle2 size={16}/> Mark Drum Complete</button>}
-        <button onClick={()=>markSold(drum)}><Truck size={16}/> Mark Sold / Shipped</button>
+      <div className="completionStatusButtons">
+        <button
+          className={!isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)}) ? "primary" : ""}
+          onClick={markManufacturingComplete}
+        >
+          <CheckCircle2 size={16}/> Complete
+        </button>
+
+        <button
+          className={isSoldStatus(drum) ? "primary" : ""}
+          onClick={()=>markSold(drum)}
+        >
+          <DollarSign size={16}/> Sold
+        </button>
+
+        <button
+          className={isShippedStatus(drum) ? "primary" : ""}
+          onClick={()=>markShipped(drum)}
+        >
+          <Truck size={16}/> Shipped
+        </button>
       </div>
-      {isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)}) &&
-        <p className="okText">Manufacturing is complete. Marketing and Launch Pack content remain optional.</p>}
+
+      {isShippedStatus(drum)
+        ? <p className="okText">This drum is complete, sold and shipped.</p>
+        : isSoldStatus(drum)
+          ? <p className="okText">This drum is sold and awaiting shipment.</p>
+          : isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)})
+            ? <p className="okText">Manufacturing is complete. Marketing and Launch Pack content remain optional.</p>
+            : null}
     </section>
     {localOwnership==="Nowak" && <section className={"panel inner nowakSerialPanel "+(flow.percent===100?"serialReady":"serialPending")}>
       <div className="serialPanelHeader">
