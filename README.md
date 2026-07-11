@@ -1,31 +1,23 @@
-# Nowak Workshop OS v6.2.2
+# Nowak Workshop OS v6.2.3
 
-## Customers & Orders
+## Outstanding work fix
 
-The Orders tab has been renamed Customers & Orders and is now customer-focused.
+Assembly-related outstanding work now clears automatically when a drum is marked Assembled.
 
-It includes:
+The following outstanding-work labels are treated as resolved by assembly:
 
-- Active Nowak custom orders
-- Active Brady / CB orders
-- Sold customer drums awaiting collection or shipping
-- Completed customer order history
+- Hardware to be fitted
+- Final assembly required
+- Heads and tuning required
 
-It excludes:
+This works when:
 
-- Unallocated drums
-- Unsold stock drums with no customer
-- General production inventory
+- Assembled is checked in the Job Card
+- The drum is progressed to Assembled from a production card
+- Complete is selected
 
-Each order card shows:
+Existing completed drums with an older assembly-related Outstanding Work note are also displayed correctly without requiring a database migration.
 
-- Customer
-- Email
-- Current status
-- Next action
-- Due date
-- Order value
-- Production progress
-- Direct access to the Job Card
+Outstanding items that can still remain after assembly, such as Final inspection required or Customer collection pending, are not cleared automatically.
 
 No Supabase migration is required.

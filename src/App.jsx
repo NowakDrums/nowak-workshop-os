@@ -819,9 +819,25 @@ const outstandingWorkOptions = [
   "Other",
 ];
 
+const assemblyResolvedOutstandingWork = new Set([
+  "Hardware to be fitted",
+  "Final assembly required",
+  "Heads and tuning required",
+]);
+
 function outstandingWorkFromNotes(notes){
-  const match=String(notes || "").match(/^\[Outstanding Work:\s*(.+?)\]$/mi);
-  return match ? match[1].trim() : "";
+  const text=String(notes || "");
+  const match=text.match(/^\[Outstanding Work:\s*(.+?)\]$/mi);
+  const task=match ? match[1].trim() : "";
+
+  // Once the drum is marked Assembled, assembly-related outstanding work
+  // is considered resolved. This also corrects existing drums that still
+  // contain an older Outstanding Work note.
+  if(task && text.includes("[x] Assembled") && assemblyResolvedOutstandingWork.has(task)){
+    return "";
+  }
+
+  return task;
 }
 
 function setOutstandingWorkInNotes(notes,value){
@@ -1153,7 +1169,10 @@ function App(){
       history=history.filter(entry=>entry.item!==nextItem);
       history.push({item:nextItem,completed:true,completed_at:new Date().toISOString()});
 
-      const updatedNotes=setChecklistInNotes(d.notes,next);
+      const baseNotes=nextItem==="Assembled"
+        ? setOutstandingWorkInNotes(d.notes,"No outstanding work")
+        : d.notes;
+      const updatedNotes=setChecklistInNotes(baseNotes,next);
       const {error}=await supabase.from("drums").update({
         notes:updatedNotes,
         production_status:nextFlow.status,
@@ -1440,7 +1459,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.2.2 — customer-focused Customers & Orders page.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.2.3 — assembly now clears resolved outstanding work.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -3684,10 +3703,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
     setSavedMessage("Marking drum complete...");
     const completedNotes=setChecklistInNotes(
-      setOutstandingWorkInNotes(
-        draft.notes,
-        draft.outstanding_work==="Other" ? draft.outstanding_work_custom : draft.outstanding_work
-      ),
+      setOutstandingWorkInNotes(draft.notes,"No outstanding work"),
       nextChecked
     );
     const history=Array.isArray(drum.stage_history) ? [...drum.stage_history] : [];
@@ -3726,7 +3742,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       }
     }
 
-    const notesValue=setChecklistInNotes(draft.notes,nextChecked);
+    const workflowNotes=changedItem==="Assembled" && completed
+      ? setOutstandingWorkInNotes(draft.notes,"No outstanding work")
+      : draft.notes;
+    const notesValue=setChecklistInNotes(workflowNotes,nextChecked);
     const lifecycle=nextChecked.has("Shipped")
       ? "Shipped"
       : drumLifecycleStatus(drum)==="Sold"
