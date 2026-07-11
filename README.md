@@ -1,19 +1,17 @@
-# Nowak Workshop OS v6.0.8
+# Nowak Workshop OS v6.0.9
 
-## Finish Reveal media
+## Job Card save fix
 
-- Video previews now appear directly inside the Finish Reveal card.
-- You no longer need to open `View 2` before seeing stored media.
-- Videos use a proper video player with a visible play control.
-- Up to three previews are shown directly; larger sets can be expanded.
+The Job Card was writing changes to Supabase but was not updating the app's active drum list and open Job Card state at the same time. This could make saved changes appear to disappear when the card was closed and reopened.
 
-## Delete duplicate media
+Save and Save & Close now use the shared drum update process so they:
 
-Every stored photo or video now has a visible Delete button in:
+- save the database record,
+- update the Production list immediately,
+- update the currently open Job Card,
+- retain the saved values when reopened,
+- show a visible success or failure message.
 
-- Launch Pack stages
-- Stored Build Photos & Videos
-
-Deletion removes both the Supabase Storage file and its database record after confirmation.
+Save & Close only closes after a confirmed successful save.
 
 No Supabase migration is required.

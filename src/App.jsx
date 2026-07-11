@@ -1343,7 +1343,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.0.8 — video previews and media deletion improvements.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.0.9 — Job Card Save and Save & Close reliability fix.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -2970,28 +2970,20 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       veneer_5_thickness:Number(veneer[4]||0),
     };
 
-    const {data,error}=await supabase.from("drums").update(patch).eq("id",drum.id).select("*").single();
+    // Use the shared update helper so the database, Production list and
+    // currently open Job Card all receive the same updated values.
+    const saved=await updateDrum(drum.id,patch);
 
-    if(error){
-      const detail="Save failed: " + error.message;
+    if(!saved){
+      const detail="Save failed. Check the message at the top of the app for details.";
       setSavedMessage(detail);
-      setMessage(detail);
       setIsSaving(false);
       return false;
     }
 
-    if(!data){
-      const detail="Save failed: Supabase did not return the updated drum. Check database permissions.";
-      setSavedMessage(detail);
-      setMessage(detail);
-      setIsSaving(false);
-      return false;
-    }
-
-    setDraft(current=>({...current,notes:data.notes || current.notes}));
-    setChecked(parseChecked(data.notes));
-    setMessage("");
-    setSavedMessage(data.lifecycle_status==="Shipped" ? "Saved — moved to Shipped" : "All changes saved");
+    setDraft(current=>({...current,notes:patch.notes}));
+    setChecked(parseChecked(patch.notes));
+    setSavedMessage(derivedLifecycle==="Shipped" ? "Saved — moved to Shipped" : "All changes saved");
     setTimeout(()=>setSavedMessage(""),3000);
     setIsSaving(false);
     return true;
@@ -3384,7 +3376,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         <button className="primary saveCloseButton" disabled={isSaving} onClick={saveAndClose}><Save size={15}/> Save & Close</button>
         <button className="closeJobButton" disabled={isSaving} onClick={onClose}>Close</button>
       </div>
-      {savedMessage && <span className="saveMessage">{savedMessage}</span>}
+      {savedMessage && <span className={"saveMessage "+(savedMessage.includes("failed") || savedMessage.includes("Could not") ? "saveMessageError" : "saveMessageSuccess")}>{savedMessage}</span>}
     </section>
     <section className="deleteZone"><button className="dangerButton" onClick={()=>deleteDrum(drum.id)}>Delete this job card</button></section>
   </div></div>

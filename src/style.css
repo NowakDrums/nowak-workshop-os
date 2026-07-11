@@ -791,3 +791,21 @@ button:disabled{opacity:.55;cursor:not-allowed}
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
 }
+
+/* v6.0.9 save confirmation */
+.saveMessage{
+  display:block;
+  width:100%;
+  padding:7px 10px;
+  border-radius:8px;
+  text-align:center;
+  font-weight:800;
+}
+.saveMessageSuccess{
+  color:#8ee29a;
+  background:rgba(80,170,92,.14);
+}
+.saveMessageError{
+  color:#ffaaa2;
+  background:rgba(190,70,60,.16);
+}
