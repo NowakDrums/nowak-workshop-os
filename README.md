@@ -1,36 +1,42 @@
-# Nowak Workshop OS v5.4.8
+# Nowak Workshop OS v5.5.0 — Lifecycle Stability Release
 
-Unified drum lifecycle status fix.
+This release fixes the Complete, Sold and Shipped workflow without changing the visual structure of the app.
 
-## Why this was needed
-The original `sales_status` field was also being used for Stock, Custom and Brady classifications. That allowed Job Card saves and old status values to conflict with Complete, Sold and Shipped.
+## Main fix
 
-## New lifecycle field
-A dedicated `lifecycle_status` field now controls:
+The previous Shipped button was not connected to the App-level shipping function. It could display in the Job Card but could not reliably update the database.
+
+v5.5.0 now uses one lifecycle engine for:
 
 - Completed
 - Sold
 - Shipped
 
-The existing `sales_status` field remains for compatibility with the older application and order classification.
+All three actions:
+1. write the dedicated `lifecycle_status`,
+2. confirm Supabase accepted the update,
+3. update the app immediately,
+4. close the Job Card,
+5. open the correct Production tab.
 
-## Behaviour
-- Complete writes `lifecycle_status = Completed`
-- Sold writes `lifecycle_status = Sold`
-- Shipped writes `lifecycle_status = Shipped`
-- Production tabs filter from lifecycle status only
-- Status buttons only change screens after Supabase confirms the update
-- The app updates the card immediately after a successful save
-- Job Card saves preserve the current lifecycle status
+## Production #144
 
-## Existing records
-The migration backfills existing records:
-- legacy Sold/Shipped → Shipped
-- Sold → Sold
-- Shipped → Shipped
-- Manufacturing Complete → Completed
+The migration includes the confirmed correction:
 
-This should move Production #144 into Shipped after the migration, because its previous combined Sold/Shipped status represents a fully shipped drum.
+- Lifecycle: Shipped
+- Legacy sales status: Sold/Shipped
+- Production status: Manufacturing Complete
+- Next: Complete
 
-## Supabase
-Run `supabase/v5_4_8_lifecycle_status.sql` once before deploying v5.4.8.
+After running the migration and deploying v5.5.0, #144 should appear in the Shipped tab.
+
+## Installation
+
+1. Run `supabase/v5_5_0_lifecycle_stability.sql`.
+2. Confirm the result includes #144 with `lifecycle_status = Shipped`.
+3. Deploy this ZIP to Vercel.
+4. Confirm the banner says:
+   `v5.5.0 — unified Complete, Sold and Shipped status engine.`
+5. Hard refresh Safari with Command + Option + R.
+
+No other workflow, Launch Pack, media or communication features were removed.

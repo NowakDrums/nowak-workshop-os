@@ -1118,6 +1118,38 @@ function App(){
     }
   }
 
+  async function setDrumLifecycle(d,status,extraPatch={}){
+    const allowed=["Completed","Sold","Shipped"];
+    if(!allowed.includes(status)){
+      setMessage("Invalid drum lifecycle status.");
+      return false;
+    }
+
+    const patch={
+      lifecycle_status:status,
+      production_status:"Manufacturing Complete",
+      next_step:status==="Completed"
+        ? "Marketing / launch optional"
+        : status==="Sold"
+          ? "Prepare for shipping"
+          : "Complete",
+      ...extraPatch,
+    };
+
+    // Keep the legacy field compatible with older versions of the app.
+    if(status==="Sold" || status==="Shipped"){
+      patch.sales_status="Sold/Shipped";
+    }
+
+    const saved=await updateDrum(d.id,patch);
+    if(!saved) return false;
+
+    setJobCard(null);
+    setView("production");
+    setProductionFilter(status);
+    return true;
+  }
+
   async function markSold(d){
     const defaultSalePrice=Number(d.custom_price || d.retail_price || 0);
     const saleEntry=prompt("Drum selling price (excluding shipping)?", defaultSalePrice);
@@ -1214,11 +1246,7 @@ function App(){
       }
     }
 
-    const soldSaved=await updateDrum(d.id,{
-      lifecycle_status:"Sold",
-      sales_status:"Sold/Shipped",
-      production_status:"Manufacturing Complete",
-      next_step:"Prepare for shipping",
+    const soldSaved=await setDrumLifecycle(d,"Sold",{
       custom_price:salePrice,
       shipping_cost:shippingCharged,
       total_price:revenue
@@ -1229,34 +1257,19 @@ function App(){
     setMessage(
       `Marked sold. Revenue ${money(revenue)} · Shipping ${money(shippingCharged)} charged / ${money(actualShippingCost)} cost · Estimated profit ${money(profit)} · ${paymentStatus}`
     );
-    setJobCard(null);
-    setView("production");
-    setProductionFilter("Sold");
   }
 
   async function markShipped(d){
     const confirmed=window.confirm("Mark this drum as shipped?");
     if(!confirmed) return;
-
-    const shippedSaved=await updateDrum(d.id,{
-      lifecycle_status:"Shipped",
-      sales_status:"Sold/Shipped",
-      production_status:"Manufacturing Complete",
-      next_step:"Complete"
-    });
-
-    if(!shippedSaved) return;
-
-    setJobCard(null);
-    setView("production");
-    setProductionFilter("Shipped");
+    await setDrumLifecycle(d,"Shipped");
   }
 
   function copyText(text,label){ navigator.clipboard?.writeText(text); alert(label + " copied"); }
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.4.8 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.5.0 — unified Complete, Sold and Shipped status engine.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1415,7 +1428,7 @@ function App(){
     />}
 
     {showAddWizard && <AddDrumWizard onClose={()=>{setShowAddWizard(false);setAddWizardPreset({});}} onCreate={addDrumFromWizard} drums={drums} projects={projects} createProject={createProject} preset={addWizardPreset}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}}/>}
   </main>
 }
 
@@ -1499,6 +1512,7 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     {drum.build_client==="Brady" && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
     <span>{drum.size} · {drum.drum_type || "Snare"} · {drum.build_type}</span>
     <span className="badge">{displaySalesBadge(drum)}</span>
+    {drumLifecycleStatus(drum) && <span className={"lifecycleBadge lifecycle"+drumLifecycleStatus(drum)}>{drumLifecycleStatus(drum)}</span>}
     {drum.build_client==="Nowak" && drum.nowak_serial && <span className="nowakSerialBadge">Serial {drum.nowak_serial}</span>}
     <div className="progress"><i style={{width:(isManufacturingComplete(drum)?100:flow.percent)+"%"}}></i></div>
     <p><b>Status:</b> {isShippedStatus(drum) ? "Shipped" : isSoldStatus(drum) ? "Sold" : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status}</p>
@@ -2537,7 +2551,7 @@ ${emailBody}`,"Customer email")}>Copy Email</button>
 }
 
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
@@ -2703,26 +2717,15 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       }
     });
 
-    const patch={
+    const saved=await setDrumLifecycle(drum,"Completed",{
       notes:completedNotes,
-      stage_history:history,
-      lifecycle_status:"Completed",
-      production_status:"Manufacturing Complete",
-      next_step:"Marketing / launch optional",
-    };
+      stage_history:history
+    });
 
-    const {error}=await supabase.from("drums").update(patch).eq("id",drum.id);
-    if(error){
-      const detail="Could not mark drum complete: "+error.message;
-      setSavedMessage(detail);
-      setMessage(detail);
+    if(!saved){
+      setSavedMessage("Could not mark drum complete.");
       return;
     }
-
-    setChecked(nextChecked);
-    setDraft(current=>({...current,notes:completedNotes,next_step:"Marketing / launch optional"}));
-    setSavedMessage("Drum marked manufacturing complete");
-    setMessage("");
   }
 
   async function saveWorkflow(nextChecked, changedItem=null, completed=null){

@@ -530,3 +530,28 @@ button:disabled{opacity:.55;cursor:not-allowed}
 @media(max-width:700px){
   .completionStatusButtons{grid-template-columns:1fr}
 }
+
+.lifecycleBadge{
+  display:inline-block;
+  width:max-content;
+  padding:5px 9px;
+  border-radius:999px;
+  border:1px solid #746a59;
+  font-size:11px;
+  font-weight:800;
+}
+.lifecycleCompleted{
+  border-color:#7fc680;
+  color:#a9e3aa;
+  background:rgba(127,198,128,.08);
+}
+.lifecycleSold{
+  border-color:#d3aa5d;
+  color:#f4d89c;
+  background:rgba(211,170,93,.10);
+}
+.lifecycleShipped{
+  border-color:#61b8ee;
+  color:#a9dbfa;
+  background:rgba(97,184,238,.10);
+}
