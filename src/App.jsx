@@ -894,8 +894,9 @@ function App(){
 
   useEffect(()=>{ loadAll(); },[]);
 
-  const active=drums.filter(d=>d.sales_status!=="Sold/Shipped");
-  const filtered=active.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
+  const operationalDrums=drums.filter(d=>!isSoldStatus(d) && !isShippedStatus(d));
+  const filtered=drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
+  const active=operationalDrums;
   const templateMap=useMemo(()=>Object.fromEntries(templates.map(t=>[t.name,t])),[templates]);
   const batches=useMemo(()=>{ const g={}; filtered.forEach(d=>{const b=batchType(d); if(b){g[b]??=[]; g[b].push(d)}}); return g; },[filtered]);
   const inventoryValue=hardware.reduce((s,p)=>s+Number(p.qty_on_hand||0)*Number(p.landed_cost_aud||0),0);
@@ -1187,6 +1188,9 @@ function App(){
     setMessage(
       `Marked sold. Revenue ${money(revenue)} · Shipping ${money(shippingCharged)} charged / ${money(actualShippingCost)} cost · Estimated profit ${money(profit)} · ${paymentStatus}`
     );
+    setJobCard(null);
+    setView("production");
+    setProductionFilter("Sold");
   }
 
   async function markShipped(d){
@@ -1198,13 +1202,17 @@ function App(){
       production_status:"Manufacturing Complete",
       next_step:"Complete"
     });
+
+    setJobCard(null);
+    setView("production");
+    setProductionFilter("Shipped");
   }
 
   function copyText(text,label){ navigator.clipboard?.writeText(text); alert(label + " copied"); }
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.4.6 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.4.7 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -2554,6 +2562,21 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     const nextFlow=workflowState(localBuildType,checked,draft.finish);
     setSavedMessage("Saving...");
 
+    const {data:currentStatusRow,error:statusError}=await supabase
+      .from("drums")
+      .select("sales_status")
+      .eq("id",drum.id)
+      .single();
+
+    if(statusError){
+      const detail="Save failed: "+statusError.message;
+      setSavedMessage(detail);
+      setMessage(detail);
+      return false;
+    }
+
+    const currentSalesStatus=currentStatusRow?.sales_status || drum.sales_status;
+
     const patch={
       serial:draft.serial,
       customer:draft.customer,
@@ -2565,8 +2588,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       nowak_serial:draft.nowak_serial || null,
       build_type:localBuildType,
       build_client:localOwnership,
-      sales_status:(drum.sales_status==="Sold" || drum.sales_status==="Shipped" || drum.sales_status==="Sold/Shipped")
-        ? drum.sales_status
+      sales_status:(currentSalesStatus==="Sold" || currentSalesStatus==="Shipped" || currentSalesStatus==="Sold/Shipped")
+        ? currentSalesStatus
         : localOwnership==="Brady"
           ? "Brady Production"
           : localOwnership==="Unallocated"

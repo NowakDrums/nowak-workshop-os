@@ -1,32 +1,25 @@
-# Nowak Workshop OS v5.4.6
+# Nowak Workshop OS v5.4.7
 
-Sale and shipping details update.
+Sold and Shipped routing fix.
 
-## Mark Sold workflow
-When a drum is marked Sold, NBS now asks for:
+## Mark Sold
+- Saves the sale, shipping and payment details.
+- Closes the Job Card.
+- Opens Production automatically.
+- Selects the Sold tab.
+- The drum appears immediately in Sold.
 
-1. Drum selling price, excluding shipping
-2. Shipping charged to the customer
-3. Actual shipping cost to Nowak
-4. Payment status
+## Mark Shipped
+- Closes the Job Card.
+- Opens Production automatically.
+- Selects the Shipped tab.
 
-Suggested payment statuses:
-- Paid in Full
-- Deposit Paid
-- Invoice Sent
-- Awaiting Payment
+## Stale Job Card protection
+Before saving a Job Card, NBS now checks the current database sales status.
+A stale open card can no longer change a Sold or Shipped drum back to Stock or Custom.
 
-## Calculations
-NBS stores and calculates:
+## Production visibility
+Production filtering now works from the complete drum list.
+Dashboard counts continue to use only unsold/unshipped operational drums.
 
-- Total revenue = selling price + shipping charged
-- Shipping profit/loss = shipping charged - actual shipping cost
-- Estimated profit = total revenue - estimated build cost - actual shipping cost
-
-The drum Job Card is also updated with the sale price, shipping charged and total revenue.
-
-## Supabase
-Run `supabase/v5_4_6_sale_shipping.sql` once before deploying v5.4.6.
-
-## Rollback
-v5.4.5 remains compatible. The additional sales columns do not affect the older version.
+No new Supabase migration is required after v5.4.6.
