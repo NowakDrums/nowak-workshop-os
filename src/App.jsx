@@ -1381,7 +1381,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.1.3 — removed the duplicate Stored Build Photos & Videos section.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.1.4 — simplified Job Card communications and clarified customer email requirements.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -2280,6 +2280,10 @@ function LaunchPackSection({drum,setMessage}){
       <b>{progress}%</b>
     </div>
     <div className="progress large"><i style={{width:progress+"%"}}></i></div>
+
+    <p className="launchPackEmailNote">
+      Customer email actions only appear for Nowak custom orders when both a customer name and customer email address have been entered on the Job Card.
+    </p>
 
     <div className="launchStageGrid">
       {launchPackStages.map(stage=>{
@@ -3509,7 +3513,6 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       setMessage={setMessage}
       onAddPhoto={(stageDrum,milestoneKey)=>setPhotoPrompt({drum:stageDrum,milestoneKey})}
     />
-    <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
     <section className="panel inner"><h2>Notes</h2><textarea value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></section>
 
     {localOwnership==="Nowak" && <section className={"panel inner nowakSerialPanel "+(flow.percent===100?"serialReady":"serialPending")}>

@@ -859,3 +859,15 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .todayTaskPanel h2{
   text-wrap:balance;
 }
+
+/* v6.1.4 Launch Pack email guidance */
+.launchPackEmailNote{
+  margin:10px 0 14px;
+  padding:10px 12px;
+  border:1px solid rgba(228,184,93,.45);
+  border-radius:9px;
+  background:rgba(228,184,93,.07);
+  color:#c8c1b5;
+  font-size:.9rem;
+  line-height:1.45;
+}

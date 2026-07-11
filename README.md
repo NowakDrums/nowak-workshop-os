@@ -1,16 +1,15 @@
-# Nowak Workshop OS v6.1.3
+# Nowak Workshop OS v6.1.4
 
 ## Job Card cleanup
 
-Removed the duplicate `Stored Build Photos & Videos` section from the Job Card.
+Removed the redundant Milestone Communications information section.
 
-Media remains available in the places where it is most useful:
+The Notes section remains available for workshop instructions, customer preferences and other build details.
 
-- Launch Pack stages
-- Finish Reveal
-- Completed Drum
-- Stage Communications
+## Launch Pack guidance
 
-No photos or videos are deleted. This update only removes the duplicate display section and its repeated email/social buttons.
+A note now appears under the Launch Pack progress bar:
+
+`Customer email actions only appear for Nowak custom orders when both a customer name and customer email address have been entered on the Job Card.`
 
 No Supabase migration is required.
