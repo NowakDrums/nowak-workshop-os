@@ -291,7 +291,9 @@ const drumDiameters = ["8","10","12","13","14","16","18","20","22","24"];
 const drumDepths = ["5","5 1/2","6","6 1/2","7","8","10","12","14","16","18"];
 const drumTypeOptions = ["Snare","Tom","Floor Tom","Bass Drum"];
 const timberOptions = [
-  "Jarrah","Jarrah Staircase","Marri","Blackbutt","Blackwood","Wandoo",
+  "Jarrah","Jarrah Staircase","Jarrah Fiddleback",
+  "Marri","Marri Fiddleback",
+  "Blackbutt","Blackwood","Wandoo",
   "Sheoak","Spotted Gum","River Banksia","Tri Colour","Custom / Other"
 ];
 
@@ -708,7 +710,11 @@ function normaliseWebsiteSize(size){
 
 function nowakWebsiteTimberTier(timber){
   const text=String(timber || "").toLowerCase();
+
+  // The public Nowak price guide uses one Fiddleback Timber tier.
+  // This applies to both Jarrah Fiddleback and Marri Fiddleback.
   if(text.includes("fiddleback")) return "fiddleback";
+
   if(text.includes("sheoak") || text.includes("wandoo")) return "premium";
   if(text.includes("blackbutt") || text.includes("jarrah") || text.includes("marri")) return "standard";
   return null;
@@ -1337,7 +1343,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.0.5 — editable timber and non-closing lifecycle controls.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.0.6 — Jarrah and Marri Fiddleback timber options and website pricing.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 

@@ -1,26 +1,33 @@
-# Nowak Workshop OS v6.0.5
+# Nowak Workshop OS v6.0.6
 
-## Editable timber type
+## New timber options
 
-The Job Card now includes a Timber type dropdown under Build Details.
+Added to both Add Drum and the editable Job Card timber dropdown:
 
-- Uses the same timber list as Add Drum
-- Preserves an existing timber value even if it is not in the standard list
-- Saves with Save or Save & Close
-- Updates the Stave/Ply calculator display after saving
+- Jarrah Fiddleback
+- Marri Fiddleback
 
-## Complete, Sold and Shipped
+## Website pricing
 
-These actions no longer close the Job Card or navigate to another Production tab.
+Both new options use the published `Fiddleback Timber Block Stave Snare Drum` price tier.
 
-They now:
+Natural or Satin:
+- 12 x 7 — $1,225
+- 13 x 7 — $1,225
+- 14 x 5 — $1,310
+- 14 x 5.5 — $1,340
+- 14 x 6 — $1,340
+- 14 x 6.5 — $1,370
+- 14 x 7 — $1,370
+- 14 x 8 — $1,400
 
-1. save and verify the lifecycle status in Supabase,
-2. keep the Job Card open,
-3. update the highlighted lifecycle button,
-4. show a confirmation message.
+High Gloss adds $100.
 
-Only Close or Save & Close closes the Job Card.
+The website notes that fiddleback pricing may vary depending on the specific timber used.
+
+## Scope
+
+Automatic website pricing applies to Nowak block-stave snare drums. Other drum types and construction methods continue to use the existing fallback pricing logic.
 
 ## Supabase
 
