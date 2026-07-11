@@ -561,3 +561,20 @@ button:disabled{opacity:.55;cursor:not-allowed}
   color:#9f9789;
   font-size:11px;
 }
+
+.workflowSectionHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:12px;
+}
+.workflowSectionHeader h2{margin:2px 0}
+.workflowSectionHeader>small{color:#aaa194;text-align:right}
+.fulfilmentSection{border-color:#61b8ee!important;background:rgba(97,184,238,.05)}
+.optionalMarketingSection{border-color:#d3aa5d!important;background:rgba(211,170,93,.05)}
+.saveMessage{font-weight:800}
+@media(max-width:700px){
+  .workflowSectionHeader{display:grid}
+  .workflowSectionHeader>small{text-align:left}
+}

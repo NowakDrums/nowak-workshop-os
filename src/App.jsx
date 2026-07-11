@@ -26,6 +26,15 @@ const checklist = [
   "Facebook / Instagram","YouTube demo","Packed","Shipped"
 ];
 
+const fulfilmentChecklist = ["Photos taken","Packed","Shipped"];
+const marketingChecklist = ["Website listing","Facebook / Instagram","YouTube demo"];
+
+function manufacturingChecklist(buildType,finish=""){
+  return applicableChecklist(buildType,finish).filter(
+    item=>!fulfilmentChecklist.includes(item) && !marketingChecklist.includes(item)
+  );
+}
+
 
 const workflowEstimates = {
   Stave: {
@@ -237,7 +246,7 @@ function workflowNextInstruction(nextItem,buildType){
 }
 
 function workflowState(buildType, checked, finish=""){
-  const steps=applicableChecklist(buildType,finish);
+  const steps=manufacturingChecklist(buildType,finish);
   let completedCount=0;
   for(const step of steps){
     if(checked.has(step)) completedCount += 1;
@@ -1302,7 +1311,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.0.0 — reliable lifecycle and sale-record stability release.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.0.1 — reliable checklist saving and separated production, fulfilment and marketing.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1551,7 +1560,7 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     <p><b>Status:</b> {isShippedStatus(drum) ? "Shipped" : isSoldStatus(drum) ? "Sold" : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status}</p>
     {drum.lifecycle_status && <p className="lifecycleStoredLine"><b>Stored lifecycle:</b> {drum.lifecycle_status}</p>}
     <p><b>Next:</b> {isShippedStatus(drum) ? "Complete" : isSoldStatus(drum) ? "Ship the drum" : isManufacturingComplete(drum) ? "Marketing / launch optional" : flow.nextStep}</p>
-    <p><b>Estimated:</b> {flow.estimatedCompleted.toFixed(2)} hr completed · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
+    <p><b>Estimated:</b> {flow.estimatedTotal.toFixed(2)} hr production · {(isManufacturingComplete(drum)?0:flow.estimatedRemaining).toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
     <section className="cardActionRow">
       {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && <button type="button" className="primary" disabled={progressing || !progressDrum} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
@@ -2671,6 +2680,14 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     const currentSalesStatus=currentStatusRow?.sales_status || drum.sales_status;
     const currentLifecycleStatus=currentStatusRow?.lifecycle_status || drum.lifecycle_status || "";
 
+    const derivedLifecycle=checked.has("Shipped")
+      ? "Shipped"
+      : currentLifecycleStatus==="Sold"
+        ? "Sold"
+        : checked.has("Assembled")
+          ? "Completed"
+          : (currentLifecycleStatus || null);
+
     const patch={
       serial:draft.serial,
       customer:draft.customer,
@@ -2682,7 +2699,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       nowak_serial:draft.nowak_serial || null,
       build_type:localBuildType,
       build_client:localOwnership,
-      lifecycle_status:currentLifecycleStatus || null,
+      lifecycle_status:derivedLifecycle,
       sales_status:(currentSalesStatus==="Sold" || currentSalesStatus==="Shipped" || currentSalesStatus==="Sold/Shipped")
         ? currentSalesStatus
         : localOwnership==="Brady"
@@ -2695,8 +2712,16 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       custom_price:Number(customPrice||0),
       shipping_cost:Number(shipping||0),
       total_price:Number(customPrice||0)+Number(shipping||0),
-      production_status:nextFlow.status,
-      next_step:nextFlow.nextStep,
+      production_status:["Completed","Sold","Shipped"].includes(derivedLifecycle)
+        ? "Manufacturing Complete"
+        : nextFlow.status,
+      next_step:derivedLifecycle==="Shipped"
+        ? "Complete"
+        : derivedLifecycle==="Sold"
+          ? "Prepare for shipping"
+          : derivedLifecycle==="Completed"
+            ? "Marketing / launch optional"
+            : nextFlow.nextStep,
       notes:setChecklistInNotes(draft.notes,checked),
       veneer_1_thickness:Number(veneer[0]||0),
       veneer_2_thickness:Number(veneer[1]||0),
@@ -2705,7 +2730,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       veneer_5_thickness:Number(veneer[4]||0),
     };
 
-    const {data,error}=await supabase.from("drums").update(patch).eq("id",drum.id).select("id").single();
+    const {data,error}=await supabase.from("drums").update(patch).eq("id",drum.id).select("*").single();
 
     if(error){
       const detail="Save failed: " + error.message;
@@ -2721,9 +2746,11 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       return false;
     }
 
+    setDraft(current=>({...current,notes:data.notes || current.notes}));
+    setChecked(parseChecked(data.notes));
     setMessage("");
-    setSavedMessage("All changes saved");
-    setTimeout(()=>setSavedMessage(""),2500);
+    setSavedMessage(data.lifecycle_status==="Shipped" ? "Saved — moved to Shipped" : "All changes saved");
+    setTimeout(()=>setSavedMessage(""),3000);
     return true;
   }
 
@@ -2773,20 +2800,46 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       }
     }
 
-    const {error}=await supabase.from("drums").update({
-      notes:setChecklistInNotes(draft.notes,nextChecked),
-      production_status:nextFlow.status,
-      next_step:nextFlow.nextStep,
+    const notesValue=setChecklistInNotes(draft.notes,nextChecked);
+    const lifecycle=nextChecked.has("Shipped")
+      ? "Shipped"
+      : drumLifecycleStatus(drum)==="Sold"
+        ? "Sold"
+        : nextChecked.has("Assembled")
+          ? "Completed"
+          : (drum.lifecycle_status || null);
+
+    setSavedMessage("Saving checklist...");
+
+    const {data,error}=await supabase.from("drums").update({
+      notes:notesValue,
+      lifecycle_status:lifecycle,
+      production_status:["Completed","Sold","Shipped"].includes(lifecycle)
+        ? "Manufacturing Complete"
+        : nextFlow.status,
+      next_step:lifecycle==="Shipped"
+        ? "Complete"
+        : lifecycle==="Sold"
+          ? "Prepare for shipping"
+          : lifecycle==="Completed"
+            ? "Marketing / launch optional"
+            : nextFlow.nextStep,
       stage_history:history
-    }).eq("id",drum.id);
+    }).eq("id",drum.id).select("*").single();
+
     if(error){
       const detail="Workflow save failed: " + error.message;
       setSavedMessage(detail);
       setMessage(detail);
-    }else{
-      setDraft(current=>({...current,notes:setChecklistInNotes(current.notes,nextChecked)}));
-      setMessage("");
+      return false;
     }
+
+    setDraft(current=>({...current,notes:data.notes || notesValue}));
+    setChecked(parseChecked(data.notes || notesValue));
+    setMessage("");
+    setSavedMessage(lifecycle==="Shipped" ? "Saved — moved to Shipped" : "Checklist saved");
+    setTimeout(()=>setSavedMessage(""),2500);
+    return true;
   }
 
   async function saveChecklist(){
@@ -2836,7 +2889,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <section className="stats workflowStats">
       <div><b>{flow.percent}%</b><span>Complete</span></div>
       <div><b>{flow.estimatedCompleted.toFixed(2)}</b><span>Estimated hours completed</span></div>
-      <div><b>{flow.estimatedRemaining.toFixed(2)}</b><span>Estimated hours remaining</span></div>
+      <div><b>{(isManufacturingComplete(drum)?0:flow.estimatedRemaining).toFixed(2)}</b><span>Estimated production hours remaining</span></div>
       <div><b>{Number(drum.hours_logged||0).toFixed(2)}</b><span>Actual hours logged</span></div>
       <div><b>{(Number(drum.hours_logged||0)-flow.estimatedCompleted).toFixed(2)}</b><span>Actual vs estimate</span></div>
     </section>
@@ -2930,14 +2983,41 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         <CheckCircle2 size={16}/> Progress to Next Stage: {flow.nextStep}
       </button>}
       {flow.nextStep==="Complete" && <p className="okText"><b>Manufacturing workflow complete.</b></p>}
-      <div className="checkGrid">{applicableChecklist(localBuildType,draft.finish).map(item=>{
+      <div className="checkGrid">{manufacturingChecklist(localBuildType,draft.finish).map(item=>{
         const history=historyForItem(drum.stage_history,item);
         return <label className="checkItem workflowCheckItem" key={item}>
           <input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>
           <span><b>{checklistDisplayLabel(item,localBuildType)}</b>{checked.has(item) && <small>{formatStageDate(history?.completed_at) || "Completed"}</small>}</span>
         </label>
       })}</div>
-      
+    </section>
+
+    <section className="panel inner workflowSection fulfilmentSection">
+      <div className="workflowSectionHeader">
+        <div><span className="launchPackEyebrow">AFTER THE BUILD</span><h2>Fulfilment</h2></div>
+        <small>Does not add production hours</small>
+      </div>
+      <div className="checkGrid">{fulfilmentChecklist.map(item=>{
+        const history=historyForItem(drum.stage_history,item);
+        return <label className="checkItem workflowCheckItem" key={item}>
+          <input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>
+          <span><b>{item}</b>{checked.has(item) && <small>{formatStageDate(history?.completed_at) || "Completed"}</small>}</span>
+        </label>
+      })}</div>
+    </section>
+
+    <section className="panel inner workflowSection optionalMarketingSection">
+      <div className="workflowSectionHeader">
+        <div><span className="launchPackEyebrow">OPTIONAL</span><h2>Marketing Checklist</h2></div>
+        <small>Never affects production completion</small>
+      </div>
+      <div className="checkGrid">{marketingChecklist.map(item=>{
+        const history=historyForItem(drum.stage_history,item);
+        return <label className="checkItem workflowCheckItem" key={item}>
+          <input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>
+          <span><b>{item}</b>{checked.has(item) && <small>{formatStageDate(history?.completed_at) || "Completed"}</small>}</span>
+        </label>
+      })}</div>
     </section>
 
     {localOwnership==="Nowak" && <LaunchPackSection drum={{

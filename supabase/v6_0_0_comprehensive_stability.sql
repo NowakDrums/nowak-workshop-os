@@ -1,4 +1,4 @@
-A-- Nowak Workshop OS v6.0.0 comprehensive stability migration
+-- Nowak Workshop OS v6.0.0 comprehensive stability migration
 -- Safe to run even if previous migrations were already applied.
 
 -- DRUM LIFECYCLE
