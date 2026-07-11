@@ -1,35 +1,14 @@
-# Nowak Workshop OS v6.1.1
+# Nowak Workshop OS v6.1.2
 
-Communication actions now appear wherever stored photos or videos are displayed.
+## Workshop Today sanding queues
 
-## Nowak Custom
-- Open Customer Email
-- Copy Facebook Caption
-- Copy Instagram Caption
-- Download Media
-- Open Media
-- Add More Media
+Ply and stave drums are no longer grouped together under one generic sanding section.
 
-## Nowak Stock / Unallocated
-- Copy Facebook Caption
-- Copy Instagram Caption
-- Download Media
-- Open Media
-- Add More Media
+They now appear as:
 
-## Brady
-- Open Media
-- Download Media
-- Add More Media
-- Internal documentation only
+- Ply Shell Sanding — Fresh from the Mould
+- Stave Shell Sanding — After Machining
 
-Actions now appear in:
-- Launch Pack stages
-- Stored Build Photos & Videos
-- Stage Communications
-- Finish Reveal
-- Completed Drum media
-
-Email still opens as a prefilled draft. Browser security does not allow automatic attachments, so media can be downloaded beside the email button.
+The production checklist remains unchanged. This update only improves the Workshop Today grouping so the two different stages of work are clear.
 
 No Supabase migration is required.

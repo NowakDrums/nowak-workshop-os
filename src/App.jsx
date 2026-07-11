@@ -625,13 +625,23 @@ function nextStage(s){
 }
 
 function batchType(d){
+  const buildType=d.build_type || "Stave";
   const flow=workflowState(
-    d.build_type || "Stave",
+    buildType,
     parseChecked(d.notes),
     d.finish
   );
 
   if(!flow.nextStep || flow.nextStep==="Complete") return null;
+
+  // Ply and stave shells reach sanding from different parts of the process,
+  // so keep them in separate Workshop Today queues.
+  if(flow.nextStep==="Sand the shell"){
+    return buildType==="Ply"
+      ? "Ply Shell Sanding — Fresh from the Mould"
+      : "Stave Shell Sanding — After Machining";
+  }
+
   return flow.nextStep;
 }
 
@@ -1371,7 +1381,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.1.1 — email and social actions wherever media is displayed.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.1.2 — separate ply and stave sanding queues in Workshop Today.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
