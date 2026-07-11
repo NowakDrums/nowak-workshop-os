@@ -138,6 +138,34 @@ function applicableChecklist(buildType, finish=""){
   });
 }
 
+function hasProductionNumber(drum){
+  return /^\s*#?\d+\s*$/.test(String(drum?.serial || ""));
+}
+
+function isManufacturingComplete(drum){
+  if(drum?.sales_status==="Sold/Shipped") return true;
+  if(drum?.production_status==="Manufacturing Complete") return true;
+  const checked=parseChecked(drum?.notes);
+  return checked.has("Assembled");
+}
+
+function productionPriorityCompare(a,b){
+  const aNumbered=hasProductionNumber(a);
+  const bNumbered=hasProductionNumber(b);
+
+  if(aNumbered!==bNumbered) return aNumbered ? -1 : 1;
+
+  const aAllocated=a.build_client!=="Unallocated";
+  const bAllocated=b.build_client!=="Unallocated";
+  if(aAllocated!==bAllocated) return aAllocated ? -1 : 1;
+
+  if(aNumbered && bNumbered){
+    return extractNumber(a.serial)-extractNumber(b.serial);
+  }
+
+  return String(a.timber || "").localeCompare(String(b.timber || ""));
+}
+
 function hasWorkflowStarted(drum){
   return parseChecked(drum.notes).size > 0;
 }
@@ -1059,7 +1087,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.4.3 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.4.4 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1173,14 +1201,14 @@ function App(){
 
       <ProductionGroups
         drums={[...filtered]
-          .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
+          .sort(productionPriorityCompare)
           .filter(d=>{
             if(constructionFilter!=="All" && d.build_type!==constructionFilter) return false;
 
             const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish);
-            if(productionFilter==="Pending") return !hasWorkflowStarted(d);
-            if(productionFilter==="Active") return hasWorkflowStarted(d) && flow.percent<100 && d.sales_status!=="Sold/Shipped";
-            if(productionFilter==="Completed") return flow.percent===100 && d.sales_status!=="Sold/Shipped";
+            if(productionFilter==="Pending") return !hasWorkflowStarted(d) && d.sales_status!=="Sold/Shipped";
+            if(productionFilter==="Active") return hasWorkflowStarted(d) && !isManufacturingComplete(d) && d.sales_status!=="Sold/Shipped";
+            if(productionFilter==="Completed") return isManufacturingComplete(d) && d.sales_status!=="Sold/Shipped";
             if(productionFilter==="Sold") return d.sales_status==="Sold/Shipped";
             return true;
           })}
@@ -1238,12 +1266,12 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
   const groups=Object.entries(linkedGroups)
     .map(([projectId,items])=>({
       project:projectMap[projectId] || {id:projectId,name:"Unnamed Kit / Project"},
-      items:[...items].sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
+      items:[...items].sort(productionPriorityCompare)
     }))
     .sort((a,b)=>{
-      const aMin=Math.min(...a.items.map(d=>extractNumber(d.serial)));
-      const bMin=Math.min(...b.items.map(d=>extractNumber(d.serial)));
-      return aMin-bMin;
+      const aFirst=a.items[0] || {};
+      const bFirst=b.items[0] || {};
+      return productionPriorityCompare(aFirst,bFirst);
     });
 
   return <section className="productionGroups">
@@ -1280,7 +1308,7 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
       </header>
       <div className="productionList">
         {[...unlinked]
-          .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
+          .sort(productionPriorityCompare)
           .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto}/>)}
       </div>
     </section>}
@@ -1301,13 +1329,13 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     <span>{drum.size} · {drum.drum_type || "Snare"} · {drum.build_type}</span>
     <span className="badge">{displaySalesBadge(drum)}</span>
     {drum.build_client==="Nowak" && drum.nowak_serial && <span className="nowakSerialBadge">Serial {drum.nowak_serial}</span>}
-    <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
-    <p><b>Status:</b> {flow.status}</p>
-    <p><b>Next:</b> {flow.nextStep}</p>
+    <div className="progress"><i style={{width:(isManufacturingComplete(drum)?100:flow.percent)+"%"}}></i></div>
+    <p><b>Status:</b> {drum.sales_status==="Sold/Shipped" ? "Sold / Shipped" : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status}</p>
+    <p><b>Next:</b> {drum.sales_status==="Sold/Shipped" ? "Complete" : isManufacturingComplete(drum) ? "Marketing / launch optional" : flow.nextStep}</p>
     <p><b>Estimated:</b> {flow.estimatedCompleted.toFixed(2)} hr completed · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
     <section className="cardActionRow">
-      {flow.nextStep!=="Complete" && <button type="button" className="primary" disabled={progressing || !progressDrum} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
+      {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && <button type="button" className="primary" disabled={progressing || !progressDrum} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
       {onAddPhoto && <button type="button" onClick={()=>onAddPhoto(drum)}><Camera size={15}/> Add Photo</button>}
       <button type="button" onClick={()=>openJobCard(drum)}>Open job card</button>
     </section>
@@ -2419,11 +2447,13 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       nowak_serial:draft.nowak_serial || null,
       build_type:localBuildType,
       build_client:localOwnership,
-      sales_status:localOwnership==="Brady"
-        ? "Brady Production"
-        : localOwnership==="Unallocated"
-          ? "Unallocated"
-          : (draft.order_type==="Custom" ? "Custom Order" : "Stock"),
+      sales_status:drum.sales_status==="Sold/Shipped"
+        ? "Sold/Shipped"
+        : localOwnership==="Brady"
+          ? "Brady Production"
+          : localOwnership==="Unallocated"
+            ? "Unallocated"
+            : (draft.order_type==="Custom" ? "Custom Order" : "Stock"),
       cb_number:localOwnership==="Brady" ? localCbNumber : "",
       construction_note:localBuildSpec,
       custom_price:Number(customPrice||0),
@@ -2445,19 +2475,65 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       const detail="Save failed: " + error.message;
       setSavedMessage(detail);
       setMessage(detail);
-      return;
+      return false;
     }
 
     if(!data){
       const detail="Save failed: Supabase did not return the updated drum. Check database permissions.";
       setSavedMessage(detail);
       setMessage(detail);
-      return;
+      return false;
     }
 
     setMessage("");
     setSavedMessage("All changes saved");
     setTimeout(()=>setSavedMessage(""),2500);
+    return true;
+  }
+
+  async function saveAndClose(){
+    const saved=await saveAllChanges();
+    if(saved) onClose();
+  }
+
+  async function markManufacturingComplete(){
+    const steps=applicableChecklist(localBuildType,draft.finish);
+    const assembledIndex=steps.indexOf("Assembled");
+    if(assembledIndex<0) return;
+
+    const nextChecked=new Set(checked);
+    steps.slice(0,assembledIndex+1).forEach(item=>nextChecked.add(item));
+
+    setSavedMessage("Marking drum complete...");
+    const completedNotes=setChecklistInNotes(draft.notes,nextChecked);
+    const history=Array.isArray(drum.stage_history) ? [...drum.stage_history] : [];
+    const now=new Date().toISOString();
+
+    steps.slice(0,assembledIndex+1).forEach(item=>{
+      if(!history.some(entry=>entry.item===item && entry.completed)){
+        history.push({item,completed:true,completed_at:now});
+      }
+    });
+
+    const patch={
+      notes:completedNotes,
+      stage_history:history,
+      production_status:"Manufacturing Complete",
+      next_step:"Marketing / launch optional",
+    };
+
+    const {error}=await supabase.from("drums").update(patch).eq("id",drum.id);
+    if(error){
+      const detail="Could not mark drum complete: "+error.message;
+      setSavedMessage(detail);
+      setMessage(detail);
+      return;
+    }
+
+    setChecked(nextChecked);
+    setDraft(current=>({...current,notes:completedNotes,next_step:"Marketing / launch optional"}));
+    setSavedMessage("Drum marked manufacturing complete");
+    setMessage("");
   }
 
   async function saveWorkflow(nextChecked, changedItem=null, completed=null){
@@ -2654,7 +2730,17 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <DrumPhotoLibrary drumId={drum.id}/>
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
     <section className="panel inner"><h2>Notes</h2><textarea value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></section>
-    <section className="buttonRow"><button className="primary" onClick={()=>copyText(marketingText(drum),"Marketing")}><Camera size={16}/> Copy marketing</button><button onClick={()=>markSold(drum)}><Truck size={16}/> Mark sold / shipped</button></section>
+    <section className="panel inner completionActionsPanel">
+      <h2>Completion</h2>
+      <p>Manufacturing can be completed without finishing the Launch Pack or social-media stages.</p>
+      <div className="buttonRow">
+        {!isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)}) &&
+          <button className="primary" onClick={markManufacturingComplete}><CheckCircle2 size={16}/> Mark Drum Complete</button>}
+        <button onClick={()=>markSold(drum)}><Truck size={16}/> Mark Sold / Shipped</button>
+      </div>
+      {isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)}) &&
+        <p className="okText">Manufacturing is complete. Marketing and Launch Pack content remain optional.</p>}
+    </section>
     {localOwnership==="Nowak" && <section className={"panel inner nowakSerialPanel "+(flow.percent===100?"serialReady":"serialPending")}>
       <div className="serialPanelHeader">
         <div>
@@ -2693,7 +2779,11 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     />}
 
     <section className="jobSaveFooter">
-      <button className="primary saveChangesButton" onClick={saveAllChanges}><Save size={18}/> Save Changes</button>
+      <div className="jobFooterButtons">
+        <button className="primary saveChangesButton" onClick={saveAllChanges}><Save size={18}/> Save Changes</button>
+        <button className="primary saveCloseButton" onClick={saveAndClose}><Save size={18}/> Save & Close</button>
+        <button className="closeJobButton" onClick={onClose}>Close</button>
+      </div>
       {savedMessage && <span className="saveMessage">{savedMessage}</span>}
     </section>
     <section className="deleteZone"><button className="dangerButton" onClick={()=>deleteDrum(drum.id)}>Delete this job card</button></section>

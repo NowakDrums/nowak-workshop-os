@@ -1,19 +1,25 @@
-# Nowak Workshop OS v5.4.3
+# Nowak Workshop OS v5.4.4
 
-Launch Pack media gallery and serial-number visibility update.
+Production completion and Job Card usability update.
 
-## Launch Pack galleries
-- Stored media can now be viewed directly inside each Launch Pack stage.
-- Completed Drum opens by default, so recently uploaded final photos are immediately visible.
-- Image thumbnails and video previews are displayed.
-- Open a full-size media file in a new tab.
-- Delete an incorrect or blurry stored media file.
-- Add More Media remains available.
+## Manufacturing completion
+- Added `Mark Drum Complete`.
+- Completes the manufacturing workflow through Assembly.
+- Launch Pack, social media, website and YouTube stages remain optional.
+- Completed drums move to the Completed tab even without marketing content.
 
-## Nowak serial number
-- The Nowak Drum Serial Number section is now visible on every Nowak Job Card.
-- Before completion it displays `Assign when complete`.
-- At 100% completion it displays `Ready to assign`.
-- The serial number is stored using the existing Save Changes button.
+## Sold / Shipped
+- Sold/Shipped drums always appear in the Sold tab.
+- Saving a Job Card no longer accidentally changes Sold/Shipped back to Stock or Custom.
+
+## Production order
+- Drums with valid numeric production numbers appear first.
+- Allocated drums appear before Unallocated/Pending drums.
+- Numbered drums remain in production-number order.
+
+## Job Card footer
+- Save Changes
+- Save & Close
+- Close
 
 No Supabase migration is required.

@@ -495,3 +495,25 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .launchMediaGallery{grid-template-columns:repeat(2,minmax(0,1fr))}
   .serialPanelHeader{display:grid}
 }
+
+.completionActionsPanel{
+  border-color:#7fc680!important;
+  background:rgba(127,198,128,.06);
+}
+.completionActionsPanel h2{margin-top:0}
+.jobFooterButtons{
+  display:grid;
+  grid-template-columns:1fr 1fr auto;
+  gap:8px;
+  width:100%;
+}
+.jobFooterButtons button{
+  justify-content:center;
+}
+.closeJobButton{
+  min-width:90px;
+}
+@media(max-width:700px){
+  .jobFooterButtons{grid-template-columns:1fr}
+  .closeJobButton{min-width:0}
+}
