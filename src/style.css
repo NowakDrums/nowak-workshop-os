@@ -809,3 +809,16 @@ button:disabled{opacity:.55;cursor:not-allowed}
   color:#ffaaa2;
   background:rgba(190,70,60,.16);
 }
+
+/* v6.1.0 outstanding final work */
+.outstandingWorkPanel{border-color:#e4b85d!important}
+.outstandingWorkPanel.hasOutstandingWork{background:rgba(228,184,93,.08)}
+.outstandingWorkHeader{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.outstandingWorkHeader h2{margin:2px 0}
+.outstandingWorkBadge{padding:6px 9px;border:1px solid #e4b85d;border-radius:999px;color:#f4d89c;font-size:.76rem;font-weight:900}
+.outstandingWorkPreview,.outstandingWorkAlert{display:grid;gap:3px;padding:10px 12px;border:1px solid #e4b85d;border-radius:10px;background:rgba(228,184,93,.10)}
+.outstandingWorkPreview{margin-top:12px}
+.outstandingWorkPreview b,.outstandingWorkAlert b{color:#f4d89c}
+.outstandingWorkAlert{margin:8px 0}
+.outstandingTodayPanel{border-color:#e4b85d!important}
+@media(max-width:700px){.outstandingWorkHeader{display:grid}.outstandingWorkBadge{width:max-content}}

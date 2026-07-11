@@ -799,6 +799,33 @@ function setChecklistInNotes(existing, checked){
   return `${clean?clean+"\n\n":""}${block}`;
 }
 
+const outstandingWorkOptions = [
+  "No outstanding work",
+  "Hardware to be fitted",
+  "Final assembly required",
+  "Heads and tuning required",
+  "Final inspection required",
+  "Customer collection pending",
+  "Other",
+];
+
+function outstandingWorkFromNotes(notes){
+  const match=String(notes || "").match(/^\[Outstanding Work:\s*(.+?)\]$/mi);
+  return match ? match[1].trim() : "";
+}
+
+function setOutstandingWorkInNotes(notes,value){
+  const clean=String(notes || "")
+    .split("\n")
+    .filter(line=>!/^\[Outstanding Work:/i.test(line.trim()))
+    .join("\n")
+    .trim();
+
+  const task=String(value || "").trim();
+  if(!task || task==="No outstanding work") return clean;
+  return `${clean?clean+"\n":""}[Outstanding Work: ${task}]`;
+}
+
 function emailDraft(d, milestone){
   const name = d.customer && d.customer !== "Stock" ? d.customer : "there";
   const timberStory = d.timber_story ? `\n\nTimber story: ${d.timber_story}` : "";
@@ -962,6 +989,7 @@ function App(){
   const overdue=active.filter(d=>d.due_date && new Date(d.due_date) < new Date()).length;
   const cureQueue=active.filter(d=>["Polyurethane Coat 4","Finished Spraying / Curing"].includes(d.production_status)).length;
   const photoQueue=active.filter(d=>d.production_status==="Finished / Ready to Sell").length;
+  const outstandingFinalWork=filtered.filter(d=>outstandingWorkFromNotes(d.notes));
 
 
   async function createProject(nameOverride=""){
@@ -1343,7 +1371,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.0.9 — Job Card Save and Save & Close reliability fix.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.1.0 — outstanding final work tracking for completed drums.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1388,6 +1416,23 @@ function App(){
     </>}
 
     {view==="today" && <section className="batchGrid">
+      {outstandingFinalWork.length>0 && <section className="panel todayTaskPanel outstandingTodayPanel">
+        <h2>Outstanding Final Work <span className="taskCount">({outstandingFinalWork.length})</span></h2>
+        <p>These drums can remain Complete while the final practical task stays visible.</p>
+        <div className="todayDrumGrid">
+          {outstandingFinalWork
+            .sort(productionPriorityCompare)
+            .map(d=><DrumCard
+              key={d.id}
+              drum={d}
+              openJobCard={setJobCard}
+              progressDrum={progressDrumFromCard}
+              progressing={progressingDrumId===d.id}
+              onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
+            />)}
+        </div>
+      </section>}
+
       {Object.entries(batches).map(([name,items])=>{
         const projectMap=Object.fromEntries(projects.map(p=>[p.id,p.name]));
         const grouped={};
@@ -1588,6 +1633,10 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     <span className="badge">{displaySalesBadge(drum)}</span>
     {drumLifecycleStatus(drum) && <span className={"lifecycleBadge lifecycle"+drumLifecycleStatus(drum)}>{drumLifecycleStatus(drum)}</span>}
     {drum.build_client==="Nowak" && drum.nowak_serial && <span className="nowakSerialBadge">Serial {drum.nowak_serial}</span>}
+    {outstandingWorkFromNotes(drum.notes) && <div className="outstandingWorkAlert">
+      <b>Outstanding work</b>
+      <span>{outstandingWorkFromNotes(drum.notes)}</span>
+    </div>}
     <div className="progress"><i style={{width:(isManufacturingComplete(drum)?100:flow.percent)+"%"}}></i></div>
     <p><b>Status:</b> {isShippedStatus(drum) ? "Shipped" : isSoldStatus(drum) ? "Sold" : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status}</p>
     {drum.lifecycle_status && <p className="lifecycleStoredLine"><b>Stored lifecycle:</b> {drum.lifecycle_status}</p>}
@@ -2851,6 +2900,12 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     notes:drum.notes||"",
     project_id:drum.project_id||"",
     nowak_serial:drum.nowak_serial||"",
+    outstanding_work:outstandingWorkOptions.includes(outstandingWorkFromNotes(drum.notes))
+      ? (outstandingWorkFromNotes(drum.notes) || "No outstanding work")
+      : (outstandingWorkFromNotes(drum.notes) ? "Other" : "No outstanding work"),
+    outstanding_work_custom:outstandingWorkOptions.includes(outstandingWorkFromNotes(drum.notes))
+      ? ""
+      : outstandingWorkFromNotes(drum.notes),
     order_type:drum.sales_status==="Custom Order" ? "Custom" : "Stock",
   });
   const [savedMessage,setSavedMessage]=useState("");
@@ -2962,7 +3017,13 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           : derivedLifecycle==="Completed"
             ? "Marketing / launch optional"
             : nextFlow.nextStep,
-      notes:setChecklistInNotes(draft.notes,checked),
+      notes:setChecklistInNotes(
+        setOutstandingWorkInNotes(
+          draft.notes,
+          draft.outstanding_work==="Other" ? draft.outstanding_work_custom : draft.outstanding_work
+        ),
+        checked
+      ),
       veneer_1_thickness:Number(veneer[0]||0),
       veneer_2_thickness:Number(veneer[1]||0),
       veneer_3_thickness:Number(veneer[2]||0),
@@ -3003,7 +3064,13 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     steps.slice(0,assembledIndex+1).forEach(item=>nextChecked.add(item));
 
     setSavedMessage("Marking drum complete...");
-    const completedNotes=setChecklistInNotes(draft.notes,nextChecked);
+    const completedNotes=setChecklistInNotes(
+      setOutstandingWorkInNotes(
+        draft.notes,
+        draft.outstanding_work==="Other" ? draft.outstanding_work_custom : draft.outstanding_work
+      ),
+      nextChecked
+    );
     const history=Array.isArray(drum.stage_history) ? [...drum.stage_history] : [];
     const now=new Date().toISOString();
 
@@ -3235,6 +3302,42 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           <span><b>{checklistDisplayLabel(item,localBuildType)}</b>{checked.has(item) && <small>{formatStageDate(history?.completed_at) || "Completed"}</small>}</span>
         </label>
       })}</div>
+    </section>
+
+    <section className={"panel inner outstandingWorkPanel "+(
+      (draft.outstanding_work!=="No outstanding work" && (draft.outstanding_work!=="Other" || draft.outstanding_work_custom))
+        ? "hasOutstandingWork"
+        : ""
+    )}>
+      <div className="outstandingWorkHeader">
+        <div>
+          <span className="launchPackEyebrow">FINAL TASKS</span>
+          <h2>Outstanding Work</h2>
+        </div>
+        {(draft.outstanding_work!=="No outstanding work" && (draft.outstanding_work!=="Other" || draft.outstanding_work_custom)) &&
+          <span className="outstandingWorkBadge">ACTION REQUIRED</span>}
+      </div>
+      <p>A drum can remain in the Complete folder while this final task stays visible.</p>
+
+      <label>Outstanding work</label>
+      <select value={draft.outstanding_work} onChange={e=>setDraft({...draft,outstanding_work:e.target.value})}>
+        {outstandingWorkOptions.map(item=><option key={item} value={item}>{item}</option>)}
+      </select>
+
+      {draft.outstanding_work==="Other" && <>
+        <label>Describe the outstanding work</label>
+        <input
+          value={draft.outstanding_work_custom}
+          onChange={e=>setDraft({...draft,outstanding_work_custom:e.target.value})}
+          placeholder="Enter the final task required"
+        />
+      </>}
+
+      {(draft.outstanding_work!=="No outstanding work" && (draft.outstanding_work!=="Other" || draft.outstanding_work_custom)) &&
+        <div className="outstandingWorkPreview">
+          <b>Complete — final work required</b>
+          <span>{draft.outstanding_work==="Other" ? draft.outstanding_work_custom : draft.outstanding_work}</span>
+        </div>}
     </section>
 
     <section className="panel inner workflowSection fulfilmentSection">

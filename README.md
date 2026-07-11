@@ -1,17 +1,18 @@
-# Nowak Workshop OS v6.0.9
+# Nowak Workshop OS v6.1.0
 
-## Job Card save fix
+## Outstanding Work
 
-The Job Card was writing changes to Supabase but was not updating the app's active drum list and open Job Card state at the same time. This could make saved changes appear to disappear when the card was closed and reopened.
+Completed drums can remain in the Complete folder while showing a final practical task.
 
-Save and Save & Close now use the shared drum update process so they:
+Options:
+- No outstanding work
+- Hardware to be fitted
+- Final assembly required
+- Heads and tuning required
+- Final inspection required
+- Customer collection pending
+- Other
 
-- save the database record,
-- update the Production list immediately,
-- update the currently open Job Card,
-- retain the saved values when reopened,
-- show a visible success or failure message.
-
-Save & Close only closes after a confirmed successful save.
+The selected task appears on the Job Card, on drum cards in Production/Complete, and in a dedicated Outstanding Final Work section in Workshop Today.
 
 No Supabase migration is required.
