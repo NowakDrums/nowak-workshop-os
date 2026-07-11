@@ -1,20 +1,31 @@
-# Nowak Workshop OS v5.4.1
+# Nowak Workshop OS v5.4.2
 
-Comms and Marketing interface consolidation.
+Milestone Generator cleanup.
 
-## Changes
-- Removed the separate Marketing navigation tab.
-- Renamed Comms to `Comms & Marketing`.
-- Combined both functions into one centre with two internal tabs:
-  - Launch Pack Drafts
-  - Milestone Generator
-- Launch Pack Draft workflow remains unchanged:
-  - Draft
-  - Ready
-  - Published
-  - Archived
-- The existing Communication Centre layout and milestone tools remain available.
-- No records or features were removed.
+## Behaviour by build type
 
-## Supabase
-No new migration is required after the v5.4 Launch Pack setup.
+### Brady
+- Photo prompt and Add Photo only
+- Internal documentation notice
+- No customer email
+- No Facebook or Instagram drafts
+
+### Nowak Custom
+- Photo prompt
+- Facebook
+- Instagram
+- Customer email
+
+### Nowak Stock and Unallocated
+- Photo prompt
+- Facebook
+- Instagram
+- No customer email
+
+## Interface
+- Communication content is collapsed by default.
+- Open only Facebook, Instagram or Customer Email when needed.
+- Cards are shorter and easier to scan.
+- Existing Launch Pack drafts remain unchanged.
+
+No Supabase migration is required.

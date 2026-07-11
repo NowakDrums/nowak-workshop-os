@@ -1059,7 +1059,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.4.1 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.4.2 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1204,6 +1204,7 @@ function App(){
       allDrums={drums}
       openJobCard={setJobCard}
       setMessage={setMessage}
+      onAddPhoto={(drum,milestoneKey="general")=>setGlobalPhotoPrompt({drum,milestoneKey})}
     />} 
     {view==="settings" && <SettingsPage/>}
 
@@ -1633,7 +1634,7 @@ function Orders({drums, openJobCard}){
   return <section className="panel"><h2>Orders / Customers</h2><div className="tableWrap"><table><thead><tr><th>Drum</th><th>Customer</th><th>Email</th><th>Build For</th><th>CB #</th><th>Type</th><th>Price</th><th>Shipping</th><th>Total</th><th>Due</th></tr></thead><tbody>{drums.map(d=><tr key={d.id} className={d.build_client==="Brady"?"bradyRow":""}><td><button onClick={()=>openJobCard(d)}>#{d.serial} {d.timber}</button></td><td>{d.customer}</td><td>{d.customer_email}</td><td>{d.build_client||"Nowak"}</td><td>{d.cb_number}</td><td>{d.drum_type||"Snare"}</td><td>{money(d.custom_price||d.retail_price)}</td><td>{money(d.shipping_cost)}</td><td>{money(d.total_price||d.retail_price)}</td><td>{d.due_date||""}</td></tr>)}</tbody></table></div></section>
 }
 
-function CommsMarketingCentre({filteredDrums,allDrums,openJobCard,setMessage}){
+function CommsMarketingCentre({filteredDrums,allDrums,openJobCard,setMessage,onAddPhoto}){
   const [section,setSection]=useState("drafts");
 
   return <section>
@@ -1662,51 +1663,106 @@ function CommsMarketingCentre({filteredDrums,allDrums,openJobCard,setMessage}){
 
     {section==="drafts"
       ? <MarketingCentre drums={allDrums} openJobCard={openJobCard} setMessage={setMessage} embedded/>
-      : <CommsCentre drums={filteredDrums} openJobCard={openJobCard} embedded/>
+      : <CommsCentre drums={filteredDrums} openJobCard={openJobCard} embedded onAddPhoto={onAddPhoto}/>
     }
   </section>
 }
 
 
-function CommsCentre({drums, openJobCard, embedded=false}){
+function CommsCentre({drums, openJobCard, embedded=false, onAddPhoto}){
   return <section>
     {!embedded && <div className="panel"><h2>Communication Centre</h2><p>Generate customer emails and Facebook/Instagram posts from production milestones. Emails are signed Kelly & Kyle.</p></div>}
-    {embedded && <div className="panel embeddedSectionIntro"><h3>Milestone Generator</h3><p>Create an individual customer email, Facebook post or Instagram caption from any current production milestone.</p></div>}
-    <section className="templateGrid">{drums.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard}/>)}</section>
+    {embedded && <div className="panel embeddedSectionIntro"><h3>Milestone Generator</h3><p>Choose a milestone, add photos, then open only the communication you need. Brady builds remain internal-only.</p></div>}
+    <section className="templateGrid commsCardGrid">{drums.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard} onAddPhoto={onAddPhoto}/>)}</section>
   </section>
 }
 
-function CommsCard({drum, openJobCard}){
+function CommsCard({drum, openJobCard, onAddPhoto}){
   const [milestoneKey,setMilestoneKey]=useState("blank");
+  const [openSection,setOpenSection]=useState("");
   const milestone = communicationMilestones.find(m=>m.key===milestoneKey) || communicationMilestones[0];
   const draft = emailDraft(drum, milestone);
   const fb = socialPost(drum, milestone, "facebook");
   const insta = socialPost(drum, milestone, "instagram");
 
-  function copy(text,label){ navigator.clipboard?.writeText(text); alert(label + " copied"); }
+  const isBrady=drum.build_client==="Brady";
+  const isCustom=drum.build_client==="Nowak" && drum.sales_status==="Custom Order";
+  const isSocialOnly=!isBrady && !isCustom;
+  const photoMilestoneKey=photoMilestones[milestoneKey] ? milestoneKey : "general";
 
-  return <article className={"panel " + (drum.build_client==="Brady"?"bradyCard":"")}>
+  function copy(text,label){
+    navigator.clipboard?.writeText(text);
+    alert(label + " copied");
+  }
+
+  function toggleSection(section){
+    setOpenSection(current=>current===section ? "" : section);
+  }
+
+  return <article className={"panel compactCommsCard " + (isBrady?"bradyCard":"")}>
     <div className="cardHeading">
       <h2>#{drum.serial} {drum.timber}</h2>
       {allocatedCustomerName(drum) && <span className="customerNameBadge">{allocatedCustomerName(drum)}</span>}
     </div>
-    {drum.build_client==="Brady" && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
+
+    {isBrady && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
     <p>{drum.size} · {drum.build_type} · {drum.production_status}</p>
+
     <label>Milestone</label>
-    <select value={milestoneKey} onChange={e=>setMilestoneKey(e.target.value)}>{communicationMilestones.map(m=><option key={m.key} value={m.key}>{m.label}</option>)}</select>
-    <p className="calcNote">Photo prompt: {milestone.photo}</p>
-    <h3>Customer Email</h3>
-    {drum.customer_email ? <p className="okText">Email available: {drum.customer_email}</p> : <p className="dangerText">No customer email saved yet.</p>}
-    <pre>Subject: {draft.subject}
+    <select value={milestoneKey} onChange={e=>{setMilestoneKey(e.target.value);setOpenSection("");}}>
+      {communicationMilestones.map(m=><option key={m.key} value={m.key}>{m.label}</option>)}
+    </select>
+
+    <section className="commsPhotoPrompt">
+      <b>Photo prompt</b>
+      <p>{milestone.photo}</p>
+      <button type="button" onClick={()=>onAddPhoto?.(drum,photoMilestoneKey)}>
+        <Camera size={15}/> Add Photo
+      </button>
+    </section>
+
+    {isBrady && <section className="internalOnlyNotice">
+      <b>Internal documentation only</b>
+      <span>No customer email or social-media draft is shown for Brady builds.</span>
+    </section>}
+
+    {!isBrady && <section className="compactCommsActions">
+      <button className={openSection==="facebook"?"primary":""} onClick={()=>toggleSection("facebook")}><Share2 size={15}/> Facebook</button>
+      <button className={openSection==="instagram"?"primary":""} onClick={()=>toggleSection("instagram")}><Share2 size={15}/> Instagram</button>
+      {isCustom && <button className={openSection==="email"?"primary":""} onClick={()=>toggleSection("email")}><Mail size={15}/> Customer Email</button>}
+    </section>}
+
+    {isSocialOnly && <p className="calcNote">Social media only. No customer email is required for this build.</p>}
+
+    {openSection==="facebook" && <section className="commsExpandable">
+      <h3>Facebook Draft</h3>
+      <pre>{fb}</pre>
+      <button onClick={()=>copy(fb,"Facebook post")}><Share2 size={16}/> Copy Facebook</button>
+    </section>}
+
+    {openSection==="instagram" && <section className="commsExpandable">
+      <h3>Instagram Draft</h3>
+      <pre>{insta}</pre>
+      <button onClick={()=>copy(insta,"Instagram caption")}><Share2 size={16}/> Copy Instagram</button>
+    </section>}
+
+    {openSection==="email" && isCustom && <section className="commsExpandable">
+      <h3>Customer Email</h3>
+      {drum.customer_email
+        ? <p className="okText">Email available: {drum.customer_email}</p>
+        : <p className="dangerText">No customer email saved yet.</p>}
+      <pre>Subject: {draft.subject}
 
 {draft.body}</pre>
-    <section className="buttonRow"><a className="buttonLike primary" href={mailtoLink(drum,draft)}><Mail size={16}/> Open email</a><button onClick={()=>copy(`Subject: ${draft.subject}\n\n${draft.body}`,"Email")}>Copy email</button></section>
-    <h3>Facebook</h3><pre>{fb}</pre><button onClick={()=>copy(fb,"Facebook post")}><Share2 size={16}/> Copy Facebook</button>
-    <h3>Instagram</h3><pre>{insta}</pre><button onClick={()=>copy(insta,"Instagram caption")}><Share2 size={16}/> Copy Instagram</button>
-    <button onClick={()=>openJobCard(drum)}>Open job card</button>
+      <section className="buttonRow">
+        <a className={"buttonLike primary "+(!drum.customer_email?"disabledLink":"")} href={drum.customer_email?mailtoLink(drum,draft):undefined}><Mail size={16}/> Open Email</a>
+        <button onClick={()=>copy(`Subject: ${draft.subject}\n\n${draft.body}`,"Email")}>Copy Email</button>
+      </section>
+    </section>}
+
+    <button className="openJobCardButton" onClick={()=>openJobCard(drum)}>Open Job Card</button>
   </article>
 }
-
 
 
 function LaunchMediaModal({drum,stage,onClose,onUploaded,setMessage}){
