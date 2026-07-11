@@ -1080,17 +1080,67 @@ function App(){
   }
 
   async function markSold(d){
-    const existingPrice=Number(d.total_price || d.custom_price || d.retail_price || 0);
-    const entered=prompt("Sale price?", existingPrice);
-    if(entered===null) return;
+    const defaultSalePrice=Number(d.custom_price || d.retail_price || 0);
+    const saleEntry=prompt("Drum selling price (excluding shipping)?", defaultSalePrice);
+    if(saleEntry===null) return;
 
-    const price=Number(entered);
-    if(Number.isNaN(price) || price<0){
-      setMessage("Please enter a valid sale price.");
+    const salePrice=Number(saleEntry);
+    if(Number.isNaN(salePrice) || salePrice<0){
+      setMessage("Please enter a valid selling price.");
       return;
     }
 
-    const c=templateCost(templateMap[d.template_name],labourRate);
+    const defaultShippingCharged=Number(d.shipping_cost || 0);
+    const shippingChargedEntry=prompt(
+      "Shipping charged to customer? Enter 0 for free shipping or local pickup.",
+      defaultShippingCharged
+    );
+    if(shippingChargedEntry===null) return;
+
+    const shippingCharged=Number(shippingChargedEntry);
+    if(Number.isNaN(shippingCharged) || shippingCharged<0){
+      setMessage("Please enter a valid shipping amount charged to the customer.");
+      return;
+    }
+
+    const actualShippingEntry=prompt(
+      "Actual shipping cost to Nowak? Enter 0 for local pickup or if not known yet.",
+      0
+    );
+    if(actualShippingEntry===null) return;
+
+    const actualShippingCost=Number(actualShippingEntry);
+    if(Number.isNaN(actualShippingCost) || actualShippingCost<0){
+      setMessage("Please enter a valid actual shipping cost.");
+      return;
+    }
+
+    const paymentEntry=prompt(
+      "Payment status?\n\nEnter: Paid in Full, Deposit Paid, Invoice Sent, or Awaiting Payment",
+      "Paid in Full"
+    );
+    if(paymentEntry===null) return;
+
+    const paymentStatus=String(paymentEntry || "Awaiting Payment").trim();
+    const costBasis=templateCost(templateMap[d.template_name],labourRate);
+    const revenue=salePrice+shippingCharged;
+    const shippingProfit=shippingCharged-actualShippingCost;
+    const profit=revenue-costBasis-actualShippingCost;
+
+    const saleRecord={
+      serial:d.serial,
+      timber:d.timber,
+      customer:d.customer,
+      sale_price:salePrice,
+      shipping_charged:shippingCharged,
+      actual_shipping_cost:actualShippingCost,
+      shipping_profit:shippingProfit,
+      payment_status:paymentStatus,
+      total_revenue:revenue,
+      cost_basis:costBasis,
+      profit,
+      notes:"Marked sold from Workshop OS"
+    };
 
     const {data:existingSale,error:lookupError}=await supabase
       .from("sales")
@@ -1106,15 +1156,7 @@ function App(){
     if(existingSale?.length){
       const {error:updateSaleError}=await supabase
         .from("sales")
-        .update({
-          serial:d.serial,
-          timber:d.timber,
-          customer:d.customer,
-          sale_price:price,
-          cost_basis:c,
-          profit:price-c,
-          notes:"Marked sold from Workshop OS"
-        })
+        .update(saleRecord)
         .eq("drum_id",d.id);
 
       if(updateSaleError){
@@ -1124,13 +1166,7 @@ function App(){
     }else{
       const {error:insertError}=await supabase.from("sales").insert({
         drum_id:d.id,
-        serial:d.serial,
-        timber:d.timber,
-        customer:d.customer,
-        sale_price:price,
-        cost_basis:c,
-        profit:price-c,
-        notes:"Marked sold from Workshop OS"
+        ...saleRecord
       });
 
       if(insertError){
@@ -1142,8 +1178,15 @@ function App(){
     await updateDrum(d.id,{
       sales_status:"Sold",
       production_status:"Manufacturing Complete",
-      next_step:"Prepare for shipping"
+      next_step:"Prepare for shipping",
+      custom_price:salePrice,
+      shipping_cost:shippingCharged,
+      total_price:revenue
     });
+
+    setMessage(
+      `Marked sold. Revenue ${money(revenue)} · Shipping ${money(shippingCharged)} charged / ${money(actualShippingCost)} cost · Estimated profit ${money(profit)} · ${paymentStatus}`
+    );
   }
 
   async function markShipped(d){
@@ -1161,7 +1204,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.4.5 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.4.6 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
