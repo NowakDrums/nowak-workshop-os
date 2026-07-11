@@ -57,7 +57,7 @@ const workflowEstimates = {
     "Danish oil 3":0.25,
     "Cure complete":0,
     "Polished":1.00,
-    "Assembled":0.75,
+    "Assembled":0.50,
     "Photos taken":0.50,
     "Website listing":0.25,
     "Facebook / Instagram":0.25,
@@ -84,7 +84,7 @@ const workflowEstimates = {
     "Danish oil 3":0.25,
     "Cure complete":0,
     "Polished":1.00,
-    "Assembled":0.75,
+    "Assembled":0.50,
     "Photos taken":0.50,
     "Website listing":0.25,
     "Facebook / Instagram":0.25,
@@ -1381,7 +1381,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.1.4 — simplified Job Card communications and clarified customer email requirements.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.1.5 — corrected remaining-time estimates and simplified time reporting.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1651,7 +1651,7 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     <p><b>Status:</b> {isShippedStatus(drum) ? "Shipped" : isSoldStatus(drum) ? "Sold" : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status}</p>
     {drum.lifecycle_status && <p className="lifecycleStoredLine"><b>Stored lifecycle:</b> {drum.lifecycle_status}</p>}
     <p><b>Next:</b> {isShippedStatus(drum) ? "Complete" : isSoldStatus(drum) ? "Ship the drum" : isManufacturingComplete(drum) ? "Marketing / launch optional" : flow.nextStep}</p>
-    <p><b>Estimated:</b> {flow.estimatedTotal.toFixed(2)} hr production · {(isManufacturingComplete(drum)?0:flow.estimatedRemaining).toFixed(2)} hr remaining</p>
+    <p><b>Estimated:</b> {flow.estimatedTotal.toFixed(2)} hr production · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
     <section className="cardActionRow">
       {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && <button type="button" className="primary" disabled={progressing || !progressDrum} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
@@ -3277,9 +3277,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <section className="stats workflowStats">
       <div><b>{flow.percent}%</b><span>Complete</span></div>
       <div><b>{flow.estimatedCompleted.toFixed(2)}</b><span>Estimated hours completed</span></div>
-      <div><b>{(isManufacturingComplete(drum)?0:flow.estimatedRemaining).toFixed(2)}</b><span>Estimated production hours remaining</span></div>
+      <div><b>{flow.estimatedRemaining.toFixed(2)}</b><span>Estimated production hours remaining</span></div>
       <div><b>{Number(drum.hours_logged||0).toFixed(2)}</b><span>Actual hours logged</span></div>
-      <div><b>{(Number(drum.hours_logged||0)-flow.estimatedCompleted).toFixed(2)}</b><span>Actual vs estimate</span></div>
     </section>
 
     <section className="jobGrid">
@@ -3355,6 +3354,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         <label>Estimated time to current stage</label><input value={flow.estimatedCompleted.toFixed(2)+" hr"} readOnly/>
         <label>Estimated remaining time</label><input value={flow.estimatedRemaining.toFixed(2)+" hr"} readOnly/>
         <label>Actual time logged</label><input value={Number(drum.hours_logged||0).toFixed(2)+" hr"} readOnly/>
+        <small>Actual time remains 0.00 until workshop time is added below.</small>
         <label>Activity</label><input value={timeLabel} onChange={e=>setTimeLabel(e.target.value)}/>
         <label>Hours</label><input value={timeAmount} onChange={e=>setTimeAmount(e.target.value)}/>
         <button className="primary" onClick={()=>addTime(drum, timeAmount, timeLabel)}><Clock size={16}/> Add actual time</button>
