@@ -1,31 +1,19 @@
-# Nowak Workshop OS v5.4.2
+# Nowak Workshop OS v5.4.3
 
-Milestone Generator cleanup.
+Launch Pack media gallery and serial-number visibility update.
 
-## Behaviour by build type
+## Launch Pack galleries
+- Stored media can now be viewed directly inside each Launch Pack stage.
+- Completed Drum opens by default, so recently uploaded final photos are immediately visible.
+- Image thumbnails and video previews are displayed.
+- Open a full-size media file in a new tab.
+- Delete an incorrect or blurry stored media file.
+- Add More Media remains available.
 
-### Brady
-- Photo prompt and Add Photo only
-- Internal documentation notice
-- No customer email
-- No Facebook or Instagram drafts
-
-### Nowak Custom
-- Photo prompt
-- Facebook
-- Instagram
-- Customer email
-
-### Nowak Stock and Unallocated
-- Photo prompt
-- Facebook
-- Instagram
-- No customer email
-
-## Interface
-- Communication content is collapsed by default.
-- Open only Facebook, Instagram or Customer Email when needed.
-- Cards are shorter and easier to scan.
-- Existing Launch Pack drafts remain unchanged.
+## Nowak serial number
+- The Nowak Drum Serial Number section is now visible on every Nowak Job Card.
+- Before completion it displays `Assign when complete`.
+- At 100% completion it displays `Ready to assign`.
+- The serial number is stored using the existing Save Changes button.
 
 No Supabase migration is required.

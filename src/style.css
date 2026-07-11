@@ -393,3 +393,105 @@ button:disabled{opacity:.55;cursor:not-allowed}
 @media(max-width:700px){
   .compactCommsActions{grid-template-columns:1fr}
 }
+
+.launchStageTitleRow{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  align-items:center;
+}
+.launchStageTitleRow h3{margin:0}
+.smallToggleButton{
+  padding:5px 8px!important;
+  width:auto!important;
+  font-size:11px;
+}
+.launchMediaGallery{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin:10px 0 12px;
+}
+.launchMediaItem{
+  min-width:0;
+  border:1px solid #4b4235;
+  border-radius:9px;
+  overflow:hidden;
+  background:#0f0e0c;
+}
+.launchMediaItem>a{
+  display:block;
+  position:relative;
+}
+.launchMediaItem img,
+.launchMediaItem video{
+  display:block;
+  width:100%;
+  aspect-ratio:1/1;
+  object-fit:cover;
+  background:#090909;
+}
+.videoMediaBadge{
+  position:absolute;
+  left:5px;
+  bottom:5px;
+  padding:3px 5px;
+  border-radius:5px;
+  background:rgba(0,0,0,.78);
+  color:#fff;
+  font-size:9px;
+  font-weight:800;
+}
+.launchMediaItemActions{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:5px;
+  padding:5px 6px;
+}
+.launchMediaItemActions a{
+  color:#f4d89c;
+  font-size:10px;
+  text-decoration:none;
+}
+.mediaDeleteButton{
+  width:auto!important;
+  border:0!important;
+  padding:2px!important;
+  color:#ef8d8d!important;
+  background:transparent!important;
+  font-size:10px!important;
+}
+.serialPanelHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:10px;
+}
+.serialPanelHeader h2{margin:2px 0}
+.serialStatusBadge{
+  display:inline-block;
+  padding:5px 8px;
+  border-radius:999px;
+  border:1px solid #d3aa5d;
+  color:#f4d89c;
+  font-size:11px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.nowakSerialPanel.serialReady{
+  border-color:#7fc680!important;
+  background:rgba(127,198,128,.07);
+}
+.nowakSerialPanel.serialPending{
+  border-color:#d3aa5d!important;
+}
+.nowakSerialPanel small{
+  display:block;
+  margin-top:7px;
+  color:#a9a397;
+}
+@media(max-width:700px){
+  .launchMediaGallery{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .serialPanelHeader{display:grid}
+}

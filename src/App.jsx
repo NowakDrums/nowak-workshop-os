@@ -1059,7 +1059,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.4.2 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.4.3 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1849,6 +1849,7 @@ function LaunchPackSection({drum,setMessage}){
   const [drafts,setDrafts]=useState([]);
   const [selectedStage,setSelectedStage]=useState(null);
   const [status,setStatus]=useState("");
+  const [expandedStage,setExpandedStage]=useState("launch_final");
 
   async function load(){
     const [{data:mediaData,error:mediaError},{data:draftData,error:draftError}]=await Promise.all([
@@ -1870,6 +1871,34 @@ function LaunchPackSection({drum,setMessage}){
   const completedStages=launchPackStages.filter(stage=>counts[stage.key]>0).length;
   const generated=drafts.length>0;
   const progress=Math.round(((completedStages + (generated?1:0))/5)*100);
+
+  async function deleteMedia(item){
+    const confirmed=window.confirm("Delete this stored media file from the Launch Pack?");
+    if(!confirmed) return;
+
+    setStatus("Deleting media...");
+    try{
+      if(item.storage_path){
+        const {error:storageError}=await supabase.storage
+          .from("drum-photos")
+          .remove([item.storage_path]);
+        if(storageError) throw new Error("Storage delete: "+storageError.message);
+      }
+
+      const {error:rowError}=await supabase
+        .from("drum_photos")
+        .delete()
+        .eq("id",item.id);
+      if(rowError) throw new Error("Photo record delete: "+rowError.message);
+
+      setStatus("Media deleted.");
+      await load();
+    }catch(error){
+      const detail="Could not delete media: "+(error?.message || String(error));
+      setStatus(detail);
+      setMessage?.(detail);
+    }
+  }
 
   async function generate(){
     setStatus("Generating drafts...");
@@ -1906,12 +1935,41 @@ function LaunchPackSection({drum,setMessage}){
     <div className="progress large"><i style={{width:progress+"%"}}></i></div>
 
     <div className="launchStageGrid">
-      {launchPackStages.map(stage=><article className={"launchStageCard "+(counts[stage.key]?"complete":"")} key={stage.key}>
-        <h3>{stage.label}</h3>
-        <p>{stage.prompt}</p>
-        <small>{counts[stage.key]} file{counts[stage.key]===1?"":"s"} stored</small>
-        <button onClick={()=>setSelectedStage(stage)}><Camera size={15}/> Add Media</button>
-      </article>)}
+      {launchPackStages.map(stage=>{
+        const stageMedia=media.filter(item=>item.milestone===stage.key);
+        const expanded=expandedStage===stage.key;
+
+        return <article className={"launchStageCard "+(counts[stage.key]?"complete":"")} key={stage.key}>
+          <div className="launchStageTitleRow">
+            <h3>{stage.label}</h3>
+            {stageMedia.length>0 && <button className="smallToggleButton" onClick={()=>setExpandedStage(expanded?"":stage.key)}>
+              {expanded ? "Hide" : `View ${stageMedia.length}`}
+            </button>}
+          </div>
+          <p>{stage.prompt}</p>
+          <small>{counts[stage.key]} file{counts[stage.key]===1?"":"s"} stored</small>
+
+          {expanded && stageMedia.length>0 && <div className="launchMediaGallery">
+            {stageMedia.map(item=>{
+              const isVideo=item.media_type==="video" || /\.(mp4|mov|m4v|webm)$/i.test(item.storage_path || item.public_url || "");
+              return <div className="launchMediaItem" key={item.id}>
+                <a href={item.public_url} target="_blank" rel="noreferrer">
+                  {isVideo
+                    ? <video src={item.public_url} muted playsInline preload="metadata"/>
+                    : <img src={item.public_url} alt={stage.label}/>}
+                  {isVideo && <span className="videoMediaBadge">VIDEO</span>}
+                </a>
+                <div className="launchMediaItemActions">
+                  <a href={item.public_url} target="_blank" rel="noreferrer">Open</a>
+                  <button className="mediaDeleteButton" onClick={()=>deleteMedia(item)}>Delete</button>
+                </div>
+              </div>
+            })}
+          </div>}
+
+          <button onClick={()=>setSelectedStage(stage)}><Camera size={15}/> {stageMedia.length ? "Add More Media" : "Add Media"}</button>
+        </article>
+      })}
     </div>
 
     <section className="launchChecklist">
@@ -2597,15 +2655,24 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
     <section className="panel inner"><h2>Notes</h2><textarea value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></section>
     <section className="buttonRow"><button className="primary" onClick={()=>copyText(marketingText(drum),"Marketing")}><Camera size={16}/> Copy marketing</button><button onClick={()=>markSold(drum)}><Truck size={16}/> Mark sold / shipped</button></section>
-    {localOwnership==="Nowak" && flow.percent===100 && <section className="panel inner nowakSerialPanel">
-      <h2>Nowak Drum Serial Number</h2>
-      <p>This drum is complete. Enter the final Nowak serial number assigned to the finished drum.</p>
+    {localOwnership==="Nowak" && <section className={"panel inner nowakSerialPanel "+(flow.percent===100?"serialReady":"serialPending")}>
+      <div className="serialPanelHeader">
+        <div>
+          <span className="launchPackEyebrow">DRUM IDENTITY</span>
+          <h2>Nowak Drum Serial Number</h2>
+        </div>
+        <span className="serialStatusBadge">{flow.percent===100 ? "Ready to assign" : "Assign when complete"}</span>
+      </div>
+      <p>{flow.percent===100
+        ? "This drum is complete. Enter the final Nowak serial number."
+        : "The field is available now, but normally the final serial number is entered when the drum is completed."}</p>
       <label>Nowak serial number</label>
       <input
         value={draft.nowak_serial}
         onChange={e=>setDraft({...draft,nowak_serial:e.target.value})}
         placeholder="Enter final Nowak serial number"
       />
+      <small>Use the main Save Changes button to store the serial number.</small>
     </section>}
 
     {photoPrompt && <MilestonePhotoModal
