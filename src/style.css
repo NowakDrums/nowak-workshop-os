@@ -728,3 +728,8 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .fulfilmentLifecycle .okText{
   margin-top:12px;
 }
+
+/* v6.0.5: status actions remain in the open Job Card */
+.fulfilmentLifecycle .completionStatusButtons button.primary{
+  box-shadow:0 0 0 1px rgba(244,216,156,.25) inset;
+}

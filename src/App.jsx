@@ -1187,9 +1187,14 @@ function App(){
     }
 
     setDrums(current=>current.map(item=>item.id===d.id ? {...item,...data} : item));
-    setJobCard(null);
-    setView("production");
-    setProductionFilter(status);
+    setJobCard(current=>current?.id===d.id ? {...current,...data} : current);
+    setMessage(
+      status==="Completed"
+        ? "Saved — drum marked Complete."
+        : status==="Sold"
+          ? "Saved — drum marked Sold."
+          : "Saved — drum marked Shipped."
+    );
     return true;
   }
 
@@ -1322,15 +1327,17 @@ function App(){
 
   async function markShipped(d){
     const confirmed=window.confirm("Mark this drum as shipped?");
-    if(!confirmed) return;
-    await setDrumLifecycle(d,"Shipped");
+    if(!confirmed) return false;
+
+    const saved=await setDrumLifecycle(d,"Shipped");
+    return Boolean(saved);
   }
 
   function copyText(text,label){ navigator.clipboard?.writeText(text); alert(label + " copied"); }
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.0.4 — combined fulfilment status controls and corrected finish workflows.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.0.5 — editable timber and non-closing lifecycle controls.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -2782,6 +2789,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [veneer,setVeneer]=useState([drum.veneer_1_thickness,drum.veneer_2_thickness,drum.veneer_3_thickness,drum.veneer_4_thickness,drum.veneer_5_thickness].map(x=>x||1.2));
   const [draft,setDraft]=useState({
     serial:drum.serial||"",
+    timber:drum.timber||"",
     customer:drum.customer||"",
     customer_email:drum.customer_email||"",
     shipping_address:drum.shipping_address||"",
@@ -2869,6 +2877,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
     const patch={
       serial:draft.serial,
+      timber:draft.timber,
       customer:draft.customer,
       customer_email:draft.customer_email,
       shipping_address:draft.shipping_address,
@@ -2969,6 +2978,11 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       setSavedMessage("Could not mark drum complete.");
       return;
     }
+
+    setChecked(nextChecked);
+    setDraft(current=>({...current,notes:completedNotes}));
+    setSavedMessage("Saved — drum marked Complete");
+    setTimeout(()=>setSavedMessage(""),3000);
   }
 
   async function saveWorkflow(nextChecked, changedItem=null, completed=null){
@@ -3125,7 +3139,12 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       </div>
 
       <div className="panel inner"><h2>Build Details</h2>
-        <label>Size</label><SizeEditor drum={drum} updateDrum={updateDrum}/>
+        <label>Size</label><SizeEditor drum={...drum,timber:draft.timber} updateDrum={updateDrum}/>
+        <label>Timber type</label>
+        <select value={draft.timber} onChange={e=>setDraft({...draft,timber:e.target.value})}>
+          {!timberOptions.includes(draft.timber) && draft.timber && <option value={draft.timber}>{draft.timber}</option>}
+          {timberOptions.map(t=><option key={t} value={t}>{t}</option>)}
+        </select>
         <label>Drum type</label><select defaultValue={drum.drum_type||"Snare"} onChange={e=>{
           const newType=e.target.value;
           const previousDefault=defaultBuildSpecification(drum.drum_type||"Snare");
@@ -3150,8 +3169,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       </div>
     </section>
 
-    {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Stave" serial={drum.serial} timber={drum.timber} size={drum.size}/></section>}
-    {localBuildType==="Ply" && <section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={drum.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
+    {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Stave" serial={drum.serial} timber={draft.timber} size={drum.size}/></section>}
+    {localBuildType==="Ply" && <section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={draft.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
 
     <section className="panel inner"><h2>Manufacturing Checklist</h2>
       {String(draft.finish||"").toLowerCase().includes("natural") && <p className="naturalFinishNote">

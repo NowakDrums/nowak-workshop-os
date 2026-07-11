@@ -1,34 +1,27 @@
-# Nowak Workshop OS v6.0.4
+# Nowak Workshop OS v6.0.5
 
-Fulfilment and finish-workflow update.
+## Editable timber type
 
-## Fulfilment
-The separate Completion panel has been removed.
+The Job Card now includes a Timber type dropdown under Build Details.
 
-Complete, Sold and Shipped controls now sit inside the Fulfilment section alongside:
+- Uses the same timber list as Add Drum
+- Preserves an existing timber value even if it is not in the standard list
+- Saves with Save or Save & Close
+- Updates the Stave/Ply calculator display after saving
 
-- Photos taken
-- Packed
-- Shipped checklist
+## Complete, Sold and Shipped
 
-This keeps all after-build and delivery actions together.
+These actions no longer close the Job Card or navigate to another Production tab.
 
-## Finish rules
+They now:
 
-### High Gloss
-- Cure stage required
-- Polishing required
+1. save and verify the lifecycle status in Supabase,
+2. keep the Job Card open,
+3. update the highlighted lifecycle button,
+4. show a confirmation message.
 
-### Satin
-- Cure stage required
-- No polishing stage
-
-### Natural
-- Danish oil stages only
-- No separate cure/drying stage
-- No polishing stage
-
-These rules update the checklist, next step, progress percentage and estimated production hours automatically.
+Only Close or Save & Close closes the Job Card.
 
 ## Supabase
+
 No migration is required.
