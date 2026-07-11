@@ -733,3 +733,61 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .fulfilmentLifecycle .completionStatusButtons button.primary{
   box-shadow:0 0 0 1px rgba(244,216,156,.25) inset;
 }
+
+/* v6.0.8 media handling */
+.storedMediaCard{
+  position:relative;
+  display:grid;
+  gap:6px;
+}
+.storedMediaCard>a{
+  position:relative;
+  display:block;
+}
+.storedMediaCard img,
+.storedMediaCard video{
+  width:100%;
+  aspect-ratio:1/1;
+  object-fit:cover;
+  border-radius:9px;
+  border:1px solid #4b4235;
+  background:#080705;
+}
+.storedMediaCard>span{
+  font-size:.82rem;
+  color:#bdb7ac;
+}
+.storedMediaCard .mediaDeleteButton{
+  width:100%;
+  min-height:34px;
+}
+.launchMediaPreview{
+  position:relative;
+}
+.launchMediaPreview video,
+.launchMediaPreview img{
+  width:100%;
+  aspect-ratio:1/1;
+  object-fit:cover;
+  border-radius:8px;
+  background:#080705;
+}
+.compactMediaGallery{
+  margin-top:10px;
+}
+.compactMediaGallery .launchMediaItemActions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:6px;
+}
+.videoMediaBadge{
+  pointer-events:none;
+}
+@media(max-width:700px){
+  .photoLibraryGrid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .launchMediaGallery{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}

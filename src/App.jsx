@@ -1343,7 +1343,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.0.7 — deployment fix plus editable timber and Fiddleback options.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.0.8 — video previews and media deletion improvements.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -2231,22 +2231,22 @@ function LaunchPackSection({drum,setMessage}){
           <div className="launchStageTitleRow">
             <h3>{stage.label}</h3>
             {stageMedia.length>0 && <button className="smallToggleButton" onClick={()=>setExpandedStage(expanded?"":stage.key)}>
-              {expanded ? "Hide" : `View ${stageMedia.length}`}
+              {expanded ? "Show fewer" : stageMedia.length>3 ? `View all ${stageMedia.length}` : "Hide previews"}
             </button>}
           </div>
           <p>{stage.prompt}</p>
           <small>{counts[stage.key]} file{counts[stage.key]===1?"":"s"} stored</small>
 
-          {expanded && stageMedia.length>0 && <div className="launchMediaGallery">
-            {stageMedia.map(item=>{
+          {stageMedia.length>0 && <div className={"launchMediaGallery "+(!expanded?"compactMediaGallery":"")}>
+            {stageMedia.slice(0,expanded ? stageMedia.length : 3).map(item=>{
               const isVideo=item.media_type==="video" || /\.(mp4|mov|m4v|webm)$/i.test(item.storage_path || item.public_url || "");
               return <div className="launchMediaItem" key={item.id}>
-                <a href={item.public_url} target="_blank" rel="noreferrer">
+                <div className="launchMediaPreview">
                   {isVideo
-                    ? <video src={item.public_url} muted playsInline preload="metadata"/>
-                    : <img src={item.public_url} alt={stage.label}/>}
+                    ? <video src={item.public_url} muted playsInline controls preload="metadata"/>
+                    : <a href={item.public_url} target="_blank" rel="noreferrer"><img src={item.public_url} alt={stage.label}/></a>}
                   {isVideo && <span className="videoMediaBadge">VIDEO</span>}
-                </a>
+                </div>
                 <div className="launchMediaItemActions">
                   <a href={item.public_url} target="_blank" rel="noreferrer">Open</a>
                   <button className="mediaDeleteButton" onClick={()=>deleteMedia(item)}>Delete</button>
@@ -2455,33 +2455,79 @@ function SettingsPage(){
 function DrumPhotoLibrary({drumId}){
   const [photos,setPhotos]=useState([]);
   const [loadingPhotos,setLoadingPhotos]=useState(false);
+  const [libraryStatus,setLibraryStatus]=useState("");
 
   async function loadPhotos(){
     setLoadingPhotos(true);
-    const {data}=await supabase
+    const {data,error}=await supabase
       .from("drum_photos")
       .select("*")
       .eq("drum_id",drumId)
       .order("created_at",{ascending:false});
-    setPhotos(data || []);
+
+    if(error){
+      setLibraryStatus("Could not load stored media: "+error.message);
+      setPhotos([]);
+    }else{
+      setPhotos(data || []);
+      setLibraryStatus("");
+    }
     setLoadingPhotos(false);
   }
 
   useEffect(()=>{ loadPhotos(); },[drumId]);
 
+  async function deleteStoredMedia(item){
+    const confirmed=window.confirm("Delete this stored photo or video?");
+    if(!confirmed) return;
+
+    setLibraryStatus("Deleting media...");
+    try{
+      if(item.storage_path){
+        const {error:storageError}=await supabase.storage
+          .from("drum-photos")
+          .remove([item.storage_path]);
+        if(storageError) throw new Error("Storage delete: "+storageError.message);
+      }
+
+      const {error:rowError}=await supabase
+        .from("drum_photos")
+        .delete()
+        .eq("id",item.id);
+      if(rowError) throw new Error("Photo record delete: "+rowError.message);
+
+      setLibraryStatus("Media deleted.");
+      await loadPhotos();
+    }catch(error){
+      setLibraryStatus("Could not delete media: "+(error?.message || String(error)));
+    }
+  }
+
   return <section className="panel inner">
     <div className="photoLibraryHeader">
-      <h2>Stored Build Photos</h2>
+      <h2>Stored Build Photos & Videos</h2>
       <button onClick={loadPhotos}>{loadingPhotos?"Loading...":"Refresh"}</button>
     </div>
-    {photos.length===0 ? <p>No milestone photos stored yet.</p> :
+
+    {photos.length===0 ? <p>No milestone photos or videos stored yet.</p> :
       <div className="photoLibraryGrid">
-        {photos.map(photo=><a key={photo.id} href={photo.public_url} target="_blank" rel="noreferrer">
-          <img src={photo.public_url} alt={photo.milestone}/>
-          <span>{photoMilestones[photo.milestone]?.label || photo.milestone}</span>
-        </a>)}
+        {photos.map(photo=>{
+          const isVideo=photo.media_type==="video" || /\.(mp4|mov|m4v|webm)$/i.test(photo.storage_path || photo.public_url || "");
+          return <div className="storedMediaCard" key={photo.id}>
+            <a href={photo.public_url} target="_blank" rel="noreferrer">
+              {isVideo
+                ? <video src={photo.public_url} muted playsInline controls preload="metadata"/>
+                : <img src={photo.public_url} alt={photo.milestone}/>}
+              {isVideo && <span className="videoMediaBadge">VIDEO</span>}
+            </a>
+            <span>{photoMilestones[photo.milestone]?.label || launchPackStages.find(stage=>stage.key===photo.milestone)?.label || photo.milestone}</span>
+            <button className="mediaDeleteButton" onClick={()=>deleteStoredMedia(photo)}>Delete</button>
+          </div>
+        })}
       </div>
     }
+
+    {libraryStatus && <p className={libraryStatus.includes("Could not")?"dangerText":"okText"}>{libraryStatus}</p>}
   </section>
 }
 

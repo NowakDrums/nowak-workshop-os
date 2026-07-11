@@ -1,12 +1,19 @@
-# Nowak Workshop OS v6.0.7
+# Nowak Workshop OS v6.0.8
 
-This release fixes the Vercel build error introduced in v6.0.5.
+## Finish Reveal media
 
-Included:
-- Editable timber type on Job Cards
-- Complete, Sold and Shipped keep the Job Card open
-- Jarrah Fiddleback timber option
-- Marri Fiddleback timber option
-- Fiddleback website pricing tier
+- Video previews now appear directly inside the Finish Reveal card.
+- You no longer need to open `View 2` before seeing stored media.
+- Videos use a proper video player with a visible play control.
+- Up to three previews are shown directly; larger sets can be expanded.
+
+## Delete duplicate media
+
+Every stored photo or video now has a visible Delete button in:
+
+- Launch Pack stages
+- Stored Build Photos & Videos
+
+Deletion removes both the Supabase Storage file and its database record after confirmation.
 
 No Supabase migration is required.
