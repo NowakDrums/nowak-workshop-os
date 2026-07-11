@@ -329,3 +329,26 @@ button:disabled{opacity:.55;cursor:not-allowed}
 @media(max-width:900px){
   .launchStageGrid,.marketingDraftGrid{grid-template-columns:1fr}
 }
+
+.commsMarketingHeader{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:18px;
+  align-items:end;
+}
+.commsMarketingHeader h2{margin:2px 0 4px}
+.commsMarketingHeader p{margin:0;color:#bdb7ac}
+.commsMarketingTabs{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.embeddedSectionIntro{
+  margin-bottom:12px;
+}
+.embeddedSectionIntro h3{margin:0 0 4px}
+.embeddedSectionIntro p{margin:0;color:#bdb7ac}
+@media(max-width:900px){
+  .commsMarketingHeader{grid-template-columns:1fr}
+  .commsMarketingTabs{display:grid;grid-template-columns:1fr}
+}

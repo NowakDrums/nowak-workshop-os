@@ -1059,7 +1059,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v5.4.0 — fixed finish workflow crash.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v5.4.1 — fixed finish workflow crash.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1074,8 +1074,7 @@ function App(){
       <button className={view==="veneer"?"active":""} onClick={()=>setView("veneer")}><Ruler size={16}/> Veneer Calc</button>
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
-      <button className={view==="comms"?"active":""} onClick={()=>setView("comms")}><Mail size={16}/> Comms</button>
-      <button className={view==="marketing"?"active":""} onClick={()=>setView("marketing")}><Share2 size={16}/> Marketing</button>
+      <button className={view==="comms"?"active":""} onClick={()=>setView("comms")}><Mail size={16}/> Comms & Marketing</button>
       <button className={view==="settings"?"active":""} onClick={()=>setView("settings")}><Settings size={16}/> Settings</button>
       <button onClick={()=>{setAddWizardPreset({});setShowAddWizard(true);}}><Plus size={16}/> Add Drum</button>
     </nav>
@@ -1200,8 +1199,12 @@ function App(){
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
     {view==="inventory" && <Inventory hardware={hardware} updateHardware={updateHardware} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
-    {view==="comms" && <CommsCentre drums={filtered} openJobCard={setJobCard}/>}
-    {view==="marketing" && <MarketingCentre drums={drums} openJobCard={setJobCard} setMessage={setMessage}/>} 
+    {view==="comms" && <CommsMarketingCentre
+      filteredDrums={filtered}
+      allDrums={drums}
+      openJobCard={setJobCard}
+      setMessage={setMessage}
+    />} 
     {view==="settings" && <SettingsPage/>}
 
     {globalPhotoPrompt && <MilestonePhotoModal
@@ -1630,8 +1633,47 @@ function Orders({drums, openJobCard}){
   return <section className="panel"><h2>Orders / Customers</h2><div className="tableWrap"><table><thead><tr><th>Drum</th><th>Customer</th><th>Email</th><th>Build For</th><th>CB #</th><th>Type</th><th>Price</th><th>Shipping</th><th>Total</th><th>Due</th></tr></thead><tbody>{drums.map(d=><tr key={d.id} className={d.build_client==="Brady"?"bradyRow":""}><td><button onClick={()=>openJobCard(d)}>#{d.serial} {d.timber}</button></td><td>{d.customer}</td><td>{d.customer_email}</td><td>{d.build_client||"Nowak"}</td><td>{d.cb_number}</td><td>{d.drum_type||"Snare"}</td><td>{money(d.custom_price||d.retail_price)}</td><td>{money(d.shipping_cost)}</td><td>{money(d.total_price||d.retail_price)}</td><td>{d.due_date||""}</td></tr>)}</tbody></table></div></section>
 }
 
-function CommsCentre({drums, openJobCard}){
-  return <section><div className="panel"><h2>Communication Centre</h2><p>Generate customer emails and Facebook/Instagram posts from production milestones. Emails are signed Kelly & Kyle.</p></div><section className="templateGrid">{drums.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard}/>)}</section></section>
+function CommsMarketingCentre({filteredDrums,allDrums,openJobCard,setMessage}){
+  const [section,setSection]=useState("drafts");
+
+  return <section>
+    <section className="panel commsMarketingHeader">
+      <div>
+        <span className="launchPackEyebrow">COMMUNICATIONS</span>
+        <h2>Comms & Marketing</h2>
+        <p>Review Launch Pack drafts or manually generate milestone communications from one place.</p>
+      </div>
+
+      <div className="commsMarketingTabs">
+        <button
+          className={section==="drafts" ? "primary" : ""}
+          onClick={()=>setSection("drafts")}
+        >
+          <Share2 size={16}/> Launch Pack Drafts
+        </button>
+        <button
+          className={section==="milestones" ? "primary" : ""}
+          onClick={()=>setSection("milestones")}
+        >
+          <Mail size={16}/> Milestone Generator
+        </button>
+      </div>
+    </section>
+
+    {section==="drafts"
+      ? <MarketingCentre drums={allDrums} openJobCard={openJobCard} setMessage={setMessage} embedded/>
+      : <CommsCentre drums={filteredDrums} openJobCard={openJobCard} embedded/>
+    }
+  </section>
+}
+
+
+function CommsCentre({drums, openJobCard, embedded=false}){
+  return <section>
+    {!embedded && <div className="panel"><h2>Communication Centre</h2><p>Generate customer emails and Facebook/Instagram posts from production milestones. Emails are signed Kelly & Kyle.</p></div>}
+    {embedded && <div className="panel embeddedSectionIntro"><h3>Milestone Generator</h3><p>Create an individual customer email, Facebook post or Instagram caption from any current production milestone.</p></div>}
+    <section className="templateGrid">{drums.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard}/>)}</section>
+  </section>
 }
 
 function CommsCard({drum, openJobCard}){
@@ -1839,7 +1881,7 @@ function LaunchPackSection({drum,setMessage}){
   </section>
 }
 
-function MarketingCentre({drums,openJobCard,setMessage}){
+function MarketingCentre({drums,openJobCard,setMessage,embedded=false}){
   const [drafts,setDrafts]=useState([]);
   const [folder,setFolder]=useState("Draft");
   const [editing,setEditing]=useState(null);
@@ -1862,7 +1904,7 @@ function MarketingCentre({drums,openJobCard,setMessage}){
 
   return <section>
     <section className="panel productionToolbar">
-      <h2>Marketing</h2>
+      <h2>{embedded ? "Launch Pack Drafts" : "Marketing"}</h2>
       <p>Proofread Launch Pack drafts before release. Nothing is published automatically.</p>
       <div className="filterRow">
         {["Draft","Ready","Published","Archived"].map(item=>
