@@ -1,27 +1,15 @@
-# Nowak Workshop OS v6.2.4
+# Nowak Workshop OS v6.2.5
 
-## Completed drum count
+## Completion status sync fix
 
-The Dashboard now counts every drum that is marked Completed and has not been sold or shipped.
+Unchecking `Assembled` or any earlier manufacturing stage now immediately updates:
 
-The card is labelled `Completed drums`, rather than excluding completed custom orders.
+- the open Job Card
+- Production cards
+- the Completed group
+- Dashboard completed-drum counts
+- remaining production hours
 
-## Assembly and lifecycle status
-
-Unchecking `Assembled` now correctly removes the Completed lifecycle status, unless the drum has already been marked Sold or Shipped.
-
-The drum returns to its actual production workflow and again shows assembly as outstanding.
-
-## Interface cleanup
-
-The internal `Stored lifecycle` line has been removed from drum cards. This was a database status indicator and was not useful workshop information.
-
-The Cure Queue card has been removed from the Dashboard because curing tasks already appear in Workshop Today.
-
-The Dashboard retains:
-
-- Photo / Marketing Queue
-- Suggested Work Batches
-- Needs Attention
+Previously, the database checklist could save correctly while the app still displayed the old Completed lifecycle until a full refresh. The workflow save now uses the shared drum update function so every view receives the same saved record immediately.
 
 No Supabase migration is required.

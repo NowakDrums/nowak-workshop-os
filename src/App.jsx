@@ -1459,7 +1459,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.2.4 — corrected completed status behaviour and simplified Dashboard.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.2.5 — checklist changes now update completion status everywhere immediately.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -3755,7 +3755,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
     setSavedMessage("Saving checklist...");
 
-    const {data,error}=await supabase.from("drums").update({
+    const workflowPatch={
       notes:notesValue,
       lifecycle_status:lifecycle,
       production_status:["Completed","Sold","Shipped"].includes(lifecycle)
@@ -3769,17 +3769,20 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
             ? "Marketing / launch optional"
             : nextFlow.nextStep,
       stage_history:history
-    }).eq("id",drum.id).select("*").single();
+    };
 
-    if(error){
-      const detail="Workflow save failed: " + error.message;
+    // Use the shared update helper so the database, Production view,
+    // Dashboard counts and open Job Card all update immediately.
+    const saved=await updateDrum(drum.id,workflowPatch);
+
+    if(!saved){
+      const detail="Workflow save failed. Check the message at the top of the app for details.";
       setSavedMessage(detail);
-      setMessage(detail);
       return false;
     }
 
-    setDraft(current=>({...current,notes:data.notes || notesValue}));
-    setChecked(parseChecked(data.notes || notesValue));
+    setDraft(current=>({...current,notes:notesValue}));
+    setChecked(parseChecked(notesValue));
     setMessage("");
     setSavedMessage(lifecycle==="Shipped" ? "Saved — moved to Shipped" : "Checklist saved");
     setTimeout(()=>setSavedMessage(""),2500);
