@@ -1088,3 +1088,146 @@ button:disabled{opacity:.55;cursor:not-allowed}
     width:100%;
   }
 }
+
+/* v6.2.2 Customers & Orders */
+.customerOrdersPage{
+  display:grid;
+  gap:14px;
+}
+.customerOrdersIntro{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:18px;
+}
+.customerOrdersIntro h2{
+  margin:2px 0;
+}
+.customerOrdersIntro p{
+  max-width:760px;
+  margin:6px 0 0;
+  color:#bdb7ac;
+}
+.customerOrderCounts{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(120px,1fr));
+  gap:8px;
+  min-width:300px;
+}
+.customerOrderCounts>div{
+  display:grid;
+  gap:3px;
+  padding:10px 12px;
+  border:1px solid #4b4235;
+  border-radius:10px;
+  background:#15130f;
+}
+.customerOrderCounts b{
+  color:#f4d89c;
+  font-size:1.25rem;
+}
+.customerOrderCounts span{
+  color:#bdb7ac;
+  font-size:.84rem;
+}
+.customerOrderSectionHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+}
+.customerOrderSectionHeader h2{
+  margin:0;
+}
+.customerOrderSectionHeader p{
+  margin:5px 0 0;
+  color:#bdb7ac;
+}
+.customerOrderSectionHeader>b{
+  min-width:42px;
+  padding:8px 10px;
+  border-radius:999px;
+  background:rgba(228,184,93,.12);
+  color:#f4d89c;
+  text-align:center;
+}
+.customerOrderGrid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-top:12px;
+}
+.customerOrderCard{
+  padding:13px;
+  border:1px solid #4b4235;
+  border-radius:11px;
+  background:#15130f;
+}
+.customerOrderTop{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+.customerOrderTop h3{
+  margin:2px 0;
+}
+.customerOrderTop p{
+  margin:4px 0 0;
+  color:#bdb7ac;
+}
+.customerOrderMeta{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin:12px 0;
+}
+.customerOrderMeta>div{
+  display:grid;
+  gap:2px;
+  padding:8px;
+  border:1px solid #382f22;
+  border-radius:8px;
+}
+.customerOrderMeta span{
+  color:#958f84;
+  font-size:.76rem;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.customerOrderMeta b{
+  overflow-wrap:anywhere;
+  font-size:.9rem;
+}
+.bradyOrderSection{
+  border-color:#8b6bc7!important;
+}
+.fulfilmentOrderSection{
+  border-color:#61b8ee!important;
+}
+@media(max-width:1000px){
+  .customerOrdersIntro{
+    display:grid;
+  }
+  .customerOrderCounts{
+    min-width:0;
+  }
+  .customerOrderGrid{
+    grid-template-columns:1fr;
+  }
+}
+@media(max-width:700px){
+  .customerOrderCounts{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .customerOrderTop,
+  .customerOrderSectionHeader{
+    display:grid;
+  }
+  .customerOrderTop button{
+    width:100%;
+  }
+  .customerOrderMeta{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}

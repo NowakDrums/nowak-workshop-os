@@ -1,40 +1,31 @@
-# Nowak Workshop OS v6.2.1
+# Nowak Workshop OS v6.2.2
 
-## Expanded Dashboard
+## Customers & Orders
 
-The Dashboard now provides the current workshop snapshot:
+The Orders tab has been renamed Customers & Orders and is now customer-focused.
 
-- Active drums
-- Custom orders
-- Brady / CB drums
-- Overdue jobs
-- Potential retail
-- Hardware stock value
-- Estimated gross profit
-- Stave drums in production
-- Ply drums in production
-- Completed drums in stock
+It includes:
 
-The relevant cards are clickable and open Production, Orders, Inventory or Workshop Summary.
+- Active Nowak custom orders
+- Active Brady / CB orders
+- Sold customer drums awaiting collection or shipping
+- Completed customer order history
 
-## Needs Attention
+It excludes:
 
-The old Priority Jobs section has been removed.
+- Unallocated drums
+- Unsold stock drums with no customer
+- General production inventory
 
-A drum only appears under Needs Attention when it has a clear issue:
+Each order card shows:
 
-- Overdue
-- Due within seven days
-- Outstanding final work
-- Sold but awaiting shipment
-- Missing customer name on a Nowak custom order
-- Missing customer email on a Nowak custom order
-
-This avoids duplicating Workshop Today and makes the Dashboard genuinely action-focused.
-
-## Dashboard versus Workshop Summary
-
-- Dashboard: current operational snapshot
-- Workshop Summary: performance over time
+- Customer
+- Email
+- Current status
+- Next action
+- Due date
+- Order value
+- Production progress
+- Direct access to the Job Card
 
 No Supabase migration is required.

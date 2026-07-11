@@ -1440,7 +1440,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.2.1 — expanded Dashboard and genuine Needs Attention queue.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.2.2 — customer-focused Customers & Orders page.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1451,7 +1451,7 @@ function App(){
       <button className={view==="today"?"active":""} onClick={()=>setView("today")}><Hammer size={16}/> Workshop Today</button>
       <button className={view==="production"?"active":""} onClick={()=>setView("production")}><ListChecks size={16}/> Production</button>
       <button className={view==="projects"?"active":""} onClick={()=>setView("projects")}><Layers3 size={16}/> Kits / Projects</button>
-      <button className={view==="orders"?"active":""} onClick={()=>setView("orders")}><Users size={16}/> Orders</button>
+      <button className={view==="orders"?"active":""} onClick={()=>setView("orders")}><Users size={16}/> Customers & Orders</button>
       <button className={view==="veneer"?"active":""} onClick={()=>setView("veneer")}><Ruler size={16}/> Veneer Calc</button>
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
@@ -2391,8 +2391,133 @@ function Inventory({hardware, updateHardware, lowStock, inventoryValue}){ return
 function Costing({templates, labourRate, setLabourRate}){ return <section className="panel"><h2>Costing Templates</h2><label className="inlineLabel">Labour rate <input value={labourRate} onChange={e=>setLabourRate(Number(e.target.value))}/></label><div className="templateGrid">{templates.map(t=>{const total=templateCost(t,labourRate), profit=Number(t.retail_price||0)-total; return <article className="card" key={t.id}><b>{t.name}</b><span>Hardware: {money(t.hardware_cost)}</span><span>Timber: {money(t.timber_cost)}</span><span>Consumables: {money(t.consumables)}</span><span>Labour: {t.labour_hours} hrs × {money(labourRate)}</span><hr/><span>Total cost: {money(total)}</span><span>Retail: {money(t.retail_price)}</span><b>Estimated profit: {money(profit)}</b></article>})}</div></section> }
 
 function Orders({drums, openJobCard}){
-  return <section className="panel"><h2>Orders / Customers</h2><div className="tableWrap"><table><thead><tr><th>Drum</th><th>Customer</th><th>Email</th><th>Build For</th><th>CB #</th><th>Type</th><th>Price</th><th>Shipping</th><th>Total</th><th>Due</th></tr></thead><tbody>{drums.map(d=><tr key={d.id} className={d.build_client==="Brady"?"bradyRow":""}><td><button onClick={()=>openJobCard(d)}>#{d.serial} {d.timber}</button></td><td>{d.customer}</td><td>{d.customer_email}</td><td>{d.build_client||"Nowak"}</td><td>{d.cb_number}</td><td>{d.drum_type||"Snare"}</td><td>{money(d.custom_price||d.retail_price)}</td><td>{money(d.shipping_cost)}</td><td>{money(d.total_price||d.retail_price)}</td><td>{d.due_date||""}</td></tr>)}</tbody></table></div></section>
+  const customerOrders=drums.filter(d=>{
+    const hasCustomer=Boolean(String(d.customer || "").trim()) && String(d.customer || "").trim().toLowerCase()!=="stock";
+    const nowakCustom=d.build_client==="Nowak" && d.sales_status==="Custom Order";
+    const brady=d.build_client==="Brady";
+    const soldCustomer=hasCustomer && (isSoldStatus(d) || isShippedStatus(d));
+    return nowakCustom || brady || soldCustomer;
+  });
+
+  const activeNowak=customerOrders.filter(d=>
+    d.build_client==="Nowak" &&
+    d.sales_status==="Custom Order" &&
+    !isSoldStatus(d) &&
+    !isShippedStatus(d)
+  );
+
+  const bradyOrders=customerOrders.filter(d=>
+    d.build_client==="Brady" &&
+    !isShippedStatus(d)
+  );
+
+  const awaitingFulfilment=customerOrders.filter(d=>
+    isSoldStatus(d) && !isShippedStatus(d)
+  );
+
+  const completedHistory=customerOrders.filter(d=>
+    isShippedStatus(d)
+  );
+
+  function dueLabel(d){
+    if(!d.due_date) return "No due date";
+    const date=new Date(`${d.due_date}T00:00:00`);
+    if(Number.isNaN(date.getTime())) return d.due_date;
+    return new Intl.DateTimeFormat("en-AU",{day:"numeric",month:"short",year:"numeric"}).format(date);
+  }
+
+  function orderCard(d){
+    const customer=d.build_client==="Brady"
+      ? `Brady / CB ${d.cb_number || "No CB number"}`
+      : allocatedCustomerName(d) || "Customer not entered";
+    const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish);
+    const total=Number(d.total_price||d.custom_price||d.retail_price||0);
+
+    return <article className={"customerOrderCard "+(d.build_client==="Brady"?"bradyCard":"")} key={d.id}>
+      <div className="customerOrderTop">
+        <div>
+          <span className="launchPackEyebrow">{d.build_client==="Brady" ? "BRADY / CB ORDER" : "CUSTOMER ORDER"}</span>
+          <h3>#{d.serial} {d.timber}</h3>
+          <p>{d.size} · {d.drum_type||"Snare"} · {d.build_type} · {d.finish}</p>
+        </div>
+        <button onClick={()=>openJobCard(d)}>Open Job Card</button>
+      </div>
+
+      <div className="customerOrderMeta">
+        <div><span>Customer</span><b>{customer}</b></div>
+        <div><span>Email</span><b>{d.customer_email || "Not entered"}</b></div>
+        <div><span>Status</span><b>{isShippedStatus(d) ? "Shipped" : isSoldStatus(d) ? "Sold — awaiting shipment" : flow.status}</b></div>
+        <div><span>Next</span><b>{isShippedStatus(d) ? "Complete" : isSoldStatus(d) ? "Ship the drum" : flow.nextStep}</b></div>
+        <div><span>Due</span><b>{dueLabel(d)}</b></div>
+        <div><span>Order value</span><b>{money(total)}</b></div>
+      </div>
+
+      <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
+    </article>;
+  }
+
+  function orderSection(title,description,items,emptyText,className=""){
+    return <section className={"panel customerOrderSection "+className}>
+      <div className="customerOrderSectionHeader">
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <b>{items.length}</b>
+      </div>
+      {items.length
+        ? <div className="customerOrderGrid">{items.map(orderCard)}</div>
+        : <p className="okText">{emptyText}</p>}
+    </section>;
+  }
+
+  return <section className="customerOrdersPage">
+    <section className="panel customerOrdersIntro">
+      <div>
+        <span className="launchPackEyebrow">CUSTOMER MANAGEMENT</span>
+        <h2>Customers & Orders</h2>
+        <p>Customer work, Brady builds and sold drums requiring fulfilment. Unallocated and unsold stock drums are intentionally excluded.</p>
+      </div>
+      <div className="customerOrderCounts">
+        <div><b>{activeNowak.length}</b><span>Active custom</span></div>
+        <div><b>{bradyOrders.length}</b><span>Brady / CB</span></div>
+        <div><b>{awaitingFulfilment.length}</b><span>Awaiting shipment</span></div>
+        <div><b>{completedHistory.length}</b><span>Completed history</span></div>
+      </div>
+    </section>
+
+    {orderSection(
+      "Active Customer Orders",
+      "Nowak custom drums currently being built for a named customer.",
+      activeNowak,
+      "No active customer orders."
+    )}
+
+    {orderSection(
+      "Brady / CB Orders",
+      "Current drums being produced for Chris Brady / Brady Drums.",
+      bradyOrders,
+      "No active Brady / CB orders.",
+      "bradyOrderSection"
+    )}
+
+    {orderSection(
+      "Awaiting Collection or Shipping",
+      "Sold customer drums that have not yet been marked shipped.",
+      awaitingFulfilment,
+      "No customer orders are awaiting collection or shipping.",
+      "fulfilmentOrderSection"
+    )}
+
+    {orderSection(
+      "Completed Customer History",
+      "Customer and Brady orders that have been shipped.",
+      completedHistory,
+      "No completed customer history yet."
+    )}
+  </section>
 }
+
 
 function CommsMarketingCentre({filteredDrums,allDrums,openJobCard,setMessage,onAddPhoto}){
   const [section,setSection]=useState("drafts");
