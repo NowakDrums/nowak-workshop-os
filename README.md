@@ -1,41 +1,34 @@
-# Nowak Workshop OS v6.0.3
+# Nowak Workshop OS v6.0.4
 
-Permanent stage communications for stored photos.
+Fulfilment and finish-workflow update.
 
-## Stage Communications
-A new section appears on every Job Card and groups stored photos by milestone.
+## Fulfilment
+The separate Completion panel has been removed.
 
-Each photographed stage can be reopened later. Closing the original photo prompt no longer removes access to the communication tools.
+Complete, Sold and Shipped controls now sit inside the Fulfilment section alongside:
 
-### Nowak Custom
-- View stored photos
-- Add more photos
-- Download photos
-- Open prefilled customer email
-- Copy Facebook post
-- Copy Instagram caption
-- Preview both social drafts
+- Photos taken
+- Packed
+- Shipped checklist
 
-### Nowak Stock and Unallocated
-- View stored photos
-- Add more photos
-- Download photos
-- Copy Facebook post
-- Copy Instagram caption
+This keeps all after-build and delivery actions together.
 
-### Brady
-- View stored photos
-- Add more photos
-- Download photos
-- Internal documentation only
-- No email or social drafts
+## Finish rules
 
-## Email attachments
-Browser email links cannot automatically attach files. Use `Download Photos`, open the prefilled email, and attach the downloaded images manually.
+### High Gloss
+- Cure stage required
+- Polishing required
 
-## Completed-drum wording
-Completion emails now say:
+### Satin
+- Cure stage required
+- No polishing stage
 
-`We have included a selection of photos showing the completed drum and its journey through the workshop.`
+### Natural
+- Danish oil stages only
+- No separate cure/drying stage
+- No polishing stage
 
-No Supabase migration is required.
+These rules update the checklist, next step, progress percentage and estimated production hours automatically.
+
+## Supabase
+No migration is required.

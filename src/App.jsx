@@ -132,12 +132,15 @@ function applicableChecklist(buildType, finish=""){
     if(buildType==="Ply" && item==="Machined") return false;
 
     if(isNatural){
-      if(["Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Satin coat"].includes(item)) return false;
+      if([
+        "Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4",
+        "Satin coat","Cure complete","Polished"
+      ].includes(item)) return false;
     }else{
       if(["Danish oil 1","Danish oil 2","Danish oil 3"].includes(item)) return false;
 
       if(isSatin){
-        if(item==="Poly coat 4") return false;
+        if(["Poly coat 4","Polished"].includes(item)) return false;
       }else{
         if(item==="Satin coat") return false;
       }
@@ -1327,7 +1330,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.0.3 — permanent stage email and social actions for stored photos.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.0.4 — combined fulfilment status controls and corrected finish workflows.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -3174,7 +3177,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     <section className="panel inner workflowSection fulfilmentSection">
       <div className="workflowSectionHeader">
         <div><span className="launchPackEyebrow">AFTER THE BUILD</span><h2>Fulfilment</h2></div>
-        <small>Does not add production hours</small>
+        <small>Photos, packing, sale and shipping</small>
       </div>
       <div className="checkGrid">{fulfilmentChecklist.map(item=>{
         const history=historyForItem(drum.stage_history,item);
@@ -3183,6 +3186,42 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           <span><b>{item}</b>{checked.has(item) && <small>{formatStageDate(history?.completed_at) || "Completed"}</small>}</span>
         </label>
       })}</div>
+
+      <div className="fulfilmentLifecycle">
+        <h3>Drum Status</h3>
+        <p>Update the business status here as the drum moves from complete to sold and shipped.</p>
+
+        <div className="completionStatusButtons">
+          <button
+            className={!isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)}) ? "primary" : ""}
+            onClick={markManufacturingComplete}
+          >
+            <CheckCircle2 size={16}/> Complete
+          </button>
+
+          <button
+            className={isSoldStatus(drum) ? "primary" : ""}
+            onClick={()=>markSold(drum)}
+          >
+            <DollarSign size={16}/> Sold
+          </button>
+
+          <button
+            className={isShippedStatus(drum) ? "primary" : ""}
+            onClick={()=>markShipped(drum)}
+          >
+            <Truck size={16}/> Shipped
+          </button>
+        </div>
+
+        {isShippedStatus(drum)
+          ? <p className="okText">This drum is complete, sold and shipped.</p>
+          : isSoldStatus(drum)
+            ? <p className="okText">This drum is sold and awaiting shipment.</p>
+            : isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)})
+              ? <p className="okText">Manufacturing is complete. The drum is ready for sale or shipment.</p>
+              : null}
+      </div>
     </section>
 
     <section className="panel inner workflowSection optionalMarketingSection">
@@ -3230,40 +3269,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     />
     <section className="panel inner"><h2>Milestone Communications</h2><p>Use the Communication Centre for full posts/emails. Emails are signed Kelly & Kyle.</p><div className="checkGrid">{communicationMilestones.map(m=><div className="checkItem" key={m.key}><b>{m.label}</b><span>{m.photo}</span></div>)}</div></section>
     <section className="panel inner"><h2>Notes</h2><textarea value={draft.notes} onChange={e=>setDraft({...draft,notes:e.target.value})}/></section>
-    <section className="panel inner completionActionsPanel">
-      <h2>Completion</h2>
-      <p>Manufacturing can be completed without finishing the Launch Pack or social-media stages.</p>
-      <div className="completionStatusButtons">
-        <button
-          className={!isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)}) ? "primary" : ""}
-          onClick={markManufacturingComplete}
-        >
-          <CheckCircle2 size={16}/> Complete
-        </button>
 
-        <button
-          className={isSoldStatus(drum) ? "primary" : ""}
-          onClick={()=>markSold(drum)}
-        >
-          <DollarSign size={16}/> Sold
-        </button>
-
-        <button
-          className={isShippedStatus(drum) ? "primary" : ""}
-          onClick={()=>markShipped(drum)}
-        >
-          <Truck size={16}/> Shipped
-        </button>
-      </div>
-
-      {isShippedStatus(drum)
-        ? <p className="okText">This drum is complete, sold and shipped.</p>
-        : isSoldStatus(drum)
-          ? <p className="okText">This drum is sold and awaiting shipment.</p>
-          : isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)})
-            ? <p className="okText">Manufacturing is complete. Marketing and Launch Pack content remain optional.</p>
-            : null}
-    </section>
     {localOwnership==="Nowak" && <section className={"panel inner nowakSerialPanel "+(flow.percent===100?"serialReady":"serialPending")}>
       <div className="serialPanelHeader">
         <div>

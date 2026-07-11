@@ -711,3 +711,20 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .stageCommsActions button,
   .stageCommsActions .buttonLike{width:100%;justify-content:center}
 }
+
+.fulfilmentLifecycle{
+  margin-top:16px;
+  padding-top:14px;
+  border-top:1px solid rgba(97,184,238,.35);
+}
+.fulfilmentLifecycle h3{
+  margin:0 0 5px;
+  color:#f4d89c;
+}
+.fulfilmentLifecycle>p{
+  margin:0 0 12px;
+  color:#bdb7ac;
+}
+.fulfilmentLifecycle .okText{
+  margin-top:12px;
+}
