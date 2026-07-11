@@ -1231,3 +1231,13 @@ button:disabled{opacity:.55;cursor:not-allowed}
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
 }
+
+/* v6.2.4 Dashboard cleanup */
+.dashboardQuickGrid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+@media(max-width:700px){
+  .dashboardQuickGrid{
+    grid-template-columns:1fr;
+  }
+}

@@ -1,23 +1,27 @@
-# Nowak Workshop OS v6.2.3
+# Nowak Workshop OS v6.2.4
 
-## Outstanding work fix
+## Completed drum count
 
-Assembly-related outstanding work now clears automatically when a drum is marked Assembled.
+The Dashboard now counts every drum that is marked Completed and has not been sold or shipped.
 
-The following outstanding-work labels are treated as resolved by assembly:
+The card is labelled `Completed drums`, rather than excluding completed custom orders.
 
-- Hardware to be fitted
-- Final assembly required
-- Heads and tuning required
+## Assembly and lifecycle status
 
-This works when:
+Unchecking `Assembled` now correctly removes the Completed lifecycle status, unless the drum has already been marked Sold or Shipped.
 
-- Assembled is checked in the Job Card
-- The drum is progressed to Assembled from a production card
-- Complete is selected
+The drum returns to its actual production workflow and again shows assembly as outstanding.
 
-Existing completed drums with an older assembly-related Outstanding Work note are also displayed correctly without requiring a database migration.
+## Interface cleanup
 
-Outstanding items that can still remain after assembly, such as Final inspection required or Customer collection pending, are not cleared automatically.
+The internal `Stored lifecycle` line has been removed from drum cards. This was a database status indicator and was not useful workshop information.
+
+The Cure Queue card has been removed from the Dashboard because curing tasks already appear in Workshop Today.
+
+The Dashboard retains:
+
+- Photo / Marketing Queue
+- Suggested Work Batches
+- Needs Attention
 
 No Supabase migration is required.

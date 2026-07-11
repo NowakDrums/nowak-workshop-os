@@ -1028,10 +1028,10 @@ function App(){
     !isSoldStatus(d) &&
     !isShippedStatus(d)
   ).length;
-  const completedStock=drums.filter(d=>
+  const completedDrums=drums.filter(d=>
     drumLifecycleStatus(d)==="Completed" &&
-    d.build_client==="Nowak" &&
-    d.sales_status!=="Custom Order"
+    !isSoldStatus(d) &&
+    !isShippedStatus(d)
   ).length;
 
   function dueWithinDays(d,days){
@@ -1459,7 +1459,7 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.2.3 — assembly now clears resolved outstanding work.</p></div>
+      <div><h1>Nowak Workshop OS</h1><p>v6.2.4 — corrected completed status behaviour and simplified Dashboard.</p></div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1522,12 +1522,11 @@ function App(){
           <b>{plyInProduction}</b><span>Ply drums in production</span>
         </button>
         <button className="dashboardStatCard" onClick={()=>openProductionView({status:"Completed",construction:"All"})}>
-          <b>{completedStock}</b><span>Completed drums in stock</span>
+          <b>{completedDrums}</b><span>Completed drums</span>
         </button>
       </section>
 
-      <section className="quickGrid">
-        <article className="panel"><h2>Cure Queue</h2><b className="bigNumber">{cureQueue}</b><p>Drums curing or waiting to polish.</p></article>
+      <section className="quickGrid dashboardQuickGrid">
         <article className="panel"><h2>Photo / Marketing Queue</h2><b className="bigNumber">{photoQueue}</b><p>Finished drums needing photos, website, social or YouTube.</p></article>
         <article className="panel bradyPanel"><h2>Suggested Work Batches</h2><b className="bigNumber">{Object.keys(batches).length}</b><p>Current Workshop Today task groups.</p></article>
       </section>
@@ -1786,7 +1785,6 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     </div>}
     <div className="progress"><i style={{width:(isManufacturingComplete(drum)?100:flow.percent)+"%"}}></i></div>
     <p><b>Status:</b> {isShippedStatus(drum) ? "Shipped" : isSoldStatus(drum) ? "Sold" : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status}</p>
-    {drum.lifecycle_status && <p className="lifecycleStoredLine"><b>Stored lifecycle:</b> {drum.lifecycle_status}</p>}
     <p><b>Next:</b> {isShippedStatus(drum) ? "Complete" : isSoldStatus(drum) ? "Ship the drum" : isManufacturingComplete(drum) ? "Marketing / launch optional" : flow.nextStep}</p>
     <p><b>Estimated:</b> {flow.estimatedTotal.toFixed(2)} hr production · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
@@ -3746,13 +3744,14 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       ? setOutstandingWorkInNotes(draft.notes,"No outstanding work")
       : draft.notes;
     const notesValue=setChecklistInNotes(workflowNotes,nextChecked);
-    const lifecycle=nextChecked.has("Shipped")
+    const storedLifecycle=drumLifecycleStatus(drum);
+    const lifecycle=storedLifecycle==="Shipped"
       ? "Shipped"
-      : drumLifecycleStatus(drum)==="Sold"
+      : storedLifecycle==="Sold"
         ? "Sold"
         : nextChecked.has("Assembled")
           ? "Completed"
-          : (drum.lifecycle_status || null);
+          : null;
 
     setSavedMessage("Saving checklist...");
 
