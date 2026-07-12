@@ -1,50 +1,22 @@
-# Nowak Workshop OS v6.9.0
+# Nowak Workshop OS v6.9.1
 
-## Automatic social-media content queue
+## Comms & Marketing fix
 
-Comms & Marketing now opens with a simple Content Queue.
+v6.9.0 contained a runtime naming error in the new Content Queue. The app built successfully, but opening Comms & Marketing caused the page to render blank.
 
-Every group of stored milestone photos or videos automatically appears as a marketing item. Existing media is also detected, so older Nowak content is available without re-uploading it.
+v6.9.1 fixes:
 
-### Included
+- the incorrect Launch Pack stage reference used by the Content Queue
+- stray undefined planning props inside the Milestone Generator
 
-- Nowak drums
-- Unallocated / undetermined drums
+The Content Queue now loads normally.
 
-### Excluded
+## Supabase
 
-- Brady / CB drums
+No new migration is required beyond the v6.9.0 migration:
 
-Ownership is checked whenever the queue is displayed. If an unallocated drum is later assigned to Brady, its marketing content disappears from this queue.
-
-### Queue statuses
-
-- To Review
-- Held for Final Post
-- Completed
-- Ignored
-
-Each item shows:
-
-- drum production number, timber, size and construction
-- milestone
-- photo and video count
-- a short explanation
-- Open Media
-- Open Drum
-- Hold for Final
-- Complete
-- Ignore
-- Return to Review
-
-Media links directly to the existing stored photos and videos. No duplicate files are created.
-
-The existing Launch Pack Drafts and Milestone Generator remain available as secondary tabs.
-
-## Supabase migration required
-
-Run `supabase/v6_9_0_marketing_queue.sql` once in the Supabase SQL Editor.
+`supabase/v6_9_0_marketing_queue.sql`
 
 ## Rollback
 
-The unchanged v6.8.1 ZIP remains the rollback version. The new table is additive and can remain in Supabase without affecting v6.8.1.
+The unchanged v6.8.1 ZIP remains the last stable rollback before the marketing queue feature.

@@ -2033,7 +2033,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.9.0 — automatic social-media content queue.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.9.1 — fixed Comms & Marketing content queue loading.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3738,7 +3738,7 @@ function marketingMilestoneLabel(key,drum){
     if(drum?.build_client==="Nowak") return isCustomCustomerDrum(drum) ? "Custom Drum Complete" : "Drum Complete";
     return "Shell Complete";
   }
-  const launchStage=launchStages.find(stage=>stage.key===key);
+  const launchStage=launchPackStages.find(stage=>stage.key===key);
   return launchStage?.label || photoMilestones[key]?.label || String(key||"General").replaceAll("_"," ");
 }
 
@@ -3949,7 +3949,7 @@ function CommsCentre({drums, openJobCard, embedded=false, onAddPhoto}){
   return <section>
     {!embedded && <div className="panel"><h2>Communication Centre</h2><p>Generate customer emails and Facebook/Instagram posts from production milestones. Emails are signed Kelly & Kyle.</p></div>}
     {embedded && <div className="panel embeddedSectionIntro"><h3>Milestone Generator</h3><p>Choose a milestone, add photos, then open only the communication you need. Brady builds remain internal-only.</p></div>}
-    <section className="templateGrid commsCardGrid">{drums.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard} onAddPhoto={onAddPhoto} addToPlan={addToPlan} scheduledTomorrow={scheduledDrumIds.has(d.id)} scheduledTask={scheduledTaskByDrum[d.id]}/>)}</section>
+    <section className="templateGrid commsCardGrid">{drums.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard} onAddPhoto={onAddPhoto}/>)}</section>
   </section>
 }
 
