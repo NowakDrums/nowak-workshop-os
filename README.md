@@ -1,26 +1,32 @@
-# Nowak Workshop OS v6.5.1
+# Nowak Workshop OS v6.6.0
 
-## Scheduled-work highlighting
+## Drum Archive
 
-Drums added to Tomorrow's Plan are now clearly identified throughout the app:
+A new final lifecycle state is available for drums whose entire job is finished.
 
-- green outline around the drum card
-- `Scheduled tomorrow` label
-- the planned task is displayed
-- the Plan Tomorrow button changes to `Scheduled Tomorrow` and is disabled to avoid duplicates
+Use **Close & Archive** when:
+- Brady / CB has collected the shell
+- a local customer has collected the drum
+- a shipped customer has received the drum
+- no further production, payment, shipping or follow-up is required
 
-This applies in Production and Workshop Today.
+The app asks for the final outcome and records the archive date.
 
-## Brady / CB shell-only workflow
+Archived drums are removed from:
+- Dashboard operational counts
+- Workshop Today
+- Production
+- Customers & Orders
+- Needs Attention
+- daily planning
+- marketing and shipping queues
 
-Brady / CB drums now use a shell-only manufacturing workflow by default.
+They remain searchable in the dedicated **Drum Archive** by production number, CB number, customer, timber, size or serial number.
 
-- `Assembled` is no longer required for a Brady drum to reach manufacturing completion.
-- Existing sold or shipped drums are excluded from Workshop Today batches.
-- Brady drums that have already been marked Sold will no longer appear as needing assembly.
+Archived drums can be restored to their previous status if they were closed accidentally.
 
-No Supabase migration is required.
+No Supabase migration is required. Archive details are stored safely in the existing drum record.
 
 ## Rollback
 
-The unchanged v6.5.0 ZIP remains the rollback version.
+The unchanged v6.5.1 ZIP remains the rollback version.

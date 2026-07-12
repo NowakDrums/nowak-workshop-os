@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
-  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig
+  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import nowakLogo from "./assets/nowak-logo-refined.png";
@@ -179,8 +179,12 @@ function isShippedStatus(drum){
   return drumLifecycleStatus(drum)==="Shipped";
 }
 
+function isArchivedStatus(drum){
+  return drumLifecycleStatus(drum)==="Archived";
+}
+
 function isManufacturingComplete(drum){
-  if(isSoldStatus(drum) || isShippedStatus(drum)) return true;
+  if(isSoldStatus(drum) || isShippedStatus(drum) || isArchivedStatus(drum)) return true;
   if(drum?.production_status==="Manufacturing Complete") return true;
   const checked=parseChecked(drum?.notes);
   return checked.has("Assembled");
@@ -934,6 +938,35 @@ function setTrackingNumberInNotes(notes,value){
   return `${clean?clean+"\n":""}[Tracking Number: ${tracking}]`;
 }
 
+function archiveDetailsFromNotes(notes){
+  const reason=String(notes||"").match(/^\[Archive Reason:\s*(.+?)\]$/mi)?.[1]?.trim() || "";
+  const date=String(notes||"").match(/^\[Archived At:\s*(.+?)\]$/mi)?.[1]?.trim() || "";
+  const previous=String(notes||"").match(/^\[Pre-Archive Status:\s*(.+?)\]$/mi)?.[1]?.trim() || "";
+  return {reason,date,previous};
+}
+
+function setArchiveDetailsInNotes(notes,{reason,date,previous}){
+  const clean=String(notes || "")
+    .split("\n")
+    .filter(line=>!/^\[(Archive Reason|Archived At|Pre-Archive Status):/i.test(line.trim()))
+    .join("\n")
+    .trim();
+  const lines=[
+    `[Archive Reason: ${String(reason||"Job closed").trim()}]`,
+    `[Archived At: ${date || new Date().toISOString()}]`,
+    `[Pre-Archive Status: ${previous || "Completed"}]`,
+  ];
+  return `${clean?clean+"\n":""}${lines.join("\n")}`;
+}
+
+function clearArchiveDetailsFromNotes(notes){
+  return String(notes || "")
+    .split("\n")
+    .filter(line=>!/^\[(Archive Reason|Archived At|Pre-Archive Status):/i.test(line.trim()))
+    .join("\n")
+    .trim();
+}
+
 function emailDraft(d, milestone){
   const name = d.customer && d.customer !== "Stock" ? d.customer : "there";
   const timberStory = d.timber_story ? `\n\nTimber story: ${d.timber_story}` : "";
@@ -1096,14 +1129,14 @@ function App(){
 
   useEffect(()=>{ loadAll(); },[]);
 
-  const operationalDrums=drums.filter(d=>!isSoldStatus(d) && !isShippedStatus(d));
+  const operationalDrums=drums.filter(d=>!isSoldStatus(d) && !isShippedStatus(d) && !isArchivedStatus(d));
   const filtered=drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
   const active=operationalDrums;
   const templateMap=useMemo(()=>Object.fromEntries(templates.map(t=>[t.name,t])),[templates]);
   const batches=useMemo(()=>{
     const g={};
     filtered
-      .filter(d=>!isSoldStatus(d) && !isShippedStatus(d))
+      .filter(d=>!isSoldStatus(d) && !isShippedStatus(d) && !isArchivedStatus(d))
       .forEach(d=>{
         const b=batchType(d);
         if(b){g[b]??=[];g[b].push(d);}
@@ -1134,19 +1167,23 @@ function App(){
     d.build_type==="Stave" &&
     !isManufacturingComplete(d) &&
     !isSoldStatus(d) &&
-    !isShippedStatus(d)
+    !isShippedStatus(d) &&
+    !isArchivedStatus(d)
   ).length;
   const plyInProduction=drums.filter(d=>
     d.build_type==="Ply" &&
     !isManufacturingComplete(d) &&
     !isSoldStatus(d) &&
-    !isShippedStatus(d)
+    !isShippedStatus(d) &&
+    !isArchivedStatus(d)
   ).length;
   const completedDrums=drums.filter(d=>
     drumLifecycleStatus(d)==="Completed" &&
     !isSoldStatus(d) &&
-    !isShippedStatus(d)
+    !isShippedStatus(d) &&
+    !isArchivedStatus(d)
   ).length;
+  const archivedDrums=drums.filter(isArchivedStatus);
 
   function dueWithinDays(d,days){
     if(!d.due_date) return false;
@@ -1174,6 +1211,7 @@ function App(){
   }
 
   const needsAttention=drums
+    .filter(d=>!isArchivedStatus(d))
     .map(d=>({drum:d,reasons:attentionReasons(d)}))
     .filter(item=>item.reasons.length>0)
     .sort((a,b)=>{
@@ -1376,7 +1414,7 @@ function App(){
   }
 
   async function setDrumLifecycle(d,status,extraPatch={}){
-    const allowed=["Completed","Sold","Shipped"];
+    const allowed=["Completed","Sold","Shipped","Archived"];
     if(!allowed.includes(status)){
       setMessage("Invalid drum lifecycle status.");
       return false;
@@ -1389,7 +1427,9 @@ function App(){
         ? "Marketing / launch optional"
         : status==="Sold"
           ? "Prepare for shipping"
-          : "Complete",
+          : status==="Shipped"
+            ? "Confirm delivery / archive"
+            : "Archived",
       ...extraPatch,
     };
 
@@ -1422,7 +1462,9 @@ function App(){
         ? "Saved — drum marked Complete."
         : status==="Sold"
           ? "Saved — drum marked Sold."
-          : "Saved — drum marked Shipped."
+          : status==="Shipped"
+            ? "Saved — drum marked Shipped."
+            : "Saved — drum closed and moved to the Drum Archive."
     );
     return true;
   }
@@ -1704,6 +1746,44 @@ function App(){
     setRepairJob(null);
   }
 
+  async function archiveDrum(d){
+    const options=d.build_client==="Brady"
+      ? "Collected by CB"
+      : isShippedStatus(d)
+        ? "Delivered to customer"
+        : "Collected by customer";
+
+    const reasonEntry=window.prompt(
+      "How was this job completed?\n\nExamples: Collected by CB, Collected by customer, Delivered to customer, Other",
+      options
+    );
+    if(reasonEntry===null) return false;
+
+    const reason=String(reasonEntry||"Job closed").trim() || "Job closed";
+    const previous=drumLifecycleStatus(d) || "Completed";
+    const notes=setArchiveDetailsInNotes(d.notes,{
+      reason,
+      date:new Date().toISOString(),
+      previous
+    });
+    const saved=await setDrumLifecycle(d,"Archived",{notes});
+    if(saved){
+      setWorkPlan(current=>current.filter(item=>item.drum_id!==d.id));
+      await supabase.from("work_plan_items").delete().eq("drum_id",d.id);
+    }
+    return Boolean(saved);
+  }
+
+  async function restoreArchivedDrum(d){
+    const details=archiveDetailsFromNotes(d.notes);
+    const restoreTo=["Completed","Sold","Shipped"].includes(details.previous)
+      ? details.previous
+      : "Completed";
+    if(!window.confirm(`Restore this drum from the archive as ${restoreTo}?`)) return false;
+    const notes=clearArchiveDetailsFromNotes(d.notes);
+    return setDrumLifecycle(d,restoreTo,{notes});
+  }
+
   async function markShipped(d){
     const existingTracking=trackingNumberFromNotes(d.notes);
     const tracking=window.prompt(
@@ -1743,7 +1823,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.5.1 — scheduled-work highlighting and Brady shell-only workflow.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.6.0 — Drum Archive for fully closed jobs.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -1757,6 +1837,7 @@ function App(){
       <button className={view==="projects"?"active":""} onClick={()=>setView("projects")}><Layers3 size={16}/> Kits / Projects</button>
       <button className={view==="orders"?"active":""} onClick={()=>setView("orders")}><Users size={16}/> Customers & Orders</button>
       <button className={view==="repairs"?"active":""} onClick={()=>setView("repairs")}><Wrench size={16}/> Repairs & Modifications</button>
+      <button className={view==="archive"?"active":""} onClick={()=>setView("archive")}><Archive size={16}/> Drum Archive</button>
       <button className={view==="veneer"?"active":""} onClick={()=>setView("veneer")}><Ruler size={16}/> Veneer Calc</button>
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
@@ -1822,6 +1903,9 @@ function App(){
         <button className="dashboardStatCard" onClick={()=>setView("today")}>
           <b>{tomorrowPlan.length}</b><span>Tasks planned tomorrow</span>
           <small>{formatPlanTime(tomorrowPlanHours)}</small>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>setView("archive")}>
+          <b>{archivedDrums.length}</b><span>Archived drums</span>
         </button>
       </section>
 
@@ -1966,6 +2050,7 @@ function App(){
         drums={[...filtered]
           .sort(productionPriorityCompare)
           .filter(d=>{
+            if(isArchivedStatus(d)) return false;
             if(constructionFilter!=="All" && d.build_type!==constructionFilter) return false;
 
             const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client);
@@ -1994,6 +2079,7 @@ function App(){
 
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard}/>}
     {view==="repairs" && <RepairsPage repairs={repairs} openRepair={setRepairJob} addRepair={()=>setShowAddRepair(true)}/>}
+    {view==="archive" && <DrumArchive drums={archivedDrums} openJobCard={setJobCard} restoreArchivedDrum={restoreArchivedDrum}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
     {view==="inventory" && <Inventory hardware={hardware} updateHardware={updateHardware} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
@@ -2017,7 +2103,7 @@ function App(){
     {showAddWizard && <AddDrumWizard onClose={()=>{setShowAddWizard(false);setAddWizardPreset({});}} onCreate={addDrumFromWizard} drums={drums} projects={projects} createProject={createProject} preset={addWizardPreset}/>}
     {showAddRepair && <AddRepairModal repairs={repairs} onClose={()=>setShowAddRepair(false)} onCreate={createRepair}/>}
     {repairJob && <RepairJobModal repair={repairJob} onClose={()=>setRepairJob(null)} updateRepair={updateRepair} deleteRepair={deleteRepair} setMessage={setMessage}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}}/>}
   </main>
 }
 
@@ -2790,6 +2876,51 @@ function WorkshopSummary({drums,sales,labourRate}){
 }
 
 
+function DrumArchive({drums,openJobCard,restoreArchivedDrum}){
+  const [search,setSearch]=useState("");
+  const filtered=drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
+
+  function archiveDate(d){
+    const value=archiveDetailsFromNotes(d.notes).date;
+    if(!value) return "Date not recorded";
+    try{return new Intl.DateTimeFormat("en-AU",{day:"numeric",month:"short",year:"numeric"}).format(new Date(value));}
+    catch{return value;}
+  }
+
+  return <section className="archivePage">
+    <section className="panel archiveIntro">
+      <div>
+        <span className="launchPackEyebrow">CLOSED WORK</span>
+        <h2>Drum Archive</h2>
+        <p>Fully completed drums that no longer require production, collection, shipping or customer follow-up.</p>
+      </div>
+      <b className="archiveCount">{drums.length}</b>
+    </section>
+    <div className="searchBar"><Search size={16}/><input placeholder="Search production number, CB number, customer, timber, size or serial..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+    {filtered.length===0
+      ? <section className="panel"><p>No archived drums match this search.</p></section>
+      : <section className="archiveGrid">{filtered.sort((a,b)=>String(archiveDetailsFromNotes(b.notes).date).localeCompare(String(archiveDetailsFromNotes(a.notes).date))).map(d=>{
+          const details=archiveDetailsFromNotes(d.notes);
+          return <article className={"card archiveCard "+(d.build_client==="Brady"?"bradyCard":"")} key={d.id}>
+            <div className="cardHeading">
+              <b>#{d.serial} {d.timber}</b>
+              <span className="archiveBadge"><Archive size={13}/> Archived</span>
+            </div>
+            {d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number||"No CB #"}</span>}
+            <span>{d.size} · {d.drum_type||"Snare"} · {d.build_type}</span>
+            <p><b>Customer:</b> {d.build_client==="Brady" ? "Brady / CB" : allocatedCustomerName(d)||"Not recorded"}</p>
+            <p><b>Outcome:</b> {details.reason||"Job closed"}</p>
+            <p><b>Archived:</b> {archiveDate(d)}</p>
+            {trackingNumberFromNotes(d.notes) && <p><b>Tracking:</b> {trackingNumberFromNotes(d.notes)}</p>}
+            <div className="buttonRow">
+              <button onClick={()=>openJobCard(d)}>Open Record</button>
+              <button onClick={()=>restoreArchivedDrum(d)}><ArchiveRestore size={15}/> Restore</button>
+            </div>
+          </article>;
+        })}</section>}
+  </section>;
+}
+
 function RepairsPage({repairs,openRepair,addRepair}){
   const [search,setSearch]=useState("");
   const filtered=repairs.filter(repair=>JSON.stringify(repair).toLowerCase().includes(search.toLowerCase()));
@@ -3081,6 +3212,7 @@ function Costing({templates, labourRate, setLabourRate}){ return <section classN
 
 function Orders({drums, openJobCard}){
   const customerOrders=drums.filter(d=>{
+    if(isArchivedStatus(d)) return false;
     const hasCustomer=Boolean(String(d.customer || "").trim()) && String(d.customer || "").trim().toLowerCase()!=="stock";
     const nowakCustom=d.build_client==="Nowak" && d.sales_status==="Custom Order";
     const brady=d.build_client==="Brady";
@@ -4186,7 +4318,7 @@ ${emailBody}`,"Customer email")}>Copy Email</button>
 }
 
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
@@ -4691,9 +4823,25 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           >
             <Truck size={16}/> Shipped
           </button>
+
+          {!isArchivedStatus(drum) && <button
+            className="archiveDrumButton"
+            onClick={()=>archiveDrum(drum)}
+          >
+            <Archive size={16}/> Close & Archive
+          </button>}
+
+          {isArchivedStatus(drum) && <button
+            className="primary"
+            onClick={()=>restoreArchivedDrum(drum)}
+          >
+            <ArchiveRestore size={16}/> Restore from Archive
+          </button>}
         </div>
 
-        {isShippedStatus(drum)
+        {isArchivedStatus(drum)
+          ? <p className="archiveStatusMessage">This drum is fully closed and stored in the Drum Archive. {archiveDetailsFromNotes(drum.notes).reason && `Outcome: ${archiveDetailsFromNotes(drum.notes).reason}.`}</p>
+          : isShippedStatus(drum)
           ? <p className="okText">This drum is complete, sold and shipped.</p>
           : isSoldStatus(drum)
             ? <p className="okText">This drum is sold and awaiting shipment.</p>

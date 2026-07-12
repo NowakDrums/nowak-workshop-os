@@ -1384,3 +1384,16 @@ button:disabled{opacity:.55;cursor:not-allowed}
   opacity:1!important;
   cursor:default!important;
 }
+
+/* v6.6.0 Drum Archive */
+.archiveIntro{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.archiveIntro h2{margin:2px 0}
+.archiveIntro p{margin:4px 0 0}
+.archiveCount{font-size:2rem;color:#d3aa5d}
+.archiveGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.archiveCard{border-color:#777!important;background:#181716}
+.archiveBadge{display:inline-flex!important;align-items:center;gap:5px;padding:5px 9px;border:1px solid #8d8d8d;border-radius:999px;color:#ddd;font-size:12px;font-weight:800}
+.archiveDrumButton{border-color:#9c8d72!important;color:#ead9ba!important}
+.archiveStatusMessage{padding:10px;border:1px solid #8d8d8d;border-radius:10px;background:rgba(160,160,160,.09);color:#e3e3e3}
+@media(max-width:950px){.archiveGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.archiveIntro{display:grid}.archiveGrid{grid-template-columns:1fr}}
