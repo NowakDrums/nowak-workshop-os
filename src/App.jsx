@@ -1953,7 +1953,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.7.0 — simple recurring and one-off Workshop Tasks.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.7.1 — archive fix and Archived moved inside Production.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -1967,7 +1967,6 @@ function App(){
       <button className={view==="projects"?"active":""} onClick={()=>setView("projects")}><Layers3 size={16}/> Kits / Projects</button>
       <button className={view==="orders"?"active":""} onClick={()=>setView("orders")}><Users size={16}/> Customers & Orders</button>
       <button className={view==="repairs"?"active":""} onClick={()=>setView("repairs")}><Wrench size={16}/> Repairs & Modifications</button>
-      <button className={view==="archive"?"active":""} onClick={()=>setView("archive")}><Archive size={16}/> Drum Archive</button>
       <button className={view==="veneer"?"active":""} onClick={()=>setView("veneer")}><Ruler size={16}/> Veneer Calc</button>
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
@@ -2034,7 +2033,7 @@ function App(){
           <b>{tomorrowPlan.length}</b><span>Tasks planned tomorrow</span>
           <small>{formatPlanTime(tomorrowPlanHours)}</small>
         </button>
-        <button className="dashboardStatCard" onClick={()=>setView("archive")}>
+        <button className="dashboardStatCard" onClick={()=>openProductionView({status:"Archived",construction:"All"})}>
           <b>{archivedDrums.length}</b><span>Archived drums</span>
         </button>
         <button className="dashboardStatCard" onClick={()=>setView("today")}>
@@ -2181,47 +2180,55 @@ function App(){
         <div className="productionFilterGroup">
           <span className="filterLabel">Status</span>
           <div className="filterRow">
-            {["All","Pending","Active","Completed","Sold","Shipped"].map(f=>
+            {["All","Pending","Active","Completed","Sold","Shipped","Archived"].map(f=>
               <button key={f} className={productionFilter===f?"primary":""} onClick={()=>setProductionFilter(f)}>{f}</button>
             )}
           </div>
         </div>
       </section>
 
-      <ProductionGroups
-        drums={[...filtered]
-          .sort(productionPriorityCompare)
-          .filter(d=>{
-            if(isArchivedStatus(d)) return false;
-            if(constructionFilter!=="All" && d.build_type!==constructionFilter) return false;
+      {productionFilter==="Archived"
+        ? <DrumArchive
+            drums={archivedDrums.filter(d=>
+              JSON.stringify(d).toLowerCase().includes(search.toLowerCase()) &&
+              (constructionFilter==="All" || d.build_type===constructionFilter)
+            )}
+            openJobCard={setJobCard}
+            restoreArchivedDrum={restoreArchivedDrum}
+            embedded
+          />
+        : <ProductionGroups
+            drums={[...filtered]
+              .sort(productionPriorityCompare)
+              .filter(d=>{
+                if(isArchivedStatus(d)) return false;
+                if(constructionFilter!=="All" && d.build_type!==constructionFilter) return false;
 
-            const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client);
-            const lifecycle=drumLifecycleStatus(d);
-            if(productionFilter==="Pending") return !hasWorkflowStarted(d) && !["Completed","Sold","Shipped"].includes(lifecycle);
-            if(productionFilter==="Active") return hasWorkflowStarted(d) && !["Completed","Sold","Shipped"].includes(lifecycle);
-            if(productionFilter==="Completed") return lifecycle==="Completed" || (isManufacturingComplete(d) && !["Sold","Shipped"].includes(lifecycle));
-            if(productionFilter==="Sold") return lifecycle==="Sold";
-            if(productionFilter==="Shipped") return lifecycle==="Shipped";
-            return true;
-          })}
-        projects={projects}
-        openJobCard={setJobCard}
-        updateDrum={updateDrum}
-        progressDrum={progressDrumFromCard}
-        progressingDrumId={progressingDrumId}
-        onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
-        addToPlan={drum=>addDrumsToPlan([drum],localISODate(1),batchType(drum)||"")}
-        addBatchToPlan={(items,name)=>addDrumsToPlan(items,localISODate(1),name)}
-        scheduledDrumIds={tomorrowPlannedDrumIds}
-        scheduledTaskByDrum={tomorrowPlannedTaskByDrum}
-      />
+                const lifecycle=drumLifecycleStatus(d);
+                if(productionFilter==="Pending") return !hasWorkflowStarted(d) && !["Completed","Sold","Shipped","Archived"].includes(lifecycle);
+                if(productionFilter==="Active") return hasWorkflowStarted(d) && !["Completed","Sold","Shipped","Archived"].includes(lifecycle);
+                if(productionFilter==="Completed") return lifecycle==="Completed" || (isManufacturingComplete(d) && !["Sold","Shipped","Archived"].includes(lifecycle));
+                if(productionFilter==="Sold") return lifecycle==="Sold";
+                if(productionFilter==="Shipped") return lifecycle==="Shipped";
+                return true;
+              })}
+            projects={projects}
+            openJobCard={setJobCard}
+            updateDrum={updateDrum}
+            progressDrum={progressDrumFromCard}
+            progressingDrumId={progressingDrumId}
+            onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
+            addToPlan={drum=>addDrumsToPlan([drum],localISODate(1),batchType(drum)||"")}
+            addBatchToPlan={(items,name)=>addDrumsToPlan(items,localISODate(1),name)}
+            scheduledDrumIds={tomorrowPlannedDrumIds}
+            scheduledTaskByDrum={tomorrowPlannedTaskByDrum}
+          />}
     </section>}
 
     {view==="projects" && <ProjectsPage projects={projects} drums={drums} openJobCard={setJobCard} createProject={createProject} updateProject={updateProject} linkDrumsToProject={linkDrumsToProject} unlinkDrumFromProject={unlinkDrumFromProject}/>}
 
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard}/>}
     {view==="repairs" && <RepairsPage repairs={repairs} openRepair={setRepairJob} addRepair={()=>setShowAddRepair(true)}/>}
-    {view==="archive" && <DrumArchive drums={archivedDrums} openJobCard={setJobCard} restoreArchivedDrum={restoreArchivedDrum}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
     {view==="inventory" && <Inventory hardware={hardware} updateHardware={updateHardware} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
@@ -3162,9 +3169,9 @@ function WorkshopSummary({drums,sales,labourRate}){
 }
 
 
-function DrumArchive({drums,openJobCard,restoreArchivedDrum}){
+function DrumArchive({drums,openJobCard,restoreArchivedDrum,embedded=false}){
   const [search,setSearch]=useState("");
-  const filtered=drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
+  const filtered=embedded ? drums : drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
 
   function archiveDate(d){
     const value=archiveDetailsFromNotes(d.notes).date;
@@ -3173,7 +3180,7 @@ function DrumArchive({drums,openJobCard,restoreArchivedDrum}){
     catch{return value;}
   }
 
-  return <section className="archivePage">
+  return <section className={"archivePage "+(embedded?"embeddedArchive":"")}>
     <section className="panel archiveIntro">
       <div>
         <span className="launchPackEyebrow">CLOSED WORK</span>
@@ -3182,7 +3189,7 @@ function DrumArchive({drums,openJobCard,restoreArchivedDrum}){
       </div>
       <b className="archiveCount">{drums.length}</b>
     </section>
-    <div className="searchBar"><Search size={16}/><input placeholder="Search production number, CB number, customer, timber, size or serial..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+    {!embedded && <div className="searchBar"><Search size={16}/><input placeholder="Search production number, CB number, customer, timber, size or serial..." value={search} onChange={e=>setSearch(e.target.value)}/></div>}
     {filtered.length===0
       ? <section className="panel"><p>No archived drums match this search.</p></section>
       : <section className="archiveGrid">{filtered.sort((a,b)=>String(archiveDetailsFromNotes(b.notes).date).localeCompare(String(archiveDetailsFromNotes(a.notes).date))).map(d=>{
@@ -4701,13 +4708,15 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     const currentSalesStatus=currentStatusRow?.sales_status || drum.sales_status;
     const currentLifecycleStatus=currentStatusRow?.lifecycle_status || drum.lifecycle_status || "";
 
-    const derivedLifecycle=checked.has("Shipped")
-      ? "Shipped"
-      : currentLifecycleStatus==="Sold"
-        ? "Sold"
-        : checked.has("Assembled")
-          ? "Completed"
-          : (currentLifecycleStatus || null);
+    const derivedLifecycle=currentLifecycleStatus==="Archived"
+      ? "Archived"
+      : checked.has("Shipped")
+        ? "Shipped"
+        : currentLifecycleStatus==="Sold"
+          ? "Sold"
+          : checked.has("Assembled")
+            ? "Completed"
+            : (currentLifecycleStatus || null);
 
     const patch={
       serial:draft.serial,
@@ -4734,16 +4743,18 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       custom_price:Number(customPrice||0),
       shipping_cost:Number(shipping||0),
       total_price:Number(customPrice||0)+Number(shipping||0),
-      production_status:["Completed","Sold","Shipped"].includes(derivedLifecycle)
+      production_status:["Completed","Sold","Shipped","Archived"].includes(derivedLifecycle)
         ? "Manufacturing Complete"
         : nextFlow.status,
-      next_step:derivedLifecycle==="Shipped"
-        ? "Complete"
-        : derivedLifecycle==="Sold"
-          ? "Prepare for shipping"
-          : derivedLifecycle==="Completed"
-            ? "Marketing / launch optional"
-            : nextFlow.nextStep,
+      next_step:derivedLifecycle==="Archived"
+        ? "Archived"
+        : derivedLifecycle==="Shipped"
+          ? "Confirm delivery / archive"
+          : derivedLifecycle==="Sold"
+            ? "Prepare for shipping"
+            : derivedLifecycle==="Completed"
+              ? "Marketing / launch optional"
+              : nextFlow.nextStep,
       notes:setChecklistInNotes(
         setOutstandingWorkInNotes(
           draft.notes,
@@ -4836,29 +4847,33 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       : draft.notes;
     const notesValue=setChecklistInNotes(workflowNotes,nextChecked);
     const storedLifecycle=drumLifecycleStatus(drum);
-    const lifecycle=storedLifecycle==="Shipped"
-      ? "Shipped"
-      : storedLifecycle==="Sold"
-        ? "Sold"
-        : nextChecked.has("Assembled")
-          ? "Completed"
-          : null;
+    const lifecycle=storedLifecycle==="Archived"
+      ? "Archived"
+      : storedLifecycle==="Shipped"
+        ? "Shipped"
+        : storedLifecycle==="Sold"
+          ? "Sold"
+          : nextChecked.has("Assembled")
+            ? "Completed"
+            : null;
 
     setSavedMessage("Saving checklist...");
 
     const workflowPatch={
       notes:notesValue,
       lifecycle_status:lifecycle,
-      production_status:["Completed","Sold","Shipped"].includes(lifecycle)
+      production_status:["Completed","Sold","Shipped","Archived"].includes(lifecycle)
         ? "Manufacturing Complete"
         : nextFlow.status,
-      next_step:lifecycle==="Shipped"
-        ? "Complete"
-        : lifecycle==="Sold"
-          ? "Prepare for shipping"
-          : lifecycle==="Completed"
-            ? "Marketing / launch optional"
-            : nextFlow.nextStep,
+      next_step:lifecycle==="Archived"
+        ? "Archived"
+        : lifecycle==="Shipped"
+          ? "Confirm delivery / archive"
+          : lifecycle==="Sold"
+            ? "Prepare for shipping"
+            : lifecycle==="Completed"
+              ? "Marketing / launch optional"
+              : nextFlow.nextStep,
       stage_history:history
     };
 
@@ -5112,7 +5127,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
           {!isArchivedStatus(drum) && <button
             className="archiveDrumButton"
-            onClick={()=>archiveDrum(drum)}
+            onClick={async()=>{
+              const saved=await archiveDrum({...drum,notes:setChecklistInNotes(draft.notes,checked)});
+              if(saved) onClose();
+            }}
           >
             <Archive size={16}/> Close & Archive
           </button>}

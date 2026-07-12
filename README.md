@@ -1,42 +1,33 @@
-# Nowak Workshop OS v6.7.0
+# Nowak Workshop OS v6.7.1
 
-## Workshop Tasks
+## Archive fix
 
-Workshop Today now includes a lightweight section for non-drum work such as:
+Nowak drums that have been assembled were being returned to Completed if the Job Card saved after archiving. Brady / CB drums did not usually have Assembled checked, which is why they appeared to archive correctly.
 
-- cleaning dust extractors
-- emptying bins
-- machine maintenance
-- sharpening tools
-- ordering supplies
-- customer emails
-- general workshop cleanup
-- miscellaneous one-off jobs
+v6.7.1 now preserves the Archived lifecycle for both Nowak and Brady / CB drums during all Job Card and checklist saves.
 
-### Task options
+The Job Card also closes immediately after a successful archive action, preventing a later local save from overwriting the archive status.
 
-Each task has:
+## Archive moved into Production
 
-- task name
-- optional notes
-- estimated time
-- due date
-- one-off, weekly or monthly recurrence
+The standalone Drum Archive navigation tab has been removed.
 
-### Daily use
+Production now has:
 
-- Tasks due today appear in Workshop Today.
-- Overdue tasks remain visible until completed or moved.
-- Complete a recurring task and it automatically schedules its next occurrence.
-- Move an unfinished task to tomorrow.
-- Edit or delete tasks at any time.
-- Upcoming tasks can be expanded without cluttering the main page.
-- Workshop task time is kept separate from drum production time.
+- All
+- Pending
+- Active
+- Completed
+- Sold
+- Shipped
+- Archived
 
-## Supabase migration required
+Archived is positioned next to Shipped. Archived drums remain excluded from every other Production status and all operational areas.
 
-Run `supabase/v6_7_0_workshop_tasks.sql` once in the Supabase SQL Editor.
+## Supabase
+
+No migration is required.
 
 ## Rollback
 
-The unchanged v6.6.0 ZIP remains the rollback version. The new workshop task table can remain in Supabase without affecting v6.6.0.
+The unchanged v6.7.0 ZIP remains the rollback version.

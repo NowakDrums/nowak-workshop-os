@@ -1431,3 +1431,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .workshopTaskActions button{flex:1;justify-content:center}
   .taskPresetGrid,.workshopTaskFormGrid{grid-template-columns:1fr}
 }
+
+/* v6.7.1 Archive now lives inside Production */
+.embeddedArchive{margin-top:12px}
+.embeddedArchive .archiveIntro{margin-bottom:12px}
