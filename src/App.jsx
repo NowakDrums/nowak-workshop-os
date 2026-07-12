@@ -7,6 +7,7 @@ import {
   Settings, Layers3, FolderPlus, BarChart3
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
+import nowakLogo from "./assets/nowak-logo.png";
 import "./style.css";
 
 const stages = [
@@ -852,6 +853,23 @@ function setOutstandingWorkInNotes(notes,value){
   return `${clean?clean+"\n":""}[Outstanding Work: ${task}]`;
 }
 
+function trackingNumberFromNotes(notes){
+  const match=String(notes || "").match(/^\[Tracking Number:\s*(.+?)\]$/mi);
+  return match ? match[1].trim() : "";
+}
+
+function setTrackingNumberInNotes(notes,value){
+  const clean=String(notes || "")
+    .split("\n")
+    .filter(line=>!/^\[Tracking Number:/i.test(line.trim()))
+    .join("\n")
+    .trim();
+
+  const tracking=String(value || "").trim();
+  if(!tracking) return clean;
+  return `${clean?clean+"\n":""}[Tracking Number: ${tracking}]`;
+}
+
 function emailDraft(d, milestone){
   const name = d.customer && d.customer !== "Stock" ? d.customer : "there";
   const timberStory = d.timber_story ? `\n\nTimber story: ${d.timber_story}` : "";
@@ -1441,10 +1459,28 @@ function App(){
   }
 
   async function markShipped(d){
-    const confirmed=window.confirm("Mark this drum as shipped?");
-    if(!confirmed) return false;
+    const existingTracking=trackingNumberFromNotes(d.notes);
+    const tracking=window.prompt(
+      "Enter the tracking number for this drum.\n\nLeave blank only if the shipment does not have tracking.",
+      existingTracking
+    );
 
-    const saved=await setDrumLifecycle(d,"Shipped");
+    if(tracking===null) return false;
+
+    const cleanTracking=String(tracking || "").trim();
+    if(!cleanTracking){
+      const continueWithout=window.confirm("No tracking number was entered. Mark this drum as shipped anyway?");
+      if(!continueWithout) return false;
+    }
+
+    const notes=setTrackingNumberInNotes(d.notes,cleanTracking);
+    const saved=await setDrumLifecycle(d,"Shipped",{notes});
+    if(saved){
+      setMessage(cleanTracking
+        ? `Marked shipped. Tracking number: ${cleanTracking}`
+        : "Marked shipped without a tracking number."
+      );
+    }
     return Boolean(saved);
   }
 
@@ -1459,7 +1495,10 @@ function App(){
 
   return <main>
     <header className="hero">
-      <div><h1>Nowak Workshop OS</h1><p>v6.2.5 — checklist changes now update completion status everywhere immediately.</p></div>
+      <div className="heroBrand">
+        <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
+        <div><h1>Nowak Workshop OS</h1><p>v6.3.0 — tracking-number prompt and Nowak branding.</p></div>
+      </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
 
@@ -1788,6 +1827,7 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     <p><b>Next:</b> {isShippedStatus(drum) ? "Complete" : isSoldStatus(drum) ? "Ship the drum" : isManufacturingComplete(drum) ? "Marketing / launch optional" : flow.nextStep}</p>
     <p><b>Estimated:</b> {flow.estimatedTotal.toFixed(2)} hr production · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
+    {trackingNumberFromNotes(drum.notes) && <p className="trackingNumberLine"><b>Tracking:</b> {trackingNumberFromNotes(drum.notes)}</p>}
     <section className="cardActionRow">
       {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && <button type="button" className="primary" disabled={progressing || !progressDrum} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
       {onAddPhoto && <button type="button" onClick={()=>onAddPhoto(drum)}><Camera size={15}/> Add Photo</button>}
@@ -2467,6 +2507,7 @@ function Orders({drums, openJobCard}){
         <div><span>Next</span><b>{isShippedStatus(d) ? "Complete" : isSoldStatus(d) ? "Ship the drum" : flow.nextStep}</b></div>
         <div><span>Due</span><b>{dueLabel(d)}</b></div>
         <div><span>Order value</span><b>{money(total)}</b></div>
+        {trackingNumberFromNotes(d.notes) && <div><span>Tracking</span><b>{trackingNumberFromNotes(d.notes)}</b></div>}
       </div>
 
       <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>

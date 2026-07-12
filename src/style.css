@@ -1241,3 +1241,41 @@ button:disabled{opacity:.55;cursor:not-allowed}
     grid-template-columns:1fr;
   }
 }
+
+/* v6.3.0 Nowak branding and tracking */
+.heroBrand{
+  display:flex;
+  align-items:center;
+  gap:18px;
+}
+.nowakHeaderLogo{
+  width:190px;
+  max-height:78px;
+  object-fit:contain;
+  flex:0 0 auto;
+}
+.trackingNumberLine{
+  padding:8px 10px;
+  border:1px solid #61b8ee;
+  border-radius:8px;
+  background:rgba(97,184,238,.08);
+  overflow-wrap:anywhere;
+}
+@media(max-width:760px){
+  .heroBrand{
+    align-items:flex-start;
+  }
+  .nowakHeaderLogo{
+    width:130px;
+    max-height:58px;
+  }
+}
+@media(max-width:520px){
+  .heroBrand{
+    display:grid;
+    gap:8px;
+  }
+  .nowakHeaderLogo{
+    width:150px;
+  }
+}
