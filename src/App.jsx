@@ -2033,7 +2033,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.8.1 — archived records now show production and serial numbers.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.9.0 — automatic social-media content queue.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -2127,7 +2127,7 @@ function App(){
       </section>
 
       <section className="quickGrid dashboardQuickGrid">
-        <article className="panel"><h2>Photo / Marketing Queue</h2><b className="bigNumber">{photoQueue}</b><p>Finished drums needing photos, website, social or YouTube.</p></article>
+        <article className="panel" onClick={()=>setView("comms")}><h2>Comms & Marketing</h2><b className="bigNumber">{photoQueue}</b><p>Open the content queue to review stored milestone media and social posts.</p></article>
         <article className="panel bradyPanel"><h2>Suggested Work Batches</h2><b className="bigNumber">{Object.keys(batches).length}</b><p>Current Workshop Today task groups.</p></article>
       </section>
 
@@ -3733,18 +3733,50 @@ function Orders({drums, openJobCard}){
 }
 
 
+function marketingMilestoneLabel(key,drum){
+  if(key==="shellcomplete"){
+    if(drum?.build_client==="Nowak") return isCustomCustomerDrum(drum) ? "Custom Drum Complete" : "Drum Complete";
+    return "Shell Complete";
+  }
+  const launchStage=launchStages.find(stage=>stage.key===key);
+  return launchStage?.label || photoMilestones[key]?.label || String(key||"General").replaceAll("_"," ");
+}
+
+function marketingMilestoneExplanation(key){
+  const explanations={
+    wood:"Original timber or veneer content ready to review.",
+    blank:"Shell blank or early build content ready to review.",
+    machined:"Machined shell progress content ready to review.",
+    sealer:"Finishing-process content ready to review.",
+    shellcomplete:"Completed shell content ready to review.",
+    drumcomplete:"Completed drum content ready to review.",
+    launch_timber:"Timber-stage content for the build story.",
+    launch_machined:"Machined-shell content for the build story.",
+    launch_reveal:"Finish reveal content, suitable for a progress post or final release.",
+    launch_final:"Final drum photos or video ready for a completed-drum post.",
+    general:"Additional workshop media ready to review.",
+  };
+  return explanations[key] || "New milestone media is available for social-media review.";
+}
+
 function CommsMarketingCentre({filteredDrums,allDrums,openJobCard,setMessage,onAddPhoto}){
-  const [section,setSection]=useState("drafts");
+  const [section,setSection]=useState("queue");
 
   return <section>
     <section className="panel commsMarketingHeader">
       <div>
         <span className="launchPackEyebrow">COMMUNICATIONS</span>
         <h2>Comms & Marketing</h2>
-        <p>Review Launch Pack drafts or manually generate milestone communications from one place.</p>
+        <p>Review newly captured media, hold content for a final post, or access the existing launch and milestone tools.</p>
       </div>
 
       <div className="commsMarketingTabs">
+        <button
+          className={section==="queue" ? "primary" : ""}
+          onClick={()=>setSection("queue")}
+        >
+          <ClipboardList size={16}/> Content Queue
+        </button>
         <button
           className={section==="drafts" ? "primary" : ""}
           onClick={()=>setSection("drafts")}
@@ -3760,11 +3792,156 @@ function CommsMarketingCentre({filteredDrums,allDrums,openJobCard,setMessage,onA
       </div>
     </section>
 
-    {section==="drafts"
-      ? <MarketingCentre drums={allDrums} openJobCard={openJobCard} setMessage={setMessage} embedded/>
-      : <CommsCentre drums={filteredDrums} openJobCard={openJobCard} embedded onAddPhoto={onAddPhoto}/>
+    {section==="queue"
+      ? <MarketingContentQueue drums={allDrums} openJobCard={openJobCard} setMessage={setMessage}/>
+      : section==="drafts"
+        ? <MarketingCentre drums={allDrums} openJobCard={openJobCard} setMessage={setMessage} embedded/>
+        : <CommsCentre drums={filteredDrums.filter(d=>d.build_client!=="Brady")} openJobCard={openJobCard} embedded onAddPhoto={onAddPhoto}/>
     }
   </section>
+}
+
+function MarketingContentQueue({drums,openJobCard,setMessage}){
+  const [photos,setPhotos]=useState([]);
+  const [statusRows,setStatusRows]=useState([]);
+  const [tab,setTab]=useState("To Review");
+  const [loading,setLoading]=useState(false);
+  const [expanded,setExpanded]=useState("");
+
+  const eligibleDrums=drums.filter(d=>d.build_client!=="Brady");
+  const drumMap=Object.fromEntries(eligibleDrums.map(d=>[d.id,d]));
+  const statusMap=Object.fromEntries(statusRows.map(row=>[`${row.drum_id}::${row.milestone}`,row]));
+
+  async function load(){
+    setLoading(true);
+    const [photoResult,statusResult]=await Promise.all([
+      supabase.from("drum_photos").select("*").order("created_at",{ascending:false}),
+      supabase.from("marketing_queue").select("*").order("updated_at",{ascending:false}),
+    ]);
+
+    if(photoResult.error){
+      setMessage?.("Could not load marketing media: "+photoResult.error.message);
+      setPhotos([]);
+    }else{
+      setPhotos(photoResult.data||[]);
+    }
+
+    if(statusResult.error){
+      setMessage?.("Marketing Queue needs the v6.9.0 Supabase migration.");
+      setStatusRows([]);
+    }else{
+      setStatusRows(statusResult.data||[]);
+    }
+    setLoading(false);
+  }
+
+  useEffect(()=>{load();},[]);
+
+  const grouped={};
+  photos.forEach(photo=>{
+    const drum=drumMap[photo.drum_id];
+    if(!drum) return;
+    const key=`${photo.drum_id}::${photo.milestone||"general"}`;
+    grouped[key] ??={key,drum,milestone:photo.milestone||"general",photos:[]};
+    grouped[key].photos.push(photo);
+  });
+
+  const items=Object.values(grouped)
+    .map(item=>({
+      ...item,
+      status:statusMap[item.key]?.status || "To Review",
+      queueId:statusMap[item.key]?.id || null,
+      updatedAt:statusMap[item.key]?.updated_at || item.photos[0]?.created_at || "",
+    }))
+    .sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt)));
+
+  const tabs=["To Review","Held for Final Post","Completed","Ignored"];
+  const filtered=items.filter(item=>item.status===tab);
+  const counts=Object.fromEntries(tabs.map(name=>[name,items.filter(item=>item.status===name).length]));
+
+  async function setStatus(item,status){
+    const payload={
+      drum_id:item.drum.id,
+      milestone:item.milestone,
+      status,
+      updated_at:new Date().toISOString(),
+    };
+    const {data,error}=await supabase
+      .from("marketing_queue")
+      .upsert(payload,{onConflict:"drum_id,milestone"})
+      .select("*")
+      .single();
+
+    if(error){
+      setMessage?.("Could not update marketing item: "+error.message);
+      return;
+    }
+    setStatusRows(current=>[data,...current.filter(row=>!(row.drum_id===data.drum_id && row.milestone===data.milestone))]);
+    setExpanded("");
+    setMessage?.("");
+  }
+
+  function mediaSummary(item){
+    const videos=item.photos.filter(photo=>photo.media_type==="video").length;
+    const images=item.photos.length-videos;
+    const parts=[];
+    if(images) parts.push(`${images} photo${images===1?"":"s"}`);
+    if(videos) parts.push(`${videos} video${videos===1?"":"s"}`);
+    return parts.join(" · ") || `${item.photos.length} file${item.photos.length===1?"":"s"}`;
+  }
+
+  return <section className="marketingQueue">
+    <section className="panel marketingQueueIntro">
+      <div>
+        <span className="launchPackEyebrow">SOCIAL-MEDIA INBOX</span>
+        <h3>Content Queue</h3>
+        <p>New milestone photos and videos from Nowak or unallocated drums appear here automatically. Brady / CB drums are excluded.</p>
+      </div>
+      <button onClick={load}><RefreshCw size={15}/> {loading?"Loading...":"Refresh"}</button>
+    </section>
+
+    <div className="marketingQueueTabs">
+      {tabs.map(name=><button key={name} className={tab===name?"primary":""} onClick={()=>setTab(name)}>
+        {name} <b>{counts[name]||0}</b>
+      </button>)}
+    </div>
+
+    {filtered.length===0
+      ? <section className="panel emptyMarketingQueue"><ClipboardList size={25}/><p>No items in {tab.toLowerCase()}.</p></section>
+      : <section className="marketingQueueList">{filtered.map(item=>{
+          const open=expanded===item.key;
+          const drum=item.drum;
+          return <article className="panel marketingQueueCard" key={item.key}>
+            <header className="marketingQueueCardHeader">
+              <div>
+                <span className="futureStageBadge">{marketingMilestoneLabel(item.milestone,drum)}</span>
+                <h3>#{drum.serial} {drum.timber}</h3>
+                <p>{drum.size} · {drum.build_type} · {displaySalesBadge(drum)}</p>
+              </div>
+              <b className="mediaCountBadge">{mediaSummary(item)}</b>
+            </header>
+
+            <p className="marketingQueueExplanation">{marketingMilestoneExplanation(item.milestone)}</p>
+
+            <div className="marketingQueueActions">
+              <button onClick={()=>setExpanded(open?"":item.key)}><Camera size={15}/> {open?"Hide Media":"Open Media"}</button>
+              <button onClick={()=>openJobCard(drum)}>Open Drum</button>
+              {item.status!=="Held for Final Post" && <button onClick={()=>setStatus(item,"Held for Final Post")}>Hold for Final</button>}
+              {item.status!=="Completed" && <button className="primary" onClick={()=>setStatus(item,"Completed")}><CheckCircle2 size={15}/> Complete</button>}
+              {item.status!=="Ignored" && <button onClick={()=>setStatus(item,"Ignored")}>Ignore</button>}
+              {item.status!=="To Review" && <button onClick={()=>setStatus(item,"To Review")}>Return to Review</button>}
+            </div>
+
+            {open && <section className="marketingQueueMedia">
+              {item.photos.map(photo=><a href={photo.public_url} target="_blank" rel="noreferrer" key={photo.id} className="marketingMediaItem">
+                {photo.media_type==="video"
+                  ? <video src={photo.public_url} controls preload="metadata"/>
+                  : <img src={photo.public_url} alt={marketingMilestoneLabel(item.milestone,drum)}/>}
+              </a>)}
+            </section>}
+          </article>;
+        })}</section>}
+  </section>;
 }
 
 
