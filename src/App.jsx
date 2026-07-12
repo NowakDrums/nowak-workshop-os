@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
-  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2
+  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import nowakLogo from "./assets/nowak-logo-refined.png";
@@ -676,6 +676,35 @@ function batchType(d){
   return flow.nextStep;
 }
 
+function localISODate(offsetDays=0){
+  const date=new Date();
+  date.setHours(12,0,0,0);
+  date.setDate(date.getDate()+offsetDays);
+  return date.toISOString().slice(0,10);
+}
+
+function planDetailsForDrum(drum){
+  const buildType=drum.build_type || "Stave";
+  const flow=workflowState(buildType,parseChecked(drum.notes),drum.finish);
+  const taskItem=flow.steps[flow.completedCount] || "";
+  if(!taskItem || isManufacturingComplete(drum) || ["Sold","Shipped"].includes(drumLifecycleStatus(drum))) return null;
+  return {
+    task_item:taskItem,
+    task_label:checklistDisplayLabel(taskItem,buildType),
+    estimated_hours:Number(workflowEstimates[buildType]?.[taskItem] || 0),
+    drum_label:`#${drum.serial || "—"} ${drum.timber || "Drum"} · ${drum.size || ""}`.trim(),
+  };
+}
+
+function formatPlanTime(hours){
+  const totalMinutes=Math.round(Number(hours||0)*60);
+  const hrs=Math.floor(totalMinutes/60);
+  const mins=totalMinutes%60;
+  if(!hrs) return `${mins} min`;
+  if(!mins) return `${hrs} hr`;
+  return `${hrs} hr ${mins} min`;
+}
+
 
 function allocatedCustomerName(d){
   const name=String(d?.customer || "").trim();
@@ -1001,6 +1030,7 @@ function App(){
   const [sales,setSales]=useState([]);
   const [projects,setProjects]=useState([]);
   const [repairs,setRepairs]=useState([]);
+  const [workPlan,setWorkPlan]=useState([]);
   const [repairJob,setRepairJob]=useState(null);
   const [showAddRepair,setShowAddRepair]=useState(false);
   const [jobCard,setJobCard]=useState(null);
@@ -1018,13 +1048,14 @@ function App(){
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
     setLoading(true); setMessage("");
-    const [d,h,t,s,p,r]=await Promise.all([
+    const [d,h,t,s,p,r,w]=await Promise.all([
       supabase.from("drums").select("*").order("created_at",{ascending:false}),
       supabase.from("hardware_parts").select("*").order("category",{ascending:true}),
       supabase.from("cost_templates").select("*").order("name",{ascending:true}),
       supabase.from("sales").select("*").order("sold_at",{ascending:false}),
       supabase.from("projects").select("*").order("created_at",{ascending:false}),
-      supabase.from("repair_jobs").select("*").order("created_at",{ascending:false})
+      supabase.from("repair_jobs").select("*").order("created_at",{ascending:false}),
+      supabase.from("work_plan_items").select("*").order("planned_date",{ascending:true}).order("created_at",{ascending:true})
     ]);
     const loadedDrums=(d.data||[]).map(item=>{
       if(item.lifecycle_status) return item;
@@ -1041,6 +1072,7 @@ function App(){
     setSales(s.data||[]);
     setProjects(p.data||[]);
     setRepairs(r.data||[]);
+    setWorkPlan(w.data||[]);
 
     const coreErrors=[d.error,h.error,t.error,s.error].filter(Boolean);
     if(coreErrors.length){
@@ -1049,6 +1081,8 @@ function App(){
       setMessage("Kits / Projects needs the v5.0 Supabase setup: " + p.error.message);
     }else if(r.error){
       setMessage("Repairs & Modifications needs the v6.4.0 Supabase migration.");
+    }else if(w.error){
+      setMessage("Daily Planning needs the v6.5.0 Supabase migration.");
     }else{
       setMessage("");
     }
@@ -1076,6 +1110,8 @@ function App(){
   const repairIncome=repairs
     .filter(r=>r.status==="Collected & Paid")
     .reduce((sum,r)=>sum+Number(r.agreed_price||0),0);
+  const tomorrowPlan=workPlan.filter(item=>item.planned_date===localISODate(1) && item.status!=="Done");
+  const tomorrowPlanHours=tomorrowPlan.reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
   const staveInProduction=drums.filter(d=>
     d.build_type==="Stave" &&
     !isManufacturingComplete(d) &&
@@ -1500,6 +1536,100 @@ function App(){
     return true;
   }
 
+  async function addDrumsToPlan(drumsToAdd,plannedDate=localISODate(1),batchName=""){
+    const rows=drumsToAdd
+      .map(drum=>{
+        const details=planDetailsForDrum(drum);
+        if(!details) return null;
+        return {
+          drum_id:drum.id,
+          planned_date:plannedDate,
+          task_item:details.task_item,
+          task_label:details.task_label,
+          estimated_hours:details.estimated_hours,
+          drum_label:details.drum_label,
+          batch_name:batchName || batchType(drum) || "",
+          status:"Planned",
+        };
+      })
+      .filter(Boolean);
+
+    if(!rows.length){
+      setMessage("There are no eligible next-stage tasks to add.");
+      return false;
+    }
+
+    const {data,error}=await supabase
+      .from("work_plan_items")
+      .upsert(rows,{onConflict:"drum_id,planned_date,task_item",ignoreDuplicates:true})
+      .select("*");
+
+    if(error){
+      setMessage("Could not add work to the plan: "+error.message);
+      return false;
+    }
+
+    setWorkPlan(current=>{
+      const map=new Map(current.map(item=>[item.id,item]));
+      (data||[]).forEach(item=>map.set(item.id,item));
+      return [...map.values()];
+    });
+    setMessage(`${rows.length} task${rows.length===1?"":"s"} added to ${plannedDate===localISODate(1)?"tomorrow":"the work plan"}.`);
+    return true;
+  }
+
+  async function updatePlanItem(id,patch){
+    const {data,error}=await supabase.from("work_plan_items").update(patch).eq("id",id).select("*").single();
+    if(error){
+      setMessage("Could not update planned work: "+error.message);
+      return false;
+    }
+    setWorkPlan(current=>current.map(item=>item.id===id?data:item));
+    setMessage("");
+    return true;
+  }
+
+  async function removePlanItem(id){
+    const {error}=await supabase.from("work_plan_items").delete().eq("id",id);
+    if(error){
+      setMessage("Could not remove planned work: "+error.message);
+      return;
+    }
+    setWorkPlan(current=>current.filter(item=>item.id!==id));
+  }
+
+  async function rollPlanItems(items,targetDate=localISODate(1)){
+    const unfinished=items.filter(item=>item.status!=="Done");
+    if(!unfinished.length){
+      setMessage("There is no unfinished work to roll forward.");
+      return;
+    }
+    const rows=unfinished.map(item=>({
+      drum_id:item.drum_id,
+      planned_date:targetDate,
+      task_item:item.task_item,
+      task_label:item.task_label,
+      estimated_hours:item.estimated_hours,
+      drum_label:item.drum_label,
+      batch_name:item.batch_name,
+      status:"Planned",
+    }));
+    const {data,error}=await supabase
+      .from("work_plan_items")
+      .upsert(rows,{onConflict:"drum_id,planned_date,task_item",ignoreDuplicates:true})
+      .select("*");
+    if(error){
+      setMessage("Could not roll work forward: "+error.message);
+      return;
+    }
+    setWorkPlan(current=>{
+      const map=new Map(current.map(item=>[item.id,item]));
+      (data||[]).forEach(item=>map.set(item.id,item));
+      return [...map.values()];
+    });
+    setMessage(`${unfinished.length} unfinished task${unfinished.length===1?"":"s"} moved to tomorrow.`);
+  }
+
   async function createRepair(form){
     const payload={
       job_number:form.job_number || nextRepairNumber(repairs),
@@ -1595,7 +1725,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.4.0 — Repairs & Modifications job tracking.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.5.0 — simple daily workshop planning and rollover.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -1671,6 +1801,10 @@ function App(){
         <button className="dashboardStatCard" onClick={()=>setView("repairs")}>
           <b>{money(repairIncome)}</b><span>Repair income</span>
         </button>
+        <button className="dashboardStatCard" onClick={()=>setView("today")}>
+          <b>{tomorrowPlan.length}</b><span>Tasks planned tomorrow</span>
+          <small>{formatPlanTime(tomorrowPlanHours)}</small>
+        </button>
       </section>
 
       <section className="quickGrid dashboardQuickGrid">
@@ -1707,7 +1841,16 @@ function App(){
       </section>
     </>}
 
-    {view==="today" && <section className="batchGrid">
+    {view==="today" && <>
+      <DailyWorkPlan
+        workPlan={workPlan}
+        drums={drums}
+        openJobCard={setJobCard}
+        updatePlanItem={updatePlanItem}
+        removePlanItem={removePlanItem}
+        rollPlanItems={rollPlanItems}
+      />
+      <section className="batchGrid">
       {outstandingFinalWork.length>0 && <section className="panel todayTaskPanel outstandingTodayPanel">
         <h2>Outstanding Final Work <span className="taskCount">({outstandingFinalWork.length})</span></h2>
         <p>These drums can remain Complete while the final practical task stays visible.</p>
@@ -1738,7 +1881,10 @@ function App(){
           });
 
         return <section className="panel todayTaskPanel" key={name}>
-          <h2>{name} <span className="taskCount">({items.length})</span></h2>
+          <div className="todayBatchHeader">
+            <h2>{name} <span className="taskCount">({items.length})</span></h2>
+            <button className="primary" onClick={()=>addDrumsToPlan(items,localISODate(1),name)}><CalendarDays size={15}/> Plan Batch for Tomorrow</button>
+          </div>
 
           {Object.entries(grouped).map(([groupName,groupItems])=>
             <section className={"todayProjectGroup "+(groupName==="Individual Drums"?"individualTodayGroup":"")} key={groupName}>
@@ -1757,6 +1903,7 @@ function App(){
                     <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
                     <p><b>Status:</b> {flow.status}</p>
                     <p><b>Next:</b> {flow.nextStep}</p>
+                    {flow.nextStep!=="Complete" && <button type="button" onClick={()=>addDrumsToPlan([d],localISODate(1),name)}><CalendarDays size={15}/> Plan Tomorrow</button>}
                     {flow.nextStep!=="Complete" && <button type="button" className="primary" disabled={progressingDrumId===d.id} onClick={()=>progressDrumFromCard(d)}><CheckCircle2 size={15}/> {progressingDrumId===d.id ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
                     <button type="button" onClick={()=>setGlobalPhotoPrompt({drum:d,milestoneKey:"general"})}><Camera size={15}/> Add Photo</button>
                     <button type="button" onClick={()=>setJobCard(d)}>Open job card</button>
@@ -1767,7 +1914,8 @@ function App(){
           )}
         </section>
       })}
-    </section>}
+      </section>
+    </>}
 
     {view==="production" && <section>
       <section className="panel productionToolbar">
@@ -1813,6 +1961,8 @@ function App(){
         progressDrum={progressDrumFromCard}
         progressingDrumId={progressingDrumId}
         onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
+        addToPlan={drum=>addDrumsToPlan([drum],localISODate(1),batchType(drum)||"")}
+        addBatchToPlan={(items,name)=>addDrumsToPlan(items,localISODate(1),name)}
       />
     </section>}
 
@@ -1848,7 +1998,65 @@ function App(){
 }
 
 
-function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,progressingDrumId,onAddPhoto}){
+function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,removePlanItem,rollPlanItems}){
+  const drumMap=Object.fromEntries(drums.map(d=>[d.id,d]));
+  const today=localISODate(0);
+  const tomorrow=localISODate(1);
+
+  function PlanSection({date,title}){
+    const items=workPlan.filter(item=>item.planned_date===date);
+    const unfinished=items.filter(item=>item.status!=="Done");
+    const totalHours=unfinished.reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
+    const grouped={};
+    items.forEach(item=>{
+      const key=item.batch_name || item.task_label || "Planned Work";
+      grouped[key] ??=[];
+      grouped[key].push(item);
+    });
+
+    return <section className="panel dailyPlanPanel">
+      <header className="dailyPlanHeader">
+        <div>
+          <span className="launchPackEyebrow">{date===today?"WORKSHOP PLAN":"NEXT DAY PLAN"}</span>
+          <h2>{title}</h2>
+          <p>{unfinished.length} unfinished task{unfinished.length===1?"":"s"} · approximately <b>{formatPlanTime(totalHours)}</b></p>
+        </div>
+        {date===today && unfinished.length>0 && <button onClick={()=>rollPlanItems(unfinished,tomorrow)}><RotateCcw size={15}/> Move Unfinished to Tomorrow</button>}
+      </header>
+
+      {items.length===0
+        ? <div className="emptyPlan"><CalendarDays size={24}/><p>No work deliberately planned for this day yet.</p></div>
+        : <div className="dailyPlanGroups">{Object.entries(grouped).map(([group,groupItems])=>{
+            const groupHours=groupItems.filter(i=>i.status!=="Done").reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
+            return <section className="dailyPlanGroup" key={group}>
+              <header><div><h3>{group}</h3><span>{groupItems.length} drum{groupItems.length===1?"":"s"} · {formatPlanTime(groupHours)}</span></div></header>
+              <div className="planItemList">{groupItems.map(item=>{
+                const drum=drumMap[item.drum_id];
+                return <article className={"planItem "+(item.status==="Done"?"planItemDone":"")} key={item.id}>
+                  <button className="planCheck" title={item.status==="Done"?"Mark unfinished":"Mark done"} onClick={()=>updatePlanItem(item.id,{status:item.status==="Done"?"Planned":"Done"})}>
+                    <CircleCheckBig size={20}/>
+                  </button>
+                  <div className="planItemInfo">
+                    <b>{item.drum_label}</b>
+                    <span>{item.task_label}</span>
+                  </div>
+                  <strong>{formatPlanTime(item.estimated_hours)}</strong>
+                  {drum && <button onClick={()=>openJobCard(drum)}>Open Drum</button>}
+                  <button className="dangerButton" onClick={()=>removePlanItem(item.id)}><Trash2 size={14}/></button>
+                </article>;
+              })}</div>
+            </section>;
+          })}</div>}
+    </section>;
+  }
+
+  return <section className="dailyPlanner">
+    <PlanSection date={today} title="Today's Plan"/>
+    <PlanSection date={tomorrow} title="Tomorrow's Plan"/>
+  </section>;
+}
+
+function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,progressingDrumId,onAddPhoto,addToPlan,addBatchToPlan}){
   const projectMap=Object.fromEntries(projects.map(p=>[p.id,p]));
   const linkedGroups={};
   const unlinked=[];
@@ -1889,10 +2097,11 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
           </div>
           <div className="kitGroupProgress">
             <div className="progress"><i style={{width:overall+"%"}}></i></div>
+            <button onClick={()=>addBatchToPlan?.(items,project.name)}><CalendarDays size={15}/> Plan Kit for Tomorrow</button>
           </div>
         </header>
         <div className="productionList kitDrumGrid">
-          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto}/>)}
+          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} addToPlan={addToPlan}/>)}
         </div>
       </section>
     })}
@@ -1908,14 +2117,14 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
       <div className="productionList">
         {[...unlinked]
           .sort(productionPriorityCompare)
-          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto}/>)}
+          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} addToPlan={addToPlan}/>)}
       </div>
     </section>}
   </section>
 }
 
 
-function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto}){
+function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto, addToPlan}){
   const checked=parseChecked(drum.notes);
   const flow=workflowState(drum.build_type || "Stave",checked,drum.finish);
 
@@ -1940,6 +2149,7 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
     {trackingNumberFromNotes(drum.notes) && <p className="trackingNumberLine"><b>Tracking:</b> {trackingNumberFromNotes(drum.notes)}</p>}
     <section className="cardActionRow">
+      {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && addToPlan && <button type="button" onClick={()=>addToPlan(drum)}><CalendarDays size={15}/> Plan Tomorrow</button>}
       {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && <button type="button" className="primary" disabled={progressing || !progressDrum} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
       {onAddPhoto && <button type="button" onClick={()=>onAddPhoto(drum)}><Camera size={15}/> Add Photo</button>}
       <button type="button" onClick={()=>openJobCard(drum)}>Open job card</button>
@@ -3013,7 +3223,7 @@ function CommsCentre({drums, openJobCard, embedded=false, onAddPhoto}){
   return <section>
     {!embedded && <div className="panel"><h2>Communication Centre</h2><p>Generate customer emails and Facebook/Instagram posts from production milestones. Emails are signed Kelly & Kyle.</p></div>}
     {embedded && <div className="panel embeddedSectionIntro"><h3>Milestone Generator</h3><p>Choose a milestone, add photos, then open only the communication you need. Brady builds remain internal-only.</p></div>}
-    <section className="templateGrid commsCardGrid">{drums.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard} onAddPhoto={onAddPhoto}/>)}</section>
+    <section className="templateGrid commsCardGrid">{drums.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard} onAddPhoto={onAddPhoto} addToPlan={addToPlan}/>)}</section>
   </section>
 }
 

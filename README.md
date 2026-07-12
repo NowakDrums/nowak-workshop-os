@@ -1,47 +1,34 @@
-# Nowak Workshop OS v6.4.0
+# Nowak Workshop OS v6.5.0
 
-## Repairs & Modifications
+## Daily Workshop Planning
 
-A new dedicated section tracks customer repair and modification jobs separately from new drum production.
+This version adds a simple, optional planning layer without changing the existing production workflow.
 
-### Workflow
-- Received
-- In Progress
-- Ready for Collection
-- Collected & Paid
+### Plan work
+- Add an individual drum to tomorrow's plan from Production or Workshop Today.
+- Add an entire suggested batch to tomorrow.
+- Add a complete kit/project to tomorrow.
+- Duplicate tasks are ignored automatically.
 
-### Automatic numbering
-Repair jobs receive their own sequence:
-- R-001
-- R-002
-- R-003
+### Workshop Today
+The page now begins with:
+- Today's Plan
+- Tomorrow's Plan
+- estimated task count and total time
+- grouped tasks by batch or project
 
-### Standard services
-- Cut bearing edges — $100
-- Cut snare beds — $50
-- Bearing edges and snare beds — $150
-- Widen snare bed — $50
-- Cut down shell — $100
-- Miscellaneous repair — custom price
+### Manage the plan
+- Mark a planned item done
+- Open the associated drum
+- Remove an item
+- Move all unfinished work from today to tomorrow
 
-### Job information
-- Customer name
-- Phone
-- Email
-- Drum brand
-- Drum description
-- Agreed work
-- Notes
-- Agreed price
-- Date received
-- Optional due date
-- Before, progress and completed photos
-
-### Dashboard
-- Active repair jobs
-- Repairs ready for collection
-- Repair income from jobs marked Collected & Paid
+Marking a planning item done does not automatically change the drum's manufacturing checklist. This keeps the plan as a flexible guide and prevents accidental production updates.
 
 ## Supabase migration required
 
-Run `supabase/v6_4_0_repairs.sql` once in the Supabase SQL Editor before using the Repairs & Modifications section.
+Run `supabase/v6_5_0_work_planning.sql` once in the Supabase SQL Editor.
+
+## Rollback
+
+The unchanged v6.4.0 ZIP remains the rollback version. Its existing repair migration and data remain compatible.

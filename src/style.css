@@ -1327,3 +1327,36 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .repairPhotoControls{display:grid}
   .repairPhotoGrid{grid-template-columns:repeat(2,1fr)}
 }
+
+/* v6.5.0 Daily workshop planning */
+.dailyPlanner{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.dailyPlanPanel{margin-bottom:0}
+.dailyPlanHeader,.todayBatchHeader{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.dailyPlanHeader h2,.todayBatchHeader h2{margin:2px 0}
+.dailyPlanHeader p{margin:5px 0 0}
+.emptyPlan{min-height:95px;display:flex;align-items:center;justify-content:center;gap:10px;border:1px dashed #4b4235;border-radius:12px;margin-top:12px}
+.dailyPlanGroups{display:grid;gap:10px;margin-top:12px}
+.dailyPlanGroup{border:1px solid #4b4235;border-radius:12px;padding:10px;background:#15130f}
+.dailyPlanGroup>header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.dailyPlanGroup h3{margin:0 0 3px}
+.planItemList{display:grid;gap:7px}
+.planItem{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto auto;gap:8px;align-items:center;padding:8px;border:1px solid #382f22;border-radius:9px;background:#1d1a15}
+.planItemDone{opacity:.58}
+.planItemDone .planItemInfo{text-decoration:line-through}
+.planCheck{padding:7px}
+.planItemDone .planCheck{background:#7fc680;color:#10150f}
+.planItemInfo b,.planItemInfo span{display:block}
+.planItemInfo span{font-size:12px;margin-top:2px}
+.todayBatchHeader{margin-bottom:12px}
+.kitGroupProgress button{width:100%;justify-content:center;margin-top:8px}
+@media(max-width:900px){
+  .dailyPlanner{grid-template-columns:1fr}
+  .dailyPlanHeader,.todayBatchHeader{display:grid}
+  .planItem{grid-template-columns:auto minmax(0,1fr) auto}
+  .planItem>button:nth-last-child(-n+2){grid-column:auto}
+}
+@media(max-width:560px){
+  .planItem{grid-template-columns:auto minmax(0,1fr)}
+  .planItem strong{grid-column:2}
+  .planItem>button:not(.planCheck){grid-column:1/-1;width:100%;justify-content:center}
+}
