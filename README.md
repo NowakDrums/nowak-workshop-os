@@ -1,34 +1,26 @@
-# Nowak Workshop OS v6.5.0
+# Nowak Workshop OS v6.5.1
 
-## Daily Workshop Planning
+## Scheduled-work highlighting
 
-This version adds a simple, optional planning layer without changing the existing production workflow.
+Drums added to Tomorrow's Plan are now clearly identified throughout the app:
 
-### Plan work
-- Add an individual drum to tomorrow's plan from Production or Workshop Today.
-- Add an entire suggested batch to tomorrow.
-- Add a complete kit/project to tomorrow.
-- Duplicate tasks are ignored automatically.
+- green outline around the drum card
+- `Scheduled tomorrow` label
+- the planned task is displayed
+- the Plan Tomorrow button changes to `Scheduled Tomorrow` and is disabled to avoid duplicates
 
-### Workshop Today
-The page now begins with:
-- Today's Plan
-- Tomorrow's Plan
-- estimated task count and total time
-- grouped tasks by batch or project
+This applies in Production and Workshop Today.
 
-### Manage the plan
-- Mark a planned item done
-- Open the associated drum
-- Remove an item
-- Move all unfinished work from today to tomorrow
+## Brady / CB shell-only workflow
 
-Marking a planning item done does not automatically change the drum's manufacturing checklist. This keeps the plan as a flexible guide and prevents accidental production updates.
+Brady / CB drums now use a shell-only manufacturing workflow by default.
 
-## Supabase migration required
+- `Assembled` is no longer required for a Brady drum to reach manufacturing completion.
+- Existing sold or shipped drums are excluded from Workshop Today batches.
+- Brady drums that have already been marked Sold will no longer appear as needing assembly.
 
-Run `supabase/v6_5_0_work_planning.sql` once in the Supabase SQL Editor.
+No Supabase migration is required.
 
 ## Rollback
 
-The unchanged v6.4.0 ZIP remains the rollback version. Its existing repair migration and data remain compatible.
+The unchanged v6.5.0 ZIP remains the rollback version.

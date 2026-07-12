@@ -30,10 +30,14 @@ const checklist = [
 const fulfilmentChecklist = ["Photos taken","Packed","Shipped"];
 const marketingChecklist = ["Website listing","Facebook / Instagram","YouTube demo"];
 
-function manufacturingChecklist(buildType,finish=""){
-  return applicableChecklist(buildType,finish).filter(
-    item=>!fulfilmentChecklist.includes(item) && !marketingChecklist.includes(item)
-  );
+function manufacturingChecklist(buildType,finish="",buildClient=""){
+  return applicableChecklist(buildType,finish).filter(item=>{
+    if(fulfilmentChecklist.includes(item) || marketingChecklist.includes(item)) return false;
+    // Brady / CB work is normally shell-only. Assembly can still be recorded
+    // manually in notes, but it is not required for workflow completion.
+    if(buildClient==="Brady" && item==="Assembled") return false;
+    return true;
+  });
 }
 
 
@@ -249,8 +253,8 @@ function workflowNextInstruction(nextItem,buildType){
   return instructions[nextItem] || nextItem || "Complete";
 }
 
-function workflowState(buildType, checked, finish=""){
-  const steps=manufacturingChecklist(buildType,finish);
+function workflowState(buildType, checked, finish="", buildClient=""){
+  const steps=manufacturingChecklist(buildType,finish,buildClient);
   let completedCount=0;
   for(const step of steps){
     if(checked.has(step)) completedCount += 1;
@@ -660,7 +664,8 @@ function batchType(d){
   const flow=workflowState(
     buildType,
     parseChecked(d.notes),
-    d.finish
+    d.finish,
+    d.build_client
   );
 
   if(!flow.nextStep || flow.nextStep==="Complete") return null;
@@ -685,7 +690,7 @@ function localISODate(offsetDays=0){
 
 function planDetailsForDrum(drum){
   const buildType=drum.build_type || "Stave";
-  const flow=workflowState(buildType,parseChecked(drum.notes),drum.finish);
+  const flow=workflowState(buildType,parseChecked(drum.notes),drum.finish,drum.build_client);
   const taskItem=flow.steps[flow.completedCount] || "";
   if(!taskItem || isManufacturingComplete(drum) || ["Sold","Shipped"].includes(drumLifecycleStatus(drum))) return null;
   return {
@@ -1095,7 +1100,16 @@ function App(){
   const filtered=drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
   const active=operationalDrums;
   const templateMap=useMemo(()=>Object.fromEntries(templates.map(t=>[t.name,t])),[templates]);
-  const batches=useMemo(()=>{ const g={}; filtered.forEach(d=>{const b=batchType(d); if(b){g[b]??=[]; g[b].push(d)}}); return g; },[filtered]);
+  const batches=useMemo(()=>{
+    const g={};
+    filtered
+      .filter(d=>!isSoldStatus(d) && !isShippedStatus(d))
+      .forEach(d=>{
+        const b=batchType(d);
+        if(b){g[b]??=[];g[b].push(d);}
+      });
+    return g;
+  },[filtered]);
   const inventoryValue=hardware.reduce((s,p)=>s+Number(p.qty_on_hand||0)*Number(p.landed_cost_aud||0),0);
   const lowStock=hardware.filter(p=>Number(p.qty_on_hand||0)<=Number(p.reorder_level||0)).length;
   const retail=active.reduce((s,d)=>s+Number(d.total_price||d.retail_price||0),0);
@@ -1112,6 +1126,10 @@ function App(){
     .reduce((sum,r)=>sum+Number(r.agreed_price||0),0);
   const tomorrowPlan=workPlan.filter(item=>item.planned_date===localISODate(1) && item.status!=="Done");
   const tomorrowPlanHours=tomorrowPlan.reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
+  const tomorrowPlannedDrumIds=new Set(tomorrowPlan.map(item=>item.drum_id));
+  const tomorrowPlannedTaskByDrum=Object.fromEntries(
+    tomorrowPlan.map(item=>[item.drum_id,item.task_label])
+  );
   const staveInProduction=drums.filter(d=>
     d.build_type==="Stave" &&
     !isManufacturingComplete(d) &&
@@ -1254,13 +1272,13 @@ function App(){
 
     try{
       const checked=parseChecked(d.notes);
-      const flow=workflowState(d.build_type || "Stave",checked,d.finish);
+      const flow=workflowState(d.build_type || "Stave",checked,d.finish,d.build_client);
       const nextItem=flow.steps[flow.completedCount];
       if(!nextItem) return false;
 
       const next=new Set(checked);
       next.add(nextItem);
-      const nextFlow=workflowState(d.build_type || "Stave",next,d.finish);
+      const nextFlow=workflowState(d.build_type || "Stave",next,d.finish,d.build_client);
       let history=Array.isArray(d.stage_history) ? [...d.stage_history] : [];
       history=history.filter(entry=>entry.item!==nextItem);
       history.push({item:nextItem,completed:true,completed_at:new Date().toISOString()});
@@ -1725,7 +1743,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.5.0 — simple daily workshop planning and rollover.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.5.1 — scheduled-work highlighting and Brady shell-only workflow.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -1864,6 +1882,8 @@ function App(){
               progressDrum={progressDrumFromCard}
               progressing={progressingDrumId===d.id}
               onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
+              scheduledTomorrow={tomorrowPlannedDrumIds.has(d.id)}
+              scheduledTask={tomorrowPlannedTaskByDrum[d.id]}
             />)}
         </div>
       </section>}
@@ -1891,8 +1911,9 @@ function App(){
               <h3>{groupName}</h3>
               <div className="todayDrumGrid">
                 {groupItems.map(d=>{
-                  const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish);
-                  return <article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard")} key={d.id}>
+                  const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client);
+                  const scheduledTomorrow=tomorrowPlannedDrumIds.has(d.id);
+                  return <article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduledTomorrow?" scheduledTomorrowCard":"")} key={d.id}>
                     <div className="cardHeading">
                       <b>#{d.serial} {d.timber}</b>
                       {allocatedCustomerName(d) && <span className="customerNameBadge">{allocatedCustomerName(d)}</span>}
@@ -1903,7 +1924,8 @@ function App(){
                     <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
                     <p><b>Status:</b> {flow.status}</p>
                     <p><b>Next:</b> {flow.nextStep}</p>
-                    {flow.nextStep!=="Complete" && <button type="button" onClick={()=>addDrumsToPlan([d],localISODate(1),name)}><CalendarDays size={15}/> Plan Tomorrow</button>}
+                    {scheduledTomorrow && <div className="scheduledTomorrowBadge"><CalendarDays size={14}/><span>Scheduled tomorrow · {tomorrowPlannedTaskByDrum[d.id]}</span></div>}
+                    {flow.nextStep!=="Complete" && <button type="button" className={scheduledTomorrow?"scheduledButton":""} disabled={scheduledTomorrow} onClick={()=>addDrumsToPlan([d],localISODate(1),name)}><CalendarDays size={15}/> {scheduledTomorrow?"Scheduled Tomorrow":"Plan Tomorrow"}</button>}
                     {flow.nextStep!=="Complete" && <button type="button" className="primary" disabled={progressingDrumId===d.id} onClick={()=>progressDrumFromCard(d)}><CheckCircle2 size={15}/> {progressingDrumId===d.id ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
                     <button type="button" onClick={()=>setGlobalPhotoPrompt({drum:d,milestoneKey:"general"})}><Camera size={15}/> Add Photo</button>
                     <button type="button" onClick={()=>setJobCard(d)}>Open job card</button>
@@ -1946,7 +1968,7 @@ function App(){
           .filter(d=>{
             if(constructionFilter!=="All" && d.build_type!==constructionFilter) return false;
 
-            const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish);
+            const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client);
             const lifecycle=drumLifecycleStatus(d);
             if(productionFilter==="Pending") return !hasWorkflowStarted(d) && !["Completed","Sold","Shipped"].includes(lifecycle);
             if(productionFilter==="Active") return hasWorkflowStarted(d) && !["Completed","Sold","Shipped"].includes(lifecycle);
@@ -1963,6 +1985,8 @@ function App(){
         onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
         addToPlan={drum=>addDrumsToPlan([drum],localISODate(1),batchType(drum)||"")}
         addBatchToPlan={(items,name)=>addDrumsToPlan(items,localISODate(1),name)}
+        scheduledDrumIds={tomorrowPlannedDrumIds}
+        scheduledTaskByDrum={tomorrowPlannedTaskByDrum}
       />
     </section>}
 
@@ -2056,7 +2080,7 @@ function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,removePlanItem
   </section>;
 }
 
-function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,progressingDrumId,onAddPhoto,addToPlan,addBatchToPlan}){
+function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,progressingDrumId,onAddPhoto,addToPlan,addBatchToPlan,scheduledDrumIds=new Set(),scheduledTaskByDrum={}}){
   const projectMap=Object.fromEntries(projects.map(p=>[p.id,p]));
   const linkedGroups={};
   const unlinked=[];
@@ -2084,9 +2108,9 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
   return <section className="productionGroups">
     {groups.map(({project,items})=>{
       const overall=items.length
-        ? Math.round(items.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish).percent,0)/items.length)
+        ? Math.round(items.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).percent,0)/items.length)
         : 0;
-      const complete=items.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish).percent===100).length;
+      const complete=items.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).percent===100).length;
 
       return <section className="kitProductionGroup" key={project.id}>
         <header className="kitGroupHeader">
@@ -2101,7 +2125,7 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
           </div>
         </header>
         <div className="productionList kitDrumGrid">
-          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} addToPlan={addToPlan}/>)}
+          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} addToPlan={addToPlan} scheduledTomorrow={scheduledDrumIds.has(d.id)} scheduledTask={scheduledTaskByDrum[d.id]}/>)}
         </div>
       </section>
     })}
@@ -2117,18 +2141,18 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
       <div className="productionList">
         {[...unlinked]
           .sort(productionPriorityCompare)
-          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} addToPlan={addToPlan}/>)}
+          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} addToPlan={addToPlan} scheduledTomorrow={scheduledDrumIds.has(d.id)} scheduledTask={scheduledTaskByDrum[d.id]}/>)}
       </div>
     </section>}
   </section>
 }
 
 
-function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto, addToPlan}){
+function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto, addToPlan, scheduledTomorrow=false, scheduledTask=""}){
   const checked=parseChecked(drum.notes);
-  const flow=workflowState(drum.build_type || "Stave",checked,drum.finish);
+  const flow=workflowState(drum.build_type || "Stave",checked,drum.finish,drum.build_client);
 
-  return <article className={"card " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard")}>
+  return <article className={"card " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduledTomorrow?" scheduledTomorrowCard":"")}>
     <div className="cardHeading">
       <b>#{drum.serial} {drum.timber}</b>
       {allocatedCustomerName(drum) && <span className="customerNameBadge">{allocatedCustomerName(drum)}</span>}
@@ -2148,8 +2172,9 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     <p><b>Estimated:</b> {flow.estimatedTotal.toFixed(2)} hr production · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
     {trackingNumberFromNotes(drum.notes) && <p className="trackingNumberLine"><b>Tracking:</b> {trackingNumberFromNotes(drum.notes)}</p>}
+    {scheduledTomorrow && <div className="scheduledTomorrowBadge"><CalendarDays size={14}/><span>Scheduled tomorrow{scheduledTask?` · ${scheduledTask}`:""}</span></div>}
     <section className="cardActionRow">
-      {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && addToPlan && <button type="button" onClick={()=>addToPlan(drum)}><CalendarDays size={15}/> Plan Tomorrow</button>}
+      {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && addToPlan && <button type="button" className={scheduledTomorrow?"scheduledButton":""} disabled={scheduledTomorrow} onClick={()=>addToPlan(drum)}><CalendarDays size={15}/> {scheduledTomorrow?"Scheduled Tomorrow":"Plan Tomorrow"}</button>}
       {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && <button type="button" className="primary" disabled={progressing || !progressDrum} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
       {onAddPhoto && <button type="button" onClick={()=>onAddPhoto(drum)}><Camera size={15}/> Add Photo</button>}
       <button type="button" onClick={()=>openJobCard(drum)}>Open job card</button>
@@ -3094,7 +3119,7 @@ function Orders({drums, openJobCard}){
     const customer=d.build_client==="Brady"
       ? `Brady / CB ${d.cb_number || "No CB number"}`
       : allocatedCustomerName(d) || "Customer not entered";
-    const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish);
+    const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client);
     const total=Number(d.total_price||d.custom_price||d.retail_price||0);
 
     return <article className={"customerOrderCard "+(d.build_client==="Brady"?"bradyCard":"")} key={d.id}>
@@ -3223,7 +3248,7 @@ function CommsCentre({drums, openJobCard, embedded=false, onAddPhoto}){
   return <section>
     {!embedded && <div className="panel"><h2>Communication Centre</h2><p>Generate customer emails and Facebook/Instagram posts from production milestones. Emails are signed Kelly & Kyle.</p></div>}
     {embedded && <div className="panel embeddedSectionIntro"><h3>Milestone Generator</h3><p>Choose a milestone, add photos, then open only the communication you need. Brady builds remain internal-only.</p></div>}
-    <section className="templateGrid commsCardGrid">{drums.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard} onAddPhoto={onAddPhoto} addToPlan={addToPlan}/>)}</section>
+    <section className="templateGrid commsCardGrid">{drums.map(d=><CommsCard key={d.id} drum={d} openJobCard={openJobCard} onAddPhoto={onAddPhoto} addToPlan={addToPlan} scheduledTomorrow={scheduledDrumIds.has(d.id)} scheduledTask={scheduledTaskByDrum[d.id]}/>)}</section>
   </section>
 }
 
@@ -3694,8 +3719,8 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
         const linked=drums
           .filter(d=>d.project_id===project.id)
           .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial));
-        const complete=linked.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish).percent===100).length;
-        const overall=linked.length ? Math.round(linked.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish).percent,0)/linked.length) : 0;
+        const complete=linked.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).percent===100).length;
+        const overall=linked.length ? Math.round(linked.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).percent,0)/linked.length) : 0;
 
         return <article className="panel projectCard" key={project.id}>
           <h2>{project.name}</h2>
@@ -4196,7 +4221,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [isSaving,setIsSaving]=useState(false);
   const [projectMessage,setProjectMessage]=useState("");
   const [photoPrompt,setPhotoPrompt]=useState(null);
-  const flow=workflowState(localBuildType,checked,draft.finish);
+  const flow=workflowState(localBuildType,checked,draft.finish,localOwnership);
   const totalCost=templateCost(template,labourRate);
   const totalPrice=Number(customPrice||0)+Number(shipping||0);
   const profit=Number(drum.total_price||drum.retail_price||0)-totalCost;
@@ -4238,7 +4263,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   async function saveAllChanges(){
     if(isSaving) return false;
     setIsSaving(true);
-    const nextFlow=workflowState(localBuildType,checked,draft.finish);
+    const nextFlow=workflowState(localBuildType,checked,draft.finish,localOwnership);
     setSavedMessage("Saving...");
 
     const {data:currentStatusRow,error:statusError}=await supabase
@@ -4378,7 +4403,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   }
 
   async function saveWorkflow(nextChecked, changedItem=null, completed=null){
-    const nextFlow=workflowState(localBuildType,nextChecked,draft.finish);
+    const nextFlow=workflowState(localBuildType,nextChecked,draft.finish,localOwnership);
     let history=Array.isArray(drum.stage_history) ? [...drum.stage_history] : [];
 
     if(changedItem){

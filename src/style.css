@@ -1360,3 +1360,27 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .planItem strong{grid-column:2}
   .planItem>button:not(.planCheck){grid-column:1/-1;width:100%;justify-content:center}
 }
+
+/* v6.5.1 Scheduled work visibility */
+.scheduledTomorrowCard{
+  border-color:#7fc680!important;
+  box-shadow:0 0 0 2px rgba(127,198,128,.28),0 10px 24px rgba(0,0,0,.2)!important;
+}
+.scheduledTomorrowBadge{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin:9px 0;
+  padding:8px 10px;
+  border:1px solid #7fc680;
+  border-radius:9px;
+  background:rgba(127,198,128,.11);
+  color:#dff5df;
+}
+.scheduledTomorrowBadge span{color:#dff5df;font-weight:800}
+.scheduledButton{
+  border-color:#7fc680!important;
+  color:#aee0ae!important;
+  opacity:1!important;
+  cursor:default!important;
+}
