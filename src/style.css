@@ -1435,3 +1435,35 @@ button:disabled{opacity:.55;cursor:not-allowed}
 /* v6.7.1 Archive now lives inside Production */
 .embeddedArchive{margin-top:12px}
 .embeddedArchive .archiveIntro{margin-bottom:12px}
+
+/* v6.8.0 Future Projects */
+.futureProjectsIntro{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.futureProjectsIntro h2{margin:2px 0}
+.futureProjectsIntro p{margin:5px 0 0;max-width:760px}
+.futureProjectsControls{margin-top:12px}
+.futureProjectsControls .searchBar{margin:0 0 10px}
+.futureProjectGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}
+.futureProjectCard header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.futureProjectCard h3{margin:7px 0 0}
+.futureStageBadge{display:inline-flex;padding:5px 9px;border:1px solid #725e38;border-radius:999px;color:#e5c682;font-size:12px;font-weight:800}
+.futureProjectCardActions{display:flex;gap:6px}
+.futureProjectMeta{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:14px}
+.futureProjectMeta>div,.futureProjectNotes{padding:10px;border:1px solid #3e3529;border-radius:10px;background:#181510}
+.futureProjectMeta span,.futureProjectNotes span{display:block;color:#a99a80;font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
+.futureProjectNotes{margin-top:9px}
+.futureProjectNotes p{white-space:pre-wrap;margin:0;line-height:1.45}
+.emptyNotes p{color:#8f8573}
+.emptyFutureProjects{display:flex;align-items:center;justify-content:center;gap:10px;min-height:100px;margin-top:12px}
+.futureProjectModal{max-width:760px}
+.futureProjectFormGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.futureProjectNotesInput{min-height:190px}
+.stage-completed{opacity:.78}
+.stage-parked{opacity:.72}
+@media(max-width:800px){
+  .futureProjectsIntro{display:grid}
+  .futureProjectGrid{grid-template-columns:1fr}
+}
+@media(max-width:620px){
+  .futureProjectMeta,.futureProjectFormGrid{grid-template-columns:1fr}
+  .futureProjectCard header{display:grid}
+}

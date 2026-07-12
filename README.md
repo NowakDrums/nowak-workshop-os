@@ -1,33 +1,45 @@
-# Nowak Workshop OS v6.7.1
+# Nowak Workshop OS v6.8.0
 
-## Archive fix
+## Future Projects
 
-Nowak drums that have been assembled were being returned to Completed if the Job Card saved after archiving. Brady / CB drums did not usually have Assembled checked, which is why they appeared to archive correctly.
+A new lightweight Future Projects section allows ideas to be documented without adding them to Workshop Today or making them feel urgent.
 
-v6.7.1 now preserves the Archived lifecycle for both Nowak and Brady / CB drums during all Job Card and checklist saves.
+Each future project includes:
 
-The Job Card also closes immediately after a successful archive action, preventing a later local save from overwriting the archive status.
+- Project title
+- Stage
+- Preferred order
+- Next action
+- Notes
 
-## Archive moved into Production
+Stages include:
 
-The standalone Drum Archive navigation tab has been removed.
-
-Production now has:
-
-- All
-- Pending
-- Active
+- Idea captured
+- Researching
+- External work commissioned
+- Waiting on supplier
+- Prototype ready
+- Ready to schedule
+- Active project
 - Completed
-- Sold
-- Shipped
-- Archived
+- Parked
 
-Archived is positioned next to Shipped. Archived drums remain excluded from every other Production status and all operational areas.
+Preferred order includes:
 
-## Supabase
+- Next development project
+- After current kits
+- After stock is rebuilt
+- Someday / no timeframe
+- Parked
 
-No migration is required.
+The Notes field is intentionally broad so it can hold mould dimensions, supplier information, quotes, materials, test ideas, design notes and anything else worth remembering.
+
+Future Projects are deliberately kept separate from Workshop Today and active Kits / Projects.
+
+## Supabase migration required
+
+Run `supabase/v6_8_0_future_projects.sql` once in the Supabase SQL Editor.
 
 ## Rollback
 
-The unchanged v6.7.0 ZIP remains the rollback version.
+The unchanged v6.7.1 ZIP remains the rollback version. The new table is additive and can remain in Supabase without affecting v6.7.1.

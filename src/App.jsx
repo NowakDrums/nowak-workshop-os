@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
-  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore, ClipboardList, Repeat2
+  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore, ClipboardList, Repeat2, Lightbulb, Pencil
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import nowakLogo from "./assets/nowak-logo-refined.png";
@@ -724,6 +724,26 @@ const workshopTaskPresets = [
   {title:"Workshop cleanup",estimated_minutes:30},
 ];
 
+const futureProjectStages = [
+  "Idea captured",
+  "Researching",
+  "External work commissioned",
+  "Waiting on supplier",
+  "Prototype ready",
+  "Ready to schedule",
+  "Active project",
+  "Completed",
+  "Parked",
+];
+
+const futureProjectOrders = [
+  "Next development project",
+  "After current kits",
+  "After stock is rebuilt",
+  "Someday / no timeframe",
+  "Parked",
+];
+
 function addDaysISO(dateValue,days){
   const date=new Date(`${dateValue}T12:00:00`);
   date.setDate(date.getDate()+days);
@@ -1114,6 +1134,9 @@ function App(){
   const [workshopTasks,setWorkshopTasks]=useState([]);
   const [showAddWorkshopTask,setShowAddWorkshopTask]=useState(false);
   const [editingWorkshopTask,setEditingWorkshopTask]=useState(null);
+  const [futureProjects,setFutureProjects]=useState([]);
+  const [showFutureProjectModal,setShowFutureProjectModal]=useState(false);
+  const [editingFutureProject,setEditingFutureProject]=useState(null);
   const [repairJob,setRepairJob]=useState(null);
   const [showAddRepair,setShowAddRepair]=useState(false);
   const [jobCard,setJobCard]=useState(null);
@@ -1131,7 +1154,7 @@ function App(){
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
     setLoading(true); setMessage("");
-    const [d,h,t,s,p,r,w,wt]=await Promise.all([
+    const [d,h,t,s,p,r,w,wt,fp]=await Promise.all([
       supabase.from("drums").select("*").order("created_at",{ascending:false}),
       supabase.from("hardware_parts").select("*").order("category",{ascending:true}),
       supabase.from("cost_templates").select("*").order("name",{ascending:true}),
@@ -1139,7 +1162,8 @@ function App(){
       supabase.from("projects").select("*").order("created_at",{ascending:false}),
       supabase.from("repair_jobs").select("*").order("created_at",{ascending:false}),
       supabase.from("work_plan_items").select("*").order("planned_date",{ascending:true}).order("created_at",{ascending:true}),
-      supabase.from("workshop_tasks").select("*").order("next_due_date",{ascending:true}).order("created_at",{ascending:true})
+      supabase.from("workshop_tasks").select("*").order("next_due_date",{ascending:true}).order("created_at",{ascending:true}),
+      supabase.from("future_projects").select("*").order("created_at",{ascending:false})
     ]);
     const loadedDrums=(d.data||[]).map(item=>{
       if(item.lifecycle_status) return item;
@@ -1158,6 +1182,7 @@ function App(){
     setRepairs(r.data||[]);
     setWorkPlan(w.data||[]);
     setWorkshopTasks(wt.data||[]);
+    setFutureProjects(fp.data||[]);
 
     const coreErrors=[d.error,h.error,t.error,s.error].filter(Boolean);
     if(coreErrors.length){
@@ -1170,6 +1195,8 @@ function App(){
       setMessage("Daily Planning needs the v6.5.0 Supabase migration.");
     }else if(wt.error){
       setMessage("Workshop Tasks needs the v6.7.0 Supabase migration.");
+    }else if(fp.error){
+      setMessage("Future Projects needs the v6.8.0 Supabase migration.");
     }else{
       setMessage("");
     }
@@ -1648,6 +1675,59 @@ function App(){
     return true;
   }
 
+  async function createFutureProject(form){
+    const payload={
+      title:String(form.title||"").trim(),
+      stage:form.stage||"Idea captured",
+      preferred_order:form.preferred_order||"Someday / no timeframe",
+      next_action:String(form.next_action||"").trim(),
+      notes:String(form.notes||"").trim(),
+    };
+    if(!payload.title){
+      setMessage("Please enter a future project title.");
+      return false;
+    }
+
+    const {data,error}=await supabase.from("future_projects").insert(payload).select("*").single();
+    if(error){
+      setMessage("Could not create future project: "+error.message);
+      return false;
+    }
+    setFutureProjects(current=>[data,...current]);
+    setShowFutureProjectModal(false);
+    setEditingFutureProject(null);
+    setMessage("");
+    return true;
+  }
+
+  async function updateFutureProject(id,patch){
+    const {data,error}=await supabase
+      .from("future_projects")
+      .update({...patch,updated_at:new Date().toISOString()})
+      .eq("id",id)
+      .select("*")
+      .single();
+    if(error){
+      setMessage("Could not update future project: "+error.message);
+      return false;
+    }
+    setFutureProjects(current=>current.map(item=>item.id===id?data:item));
+    setShowFutureProjectModal(false);
+    setEditingFutureProject(null);
+    setMessage("");
+    return true;
+  }
+
+  async function deleteFutureProject(id){
+    if(!window.confirm("Delete this future project?")) return;
+    const {error}=await supabase.from("future_projects").delete().eq("id",id);
+    if(error){
+      setMessage("Could not delete future project: "+error.message);
+      return;
+    }
+    setFutureProjects(current=>current.filter(item=>item.id!==id));
+  }
+
   async function createWorkshopTask(form){
     const payload={
       title:String(form.title||"").trim(),
@@ -1953,7 +2033,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.7.1 — archive fix and Archived moved inside Production.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.8.0 — simple Future Projects and idea parking.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -1965,6 +2045,7 @@ function App(){
       <button className={view==="today"?"active":""} onClick={()=>setView("today")}><Hammer size={16}/> Workshop Today</button>
       <button className={view==="production"?"active":""} onClick={()=>setView("production")}><ListChecks size={16}/> Production</button>
       <button className={view==="projects"?"active":""} onClick={()=>setView("projects")}><Layers3 size={16}/> Kits / Projects</button>
+      <button className={view==="future"?"active":""} onClick={()=>setView("future")}><Lightbulb size={16}/> Future Projects</button>
       <button className={view==="orders"?"active":""} onClick={()=>setView("orders")}><Users size={16}/> Customers & Orders</button>
       <button className={view==="repairs"?"active":""} onClick={()=>setView("repairs")}><Wrench size={16}/> Repairs & Modifications</button>
       <button className={view==="veneer"?"active":""} onClick={()=>setView("veneer")}><Ruler size={16}/> Veneer Calc</button>
@@ -2039,6 +2120,9 @@ function App(){
         <button className="dashboardStatCard" onClick={()=>setView("today")}>
           <b>{todayWorkshopTasks.length}</b><span>Workshop tasks due</span>
           <small>{formatPlanTime(todayWorkshopTaskMinutes/60)}</small>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>setView("future")}>
+          <b>{futureProjects.filter(p=>p.stage!=="Completed" && p.stage!=="Parked").length}</b><span>Future projects</span>
         </button>
       </section>
 
@@ -2226,6 +2310,12 @@ function App(){
     </section>}
 
     {view==="projects" && <ProjectsPage projects={projects} drums={drums} openJobCard={setJobCard} createProject={createProject} updateProject={updateProject} linkDrumsToProject={linkDrumsToProject} unlinkDrumFromProject={unlinkDrumFromProject}/>}
+    {view==="future" && <FutureProjectsPage
+      projects={futureProjects}
+      addProject={()=>{setEditingFutureProject(null);setShowFutureProjectModal(true);}}
+      editProject={project=>{setEditingFutureProject(project);setShowFutureProjectModal(true);}}
+      deleteProject={deleteFutureProject}
+    />}
 
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard}/>}
     {view==="repairs" && <RepairsPage repairs={repairs} openRepair={setRepairJob} addRepair={()=>setShowAddRepair(true)}/>}
@@ -2255,6 +2345,12 @@ function App(){
       onClose={()=>{setShowAddWorkshopTask(false);setEditingWorkshopTask(null);}}
       onCreate={createWorkshopTask}
       onUpdate={updateWorkshopTask}
+    />}
+    {showFutureProjectModal && <FutureProjectModal
+      project={editingFutureProject}
+      onClose={()=>{setShowFutureProjectModal(false);setEditingFutureProject(null);}}
+      onCreate={createFutureProject}
+      onUpdate={updateFutureProject}
     />}
     {showAddRepair && <AddRepairModal repairs={repairs} onClose={()=>setShowAddRepair(false)} onCreate={createRepair}/>}
     {repairJob && <RepairJobModal repair={repairJob} onClose={()=>setRepairJob(null)} updateRepair={updateRepair} deleteRepair={deleteRepair} setMessage={setMessage}/>}
@@ -4071,6 +4167,118 @@ function MarketingCentre({drums,openJobCard,setMessage,embedded=false}){
   </section>
 }
 
+
+function FutureProjectsPage({projects,addProject,editProject,deleteProject}){
+  const [search,setSearch]=useState("");
+  const [stageFilter,setStageFilter]=useState("All");
+  const filtered=projects
+    .filter(project=>stageFilter==="All" || project.stage===stageFilter)
+    .filter(project=>JSON.stringify(project).toLowerCase().includes(search.toLowerCase()));
+
+  return <section className="futureProjectsPage">
+    <section className="panel futureProjectsIntro">
+      <div>
+        <span className="launchPackEyebrow">IDEAS WITHOUT DISTRACTION</span>
+        <h2>Future Projects</h2>
+        <p>Capture worthwhile ideas, note any progress already made, and keep them separate from current workshop commitments.</p>
+      </div>
+      <button className="primary" onClick={addProject}><Plus size={16}/> Add Future Project</button>
+    </section>
+
+    <section className="panel futureProjectsControls">
+      <div className="searchBar"><Search size={16}/><input placeholder="Search titles, notes, next actions or ideas..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+      <div className="filterRow">
+        {["All",...futureProjectStages].map(stage=><button key={stage} className={stageFilter===stage?"primary":""} onClick={()=>setStageFilter(stage)}>{stage}</button>)}
+      </div>
+    </section>
+
+    {filtered.length===0
+      ? <section className="panel emptyFutureProjects"><Lightbulb size={28}/><p>No future projects match this view.</p></section>
+      : <section className="futureProjectGrid">{filtered.map(project=><article className={"panel futureProjectCard stage-"+String(project.stage||"").replaceAll(" ","-").toLowerCase()} key={project.id}>
+          <header>
+            <div>
+              <span className="futureStageBadge">{project.stage||"Idea captured"}</span>
+              <h3>{project.title}</h3>
+            </div>
+            <div className="futureProjectCardActions">
+              <button onClick={()=>editProject(project)}><Pencil size={14}/> Edit</button>
+              <button className="dangerButton" onClick={()=>deleteProject(project.id)}><Trash2 size={14}/></button>
+            </div>
+          </header>
+          <div className="futureProjectMeta">
+            <div><span>Preferred order</span><b>{project.preferred_order||"Someday / no timeframe"}</b></div>
+            <div><span>Next action</span><b>{project.next_action||"No action set"}</b></div>
+          </div>
+          {project.notes
+            ? <section className="futureProjectNotes"><span>Notes</span><p>{project.notes}</p></section>
+            : <section className="futureProjectNotes emptyNotes"><span>Notes</span><p>No notes added yet.</p></section>}
+        </article>)}</section>}
+  </section>;
+}
+
+function FutureProjectModal({project,onClose,onCreate,onUpdate}){
+  const [form,setForm]=useState({
+    title:project?.title||"",
+    stage:project?.stage||"Idea captured",
+    preferred_order:project?.preferred_order||"Someday / no timeframe",
+    next_action:project?.next_action||"",
+    notes:project?.notes||"",
+  });
+  const [saving,setSaving]=useState(false);
+
+  async function save(){
+    if(!form.title.trim()){
+      alert("Please enter the project title.");
+      return;
+    }
+    setSaving(true);
+    if(project){
+      await onUpdate(project.id,{
+        title:form.title.trim(),
+        stage:form.stage,
+        preferred_order:form.preferred_order,
+        next_action:form.next_action.trim(),
+        notes:form.notes.trim(),
+      });
+    }else{
+      await onCreate(form);
+    }
+    setSaving(false);
+  }
+
+  return <div className="modalBg" onClick={onClose}><div className="modal futureProjectModal" onClick={e=>e.stopPropagation()}>
+    <button className="close" onClick={onClose}>×</button>
+    <span className="launchPackEyebrow">{project?"EDIT FUTURE PROJECT":"NEW FUTURE PROJECT"}</span>
+    <h2>{project?"Edit Future Project":"Add Future Project"}</h2>
+
+    <label>Project title</label>
+    <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Ply bass drum hoops"/>
+
+    <div className="futureProjectFormGrid">
+      <label>Stage
+        <select value={form.stage} onChange={e=>setForm({...form,stage:e.target.value})}>
+          {futureProjectStages.map(stage=><option key={stage}>{stage}</option>)}
+        </select>
+      </label>
+      <label>Preferred order
+        <select value={form.preferred_order} onChange={e=>setForm({...form,preferred_order:e.target.value})}>
+          {futureProjectOrders.map(order=><option key={order}>{order}</option>)}
+        </select>
+      </label>
+    </div>
+
+    <label>Next action</label>
+    <input value={form.next_action} onChange={e=>setForm({...form,next_action:e.target.value})} placeholder="e.g. Test mould when received"/>
+
+    <label>Notes</label>
+    <textarea className="futureProjectNotesInput" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Add dimensions, supplier details, quotes, construction ideas, materials to test, or anything else worth remembering."/>
+
+    <div className="buttonRow">
+      <button onClick={onClose}>Cancel</button>
+      <button className="primary" disabled={saving} onClick={save}><Save size={16}/> {saving?"Saving...":project?"Save Project":"Add Project"}</button>
+    </div>
+  </div></div>;
+}
 
 function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,linkDrumsToProject,unlinkDrumFromProject}){
   const [selectedProject,setSelectedProject]=useState(projects[0]?.id || "");
