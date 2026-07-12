@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
-  Settings, Layers3, FolderPlus, BarChart3
+  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import nowakLogo from "./assets/nowak-logo-refined.png";
@@ -547,6 +547,36 @@ const mouldDiameters = {
 const money = (v) => "$" + Math.round(Number(v || 0)).toLocaleString();
 function buildSize(diameter, depth){ return `${diameter} x ${depth}`; }
 
+const repairServices = [
+  {key:"bearing_edges",label:"Cut bearing edges",price:100},
+  {key:"snare_beds",label:"Cut snare beds",price:50},
+  {key:"bearing_and_snare",label:"Bearing edges and snare beds",price:150},
+  {key:"widen_snare_bed",label:"Widen snare bed",price:50},
+  {key:"cut_down_shell",label:"Cut down shell",price:100},
+  {key:"miscellaneous",label:"Miscellaneous repair",price:0},
+];
+
+const repairStatuses = ["Received","In Progress","Ready for Collection","Collected & Paid"];
+
+function nextRepairNumber(repairs=[]){
+  const highest=repairs.reduce((max,repair)=>{
+    const match=String(repair.job_number || "").match(/R-(\d+)/i);
+    return match ? Math.max(max,Number(match[1])) : max;
+  },0);
+  return `R-${String(highest+1).padStart(3,"0")}`;
+}
+
+function repairServiceTotal(keys=[]){
+  return keys.reduce((sum,key)=>{
+    const service=repairServices.find(item=>item.key===key);
+    return sum+Number(service?.price || 0);
+  },0);
+}
+
+function repairServiceLabels(keys=[]){
+  return keys.map(key=>repairServices.find(item=>item.key===key)?.label || key);
+}
+
 function splitSize(size){
   const text = String(size || "14 x 6.5");
   const parts = text.split("x").map(p=>p.trim());
@@ -970,6 +1000,9 @@ function App(){
   const [templates,setTemplates]=useState([]);
   const [sales,setSales]=useState([]);
   const [projects,setProjects]=useState([]);
+  const [repairs,setRepairs]=useState([]);
+  const [repairJob,setRepairJob]=useState(null);
+  const [showAddRepair,setShowAddRepair]=useState(false);
   const [jobCard,setJobCard]=useState(null);
   const [showAddWizard,setShowAddWizard]=useState(false);
   const [addWizardPreset,setAddWizardPreset]=useState({});
@@ -985,12 +1018,13 @@ function App(){
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
     setLoading(true); setMessage("");
-    const [d,h,t,s,p]=await Promise.all([
+    const [d,h,t,s,p,r]=await Promise.all([
       supabase.from("drums").select("*").order("created_at",{ascending:false}),
       supabase.from("hardware_parts").select("*").order("category",{ascending:true}),
       supabase.from("cost_templates").select("*").order("name",{ascending:true}),
       supabase.from("sales").select("*").order("sold_at",{ascending:false}),
-      supabase.from("projects").select("*").order("created_at",{ascending:false})
+      supabase.from("projects").select("*").order("created_at",{ascending:false}),
+      supabase.from("repair_jobs").select("*").order("created_at",{ascending:false})
     ]);
     const loadedDrums=(d.data||[]).map(item=>{
       if(item.lifecycle_status) return item;
@@ -1006,12 +1040,15 @@ function App(){
     setTemplates(t.data||[]);
     setSales(s.data||[]);
     setProjects(p.data||[]);
+    setRepairs(r.data||[]);
 
     const coreErrors=[d.error,h.error,t.error,s.error].filter(Boolean);
     if(coreErrors.length){
       setMessage(coreErrors.map(e=>e.message).join(" | "));
     }else if(p.error){
       setMessage("Kits / Projects needs the v5.0 Supabase setup: " + p.error.message);
+    }else if(r.error){
+      setMessage("Repairs & Modifications needs the v6.4.0 Supabase migration.");
     }else{
       setMessage("");
     }
@@ -1034,6 +1071,11 @@ function App(){
   const cureQueue=active.filter(d=>["Polyurethane Coat 4","Finished Spraying / Curing"].includes(d.production_status)).length;
   const photoQueue=active.filter(d=>d.production_status==="Finished / Ready to Sell").length;
   const outstandingFinalWork=filtered.filter(d=>outstandingWorkFromNotes(d.notes));
+  const activeRepairs=repairs.filter(r=>r.status!=="Collected & Paid");
+  const readyRepairs=repairs.filter(r=>r.status==="Ready for Collection");
+  const repairIncome=repairs
+    .filter(r=>r.status==="Collected & Paid")
+    .reduce((sum,r)=>sum+Number(r.agreed_price||0),0);
   const staveInProduction=drums.filter(d=>
     d.build_type==="Stave" &&
     !isManufacturingComplete(d) &&
@@ -1458,6 +1500,62 @@ function App(){
     return true;
   }
 
+  async function createRepair(form){
+    const payload={
+      job_number:form.job_number || nextRepairNumber(repairs),
+      customer_name:form.customer_name || "",
+      phone:form.phone || "",
+      email:form.email || "",
+      drum_brand:form.drum_brand || "",
+      drum_description:form.drum_description || "",
+      services:form.services || [],
+      notes:form.notes || "",
+      agreed_price:Number(form.agreed_price || 0),
+      status:form.status || "Received",
+      date_received:form.date_received || new Date().toISOString().slice(0,10),
+      due_date:form.due_date || null,
+    };
+    const {data,error}=await supabase.from("repair_jobs").insert(payload).select("*").single();
+    if(error){
+      setMessage("Could not create repair job: "+error.message);
+      return false;
+    }
+    setRepairs(current=>[data,...current]);
+    setShowAddRepair(false);
+    setRepairJob(data);
+    setView("repairs");
+    setMessage("");
+    return true;
+  }
+
+  async function updateRepair(id,patch){
+    const clean={...patch,updated_at:new Date().toISOString()};
+    if("due_date" in clean) clean.due_date=clean.due_date || null;
+    if(clean.status==="Ready for Collection" && !clean.completed_at) clean.completed_at=new Date().toISOString();
+    if(clean.status==="Collected & Paid" && !clean.paid_at) clean.paid_at=new Date().toISOString();
+
+    const {data,error}=await supabase.from("repair_jobs").update(clean).eq("id",id).select("*").single();
+    if(error){
+      setMessage("Could not update repair job: "+error.message);
+      return false;
+    }
+    setRepairs(current=>current.map(item=>item.id===id ? data : item));
+    setRepairJob(current=>current?.id===id ? data : current);
+    setMessage("");
+    return true;
+  }
+
+  async function deleteRepair(id){
+    if(!window.confirm("Delete this repair job? This cannot be undone.")) return;
+    const {error}=await supabase.from("repair_jobs").delete().eq("id",id);
+    if(error){
+      setMessage("Could not delete repair job: "+error.message);
+      return;
+    }
+    setRepairs(current=>current.filter(item=>item.id!==id));
+    setRepairJob(null);
+  }
+
   async function markShipped(d){
     const existingTracking=trackingNumberFromNotes(d.notes);
     const tracking=window.prompt(
@@ -1497,7 +1595,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.3.1 — refined transparent Nowak logo and tracking-number prompt.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.4.0 — Repairs & Modifications job tracking.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -1510,6 +1608,7 @@ function App(){
       <button className={view==="production"?"active":""} onClick={()=>setView("production")}><ListChecks size={16}/> Production</button>
       <button className={view==="projects"?"active":""} onClick={()=>setView("projects")}><Layers3 size={16}/> Kits / Projects</button>
       <button className={view==="orders"?"active":""} onClick={()=>setView("orders")}><Users size={16}/> Customers & Orders</button>
+      <button className={view==="repairs"?"active":""} onClick={()=>setView("repairs")}><Wrench size={16}/> Repairs & Modifications</button>
       <button className={view==="veneer"?"active":""} onClick={()=>setView("veneer")}><Ruler size={16}/> Veneer Calc</button>
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
@@ -1562,6 +1661,15 @@ function App(){
         </button>
         <button className="dashboardStatCard" onClick={()=>openProductionView({status:"Completed",construction:"All"})}>
           <b>{completedDrums}</b><span>Completed drums</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>setView("repairs")}>
+          <b>{activeRepairs.length}</b><span>Active repair jobs</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>setView("repairs")}>
+          <b>{readyRepairs.length}</b><span>Repairs ready for collection</span>
+        </button>
+        <button className="dashboardStatCard" onClick={()=>setView("repairs")}>
+          <b>{money(repairIncome)}</b><span>Repair income</span>
         </button>
       </section>
 
@@ -1711,6 +1819,7 @@ function App(){
     {view==="projects" && <ProjectsPage projects={projects} drums={drums} openJobCard={setJobCard} createProject={createProject} updateProject={updateProject} linkDrumsToProject={linkDrumsToProject} unlinkDrumFromProject={unlinkDrumFromProject}/>}
 
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard}/>}
+    {view==="repairs" && <RepairsPage repairs={repairs} openRepair={setRepairJob} addRepair={()=>setShowAddRepair(true)}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
     {view==="inventory" && <Inventory hardware={hardware} updateHardware={updateHardware} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
@@ -1732,6 +1841,8 @@ function App(){
     />}
 
     {showAddWizard && <AddDrumWizard onClose={()=>{setShowAddWizard(false);setAddWizardPreset({});}} onCreate={addDrumFromWizard} drums={drums} projects={projects} createProject={createProject} preset={addWizardPreset}/>}
+    {showAddRepair && <AddRepairModal repairs={repairs} onClose={()=>setShowAddRepair(false)} onCreate={createRepair}/>}
+    {repairJob && <RepairJobModal repair={repairJob} onClose={()=>setRepairJob(null)} updateRepair={updateRepair} deleteRepair={deleteRepair} setMessage={setMessage}/>}
     {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}}/>}
   </main>
 }
@@ -2441,6 +2552,292 @@ function WorkshopSummary({drums,sales,labourRate}){
       <p>Older work without dated stage history or actual-time entries cannot be assigned accurately to a specific day, so it may not appear in the daily table.</p>
     </section>
   </section>
+}
+
+
+function RepairsPage({repairs,openRepair,addRepair}){
+  const [search,setSearch]=useState("");
+  const filtered=repairs.filter(repair=>JSON.stringify(repair).toLowerCase().includes(search.toLowerCase()));
+
+  return <section className="repairsPage">
+    <section className="panel repairsIntro">
+      <div>
+        <span className="launchPackEyebrow">CUSTOMER REPAIR WORK</span>
+        <h2>Repairs & Modifications</h2>
+        <p>Track occasional repair and modification jobs from drop-off through collection and payment.</p>
+      </div>
+      <button className="primary" onClick={addRepair}><Plus size={16}/> Add Repair Job</button>
+    </section>
+
+    <div className="searchBar"><Search size={16}/><input placeholder="Search repair number, customer, phone, brand or work..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+
+    <section className="repairColumns">
+      {repairStatuses.map(status=>{
+        const items=filtered.filter(repair=>repair.status===status);
+        return <section className={"panel repairColumn repairStatus"+status.replaceAll(" ","").replace("&","")} key={status}>
+          <header className="repairColumnHeader">
+            <h2>{status}</h2><b>{items.length}</b>
+          </header>
+          {items.length===0
+            ? <p className="repairEmpty">No jobs</p>
+            : <div className="repairCardList">{items.map(repair=><article className="repairCard" key={repair.id}>
+                <div className="repairCardTop">
+                  <div>
+                    <span className="repairNumber">{repair.job_number}</span>
+                    <h3>{repair.drum_brand || "Drum"} {repair.drum_description || ""}</h3>
+                  </div>
+                  <b>{money(repair.agreed_price)}</b>
+                </div>
+                <p><Users size={14}/> {repair.customer_name || "Customer not entered"}</p>
+                {repair.phone && <p><Phone size={14}/> {repair.phone}</p>}
+                <div className="repairServiceTags">{repairServiceLabels(repair.services||[]).map(label=><span key={label}>{label}</span>)}</div>
+                <button onClick={()=>openRepair(repair)}>Open Repair Job</button>
+              </article>)}</div>}
+        </section>;
+      })}
+    </section>
+  </section>
+}
+
+function AddRepairModal({repairs,onClose,onCreate}){
+  const [form,setForm]=useState({
+    job_number:nextRepairNumber(repairs),
+    customer_name:"",
+    phone:"",
+    email:"",
+    drum_brand:"",
+    drum_description:"",
+    services:[],
+    notes:"",
+    agreed_price:0,
+    status:"Received",
+    date_received:new Date().toISOString().slice(0,10),
+    due_date:"",
+  });
+  const [saving,setSaving]=useState(false);
+
+  function toggleService(key){
+    setForm(current=>{
+      const services=current.services.includes(key)
+        ? current.services.filter(item=>item!==key)
+        : [...current.services,key];
+      const standardTotal=repairServiceTotal(services);
+      const oldStandardTotal=repairServiceTotal(current.services);
+      const shouldAutoPrice=Number(current.agreed_price||0)===oldStandardTotal || Number(current.agreed_price||0)===0;
+      return {...current,services,agreed_price:shouldAutoPrice ? standardTotal : current.agreed_price};
+    });
+  }
+
+  async function save(){
+    if(!form.customer_name.trim()){
+      alert("Please enter the customer name.");
+      return;
+    }
+    setSaving(true);
+    await onCreate(form);
+    setSaving(false);
+  }
+
+  return <div className="modalBg" onClick={onClose}><div className="modal repairModal" onClick={e=>e.stopPropagation()}>
+    <button className="close" onClick={onClose}>×</button>
+    <span className="launchPackEyebrow">NEW REPAIR JOB</span>
+    <h2>{form.job_number}</h2>
+
+    <section className="repairFormGrid">
+      <div>
+        <label>Customer name</label><input value={form.customer_name} onChange={e=>setForm({...form,customer_name:e.target.value})}/>
+        <label>Phone</label><input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/>
+        <label>Email</label><input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/>
+      </div>
+      <div>
+        <label>Drum brand</label><input placeholder="e.g. Pearl, Ludwig, custom" value={form.drum_brand} onChange={e=>setForm({...form,drum_brand:e.target.value})}/>
+        <label>Drum description</label><input placeholder="e.g. 14 x 6.5 snare" value={form.drum_description} onChange={e=>setForm({...form,drum_description:e.target.value})}/>
+        <label>Date received</label><input type="date" value={form.date_received} onChange={e=>setForm({...form,date_received:e.target.value})}/>
+        <label>Due date (optional)</label><input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})}/>
+      </div>
+    </section>
+
+    <section className="panel inner repairServicesPanel">
+      <h3>Agreed Work</h3>
+      <div className="repairServiceChoices">{repairServices.map(service=><label className={"repairServiceChoice "+(form.services.includes(service.key)?"selected":"")} key={service.key}>
+        <input type="checkbox" checked={form.services.includes(service.key)} onChange={()=>toggleService(service.key)}/>
+        <span><b>{service.label}</b><small>{service.price ? money(service.price) : "Enter price"}</small></span>
+      </label>)}</div>
+      <label>Agreed price</label><input type="number" min="0" step="1" value={form.agreed_price} onChange={e=>setForm({...form,agreed_price:Number(e.target.value)})}/>
+      <label>Job notes</label><textarea placeholder="Describe the work agreed with the customer..." value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/>
+    </section>
+
+    <div className="buttonRow">
+      <button onClick={onClose}>Cancel</button>
+      <button className="primary" disabled={saving} onClick={save}><Save size={16}/> {saving?"Saving...":"Create Repair Job"}</button>
+    </div>
+  </div></div>
+}
+
+function RepairJobModal({repair,onClose,updateRepair,deleteRepair,setMessage}){
+  const [draft,setDraft]=useState({...repair,services:Array.isArray(repair.services)?repair.services:[]});
+  const [photos,setPhotos]=useState([]);
+  const [photoType,setPhotoType]=useState("Before");
+  const [uploading,setUploading]=useState(false);
+  const [savedMessage,setSavedMessage]=useState("");
+
+  useEffect(()=>{ setDraft({...repair,services:Array.isArray(repair.services)?repair.services:[]}); },[repair.id]);
+
+  async function loadPhotos(){
+    const {data,error}=await supabase.from("repair_photos").select("*").eq("repair_job_id",repair.id).order("created_at",{ascending:true});
+    if(error){
+      setMessage?.("Could not load repair photos: "+error.message);
+      return;
+    }
+    setPhotos(data||[]);
+  }
+  useEffect(()=>{ loadPhotos(); },[repair.id]);
+
+  function toggleService(key){
+    setDraft(current=>{
+      const services=current.services.includes(key)
+        ? current.services.filter(item=>item!==key)
+        : [...current.services,key];
+      return {...current,services};
+    });
+  }
+
+  async function save(){
+    const saved=await updateRepair(repair.id,{
+      customer_name:draft.customer_name,
+      phone:draft.phone,
+      email:draft.email,
+      drum_brand:draft.drum_brand,
+      drum_description:draft.drum_description,
+      services:draft.services,
+      notes:draft.notes,
+      agreed_price:Number(draft.agreed_price||0),
+      status:draft.status,
+      date_received:draft.date_received,
+      due_date:draft.due_date,
+    });
+    if(saved){
+      setSavedMessage("Repair job saved");
+      setTimeout(()=>setSavedMessage(""),2200);
+    }
+  }
+
+  async function setStatus(status){
+    setDraft(current=>({...current,status}));
+    const saved=await updateRepair(repair.id,{status});
+    if(saved){
+      setSavedMessage(`Moved to ${status}`);
+      setTimeout(()=>setSavedMessage(""),2200);
+    }
+  }
+
+  async function uploadPhotos(event){
+    const files=Array.from(event.target.files||[]);
+    if(!files.length) return;
+    setUploading(true);
+    try{
+      for(let index=0;index<files.length;index+=1){
+        const file=files[index];
+        const safe=String(file.name||`photo-${index+1}.jpg`).replace(/[^a-zA-Z0-9._-]/g,"-");
+        const id=globalThis.crypto?.randomUUID?.() || `${Date.now()}-${index}`;
+        const path=`repairs/${repair.id}/${photoType.toLowerCase()}/${id}-${safe}`;
+        const {error:uploadError}=await supabase.storage.from("drum-photos").upload(path,file,{upsert:false});
+        if(uploadError) throw uploadError;
+        const {data:publicData}=supabase.storage.from("drum-photos").getPublicUrl(path);
+        const {error:rowError}=await supabase.from("repair_photos").insert({
+          repair_job_id:repair.id,
+          photo_type:photoType,
+          storage_path:path,
+          public_url:publicData?.publicUrl||"",
+        });
+        if(rowError) throw rowError;
+      }
+      await loadPhotos();
+      setSavedMessage("Photos uploaded");
+      setTimeout(()=>setSavedMessage(""),2200);
+    }catch(error){
+      setMessage?.("Repair photo upload failed: "+(error?.message||String(error)));
+    }finally{
+      setUploading(false);
+      event.target.value="";
+    }
+  }
+
+  async function removePhoto(photo){
+    if(!window.confirm("Delete this repair photo?")) return;
+    if(photo.storage_path) await supabase.storage.from("drum-photos").remove([photo.storage_path]);
+    const {error}=await supabase.from("repair_photos").delete().eq("id",photo.id);
+    if(error){
+      setMessage?.("Could not delete repair photo: "+error.message);
+      return;
+    }
+    setPhotos(current=>current.filter(item=>item.id!==photo.id));
+  }
+
+  return <div className="modalBg" onClick={onClose}><div className="modal repairModal repairJobModal" onClick={e=>e.stopPropagation()}>
+    <button className="close" onClick={onClose}>×</button>
+    <div className="repairJobHeader">
+      <div>
+        <span className="launchPackEyebrow">REPAIR / MODIFICATION</span>
+        <h2>{draft.job_number}</h2>
+        <p>{draft.customer_name} · {draft.drum_brand} {draft.drum_description}</p>
+      </div>
+      <b className="repairPrice">{money(draft.agreed_price)}</b>
+    </div>
+
+    <section className="repairStatusButtons">
+      {repairStatuses.map(status=><button key={status} className={draft.status===status?"primary":""} onClick={()=>setStatus(status)}>{status}</button>)}
+    </section>
+
+    <section className="repairFormGrid">
+      <div>
+        <label>Customer name</label><input value={draft.customer_name||""} onChange={e=>setDraft({...draft,customer_name:e.target.value})}/>
+        <label>Phone</label><input value={draft.phone||""} onChange={e=>setDraft({...draft,phone:e.target.value})}/>
+        <label>Email</label><input type="email" value={draft.email||""} onChange={e=>setDraft({...draft,email:e.target.value})}/>
+      </div>
+      <div>
+        <label>Drum brand</label><input value={draft.drum_brand||""} onChange={e=>setDraft({...draft,drum_brand:e.target.value})}/>
+        <label>Drum description</label><input value={draft.drum_description||""} onChange={e=>setDraft({...draft,drum_description:e.target.value})}/>
+        <label>Date received</label><input type="date" value={draft.date_received||""} onChange={e=>setDraft({...draft,date_received:e.target.value})}/>
+        <label>Due date</label><input type="date" value={draft.due_date||""} onChange={e=>setDraft({...draft,due_date:e.target.value})}/>
+      </div>
+    </section>
+
+    <section className="panel inner repairServicesPanel">
+      <h3>Work & Price</h3>
+      <div className="repairServiceChoices">{repairServices.map(service=><label className={"repairServiceChoice "+(draft.services.includes(service.key)?"selected":"")} key={service.key}>
+        <input type="checkbox" checked={draft.services.includes(service.key)} onChange={()=>toggleService(service.key)}/>
+        <span><b>{service.label}</b><small>{service.price ? money(service.price) : "Custom price"}</small></span>
+      </label>)}</div>
+      <label>Agreed price</label><input type="number" min="0" step="1" value={draft.agreed_price||0} onChange={e=>setDraft({...draft,agreed_price:Number(e.target.value)})}/>
+      <label>Notes</label><textarea value={draft.notes||""} onChange={e=>setDraft({...draft,notes:e.target.value})}/>
+    </section>
+
+    <section className="panel inner repairPhotosPanel">
+      <div className="repairPhotoHeader">
+        <div><h3>Photos</h3><p>Add before, progress or completed photos.</p></div>
+        <div className="repairPhotoControls">
+          <select value={photoType} onChange={e=>setPhotoType(e.target.value)}>
+            <option>Before</option><option>Progress</option><option>Completed</option><option>General</option>
+          </select>
+          <label className="buttonLike primary"><Camera size={16}/> {uploading?"Uploading...":"Add Photos"}<input className="hiddenFileInput" type="file" accept="image/*" multiple capture="environment" disabled={uploading} onChange={uploadPhotos}/></label>
+        </div>
+      </div>
+      {photos.length===0
+        ? <p>No photos stored yet.</p>
+        : <div className="repairPhotoGrid">{photos.map(photo=><figure key={photo.id}>
+            <img src={photo.public_url} alt={`${photo.photo_type} repair photo`}/>
+            <figcaption><span>{photo.photo_type}</span><button onClick={()=>removePhoto(photo)}><Trash2 size={14}/></button></figcaption>
+          </figure>)}</div>}
+    </section>
+
+    <div className="jobSaveFooter">
+      <button onClick={()=>deleteRepair(repair.id)} className="dangerButton"><Trash2 size={16}/> Delete</button>
+      {savedMessage && <span className="saveMessage">{savedMessage}</span>}
+      <button className="primary saveChangesButton" onClick={save}><Save size={16}/> Save Changes</button>
+      <button onClick={onClose}>Close</button>
+    </div>
+  </div></div>
 }
 
 function Inventory({hardware, updateHardware, lowStock, inventoryValue}){ return <section className="panel"><h2>Hardware Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p><div className="tableWrap"><table><thead><tr><th>Part</th><th>Code</th><th>Finish</th><th>Size</th><th>Qty</th><th>Reorder</th><th>Landed AUD</th><th>Status</th></tr></thead><tbody>{hardware.map(p=><tr key={p.id}><td>{p.part_name}<br/><small>{p.category}</small></td><td>{p.code}</td><td>{p.finish}</td><td>{p.size}</td><td><input value={p.qty_on_hand??0} onChange={e=>updateHardware(p.id,{qty_on_hand:Number(e.target.value)})}/></td><td>{p.reorder_level}</td><td>{money(p.landed_cost_aud)}</td><td>{Number(p.qty_on_hand||0)<=Number(p.reorder_level||0)?<span className="dangerText">Order</span>:<span className="okText">OK</span>}</td></tr>)}</tbody></table></div></section> }
