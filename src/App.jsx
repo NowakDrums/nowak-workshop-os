@@ -7,7 +7,7 @@ import {
   Settings, Layers3, FolderPlus, BarChart3
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
-import nowakLogo from "./assets/nowak-logo.png";
+import nowakLogo from "./assets/nowak-logo-refined.png";
 import "./style.css";
 
 const stages = [
@@ -1497,7 +1497,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.3.0 — tracking-number prompt and Nowak branding.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.3.1 — refined transparent Nowak logo and tracking-number prompt.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>

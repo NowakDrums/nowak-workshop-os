@@ -1246,13 +1246,18 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .heroBrand{
   display:flex;
   align-items:center;
-  gap:18px;
+  gap:20px;
+}
+.heroBrand > div{
+  min-width:0;
 }
 .nowakHeaderLogo{
-  width:190px;
-  max-height:78px;
+  width:230px;
+  max-height:92px;
   object-fit:contain;
+  object-position:left center;
   flex:0 0 auto;
+  filter:drop-shadow(0 1px 0 rgba(0,0,0,.18));
 }
 .trackingNumberLine{
   padding:8px 10px;
@@ -1266,8 +1271,8 @@ button:disabled{opacity:.55;cursor:not-allowed}
     align-items:flex-start;
   }
   .nowakHeaderLogo{
-    width:130px;
-    max-height:58px;
+    width:150px;
+    max-height:64px;
   }
 }
 @media(max-width:520px){
@@ -1276,6 +1281,6 @@ button:disabled{opacity:.55;cursor:not-allowed}
     gap:8px;
   }
   .nowakHeaderLogo{
-    width:150px;
+    width:170px;
   }
 }
