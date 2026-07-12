@@ -1467,3 +1467,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .futureProjectMeta,.futureProjectFormGrid{grid-template-columns:1fr}
   .futureProjectCard header{display:grid}
 }
+
+/* v6.8.1 Archive serial details */
+.archiveCard p{margin:7px 0}
+.archiveCard p b{color:#d3aa5d}

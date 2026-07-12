@@ -2033,7 +2033,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.8.0 — simple Future Projects and idea parking.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.8.1 — archived records now show production and serial numbers.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3297,6 +3297,9 @@ function DrumArchive({drums,openJobCard,restoreArchivedDrum,embedded=false}){
             </div>
             {d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number||"No CB #"}</span>}
             <span>{d.size} · {d.drum_type||"Snare"} · {d.build_type}</span>
+            <p><b>Production number:</b> #{d.serial||"Not recorded"}</p>
+            {d.build_client==="Nowak" && <p><b>Nowak serial number:</b> {d.nowak_serial||"Not entered"}</p>}
+            {d.build_client==="Brady" && <p><b>CB number:</b> {d.cb_number||"Not entered"}</p>}
             <p><b>Customer:</b> {d.build_client==="Brady" ? "Brady / CB" : allocatedCustomerName(d)||"Not recorded"}</p>
             <p><b>Outcome:</b> {details.reason||"Job closed"}</p>
             <p><b>Archived:</b> {archiveDate(d)}</p>
