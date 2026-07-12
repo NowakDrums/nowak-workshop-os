@@ -1,32 +1,42 @@
-# Nowak Workshop OS v6.6.0
+# Nowak Workshop OS v6.7.0
 
-## Drum Archive
+## Workshop Tasks
 
-A new final lifecycle state is available for drums whose entire job is finished.
+Workshop Today now includes a lightweight section for non-drum work such as:
 
-Use **Close & Archive** when:
-- Brady / CB has collected the shell
-- a local customer has collected the drum
-- a shipped customer has received the drum
-- no further production, payment, shipping or follow-up is required
+- cleaning dust extractors
+- emptying bins
+- machine maintenance
+- sharpening tools
+- ordering supplies
+- customer emails
+- general workshop cleanup
+- miscellaneous one-off jobs
 
-The app asks for the final outcome and records the archive date.
+### Task options
 
-Archived drums are removed from:
-- Dashboard operational counts
-- Workshop Today
-- Production
-- Customers & Orders
-- Needs Attention
-- daily planning
-- marketing and shipping queues
+Each task has:
 
-They remain searchable in the dedicated **Drum Archive** by production number, CB number, customer, timber, size or serial number.
+- task name
+- optional notes
+- estimated time
+- due date
+- one-off, weekly or monthly recurrence
 
-Archived drums can be restored to their previous status if they were closed accidentally.
+### Daily use
 
-No Supabase migration is required. Archive details are stored safely in the existing drum record.
+- Tasks due today appear in Workshop Today.
+- Overdue tasks remain visible until completed or moved.
+- Complete a recurring task and it automatically schedules its next occurrence.
+- Move an unfinished task to tomorrow.
+- Edit or delete tasks at any time.
+- Upcoming tasks can be expanded without cluttering the main page.
+- Workshop task time is kept separate from drum production time.
+
+## Supabase migration required
+
+Run `supabase/v6_7_0_workshop_tasks.sql` once in the Supabase SQL Editor.
 
 ## Rollback
 
-The unchanged v6.5.1 ZIP remains the rollback version.
+The unchanged v6.6.0 ZIP remains the rollback version. The new workshop task table can remain in Supabase without affecting v6.6.0.

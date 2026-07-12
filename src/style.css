@@ -1397,3 +1397,37 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .archiveStatusMessage{padding:10px;border:1px solid #8d8d8d;border-radius:10px;background:rgba(160,160,160,.09);color:#e3e3e3}
 @media(max-width:950px){.archiveGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.archiveIntro{display:grid}.archiveGrid{grid-template-columns:1fr}}
+
+/* v6.7.0 Workshop Tasks */
+.workshopTasksPanel{margin-bottom:14px}
+.workshopTasksHeader{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.workshopTasksHeader h2{margin:2px 0}
+.workshopTasksHeader p{margin:5px 0 0}
+.emptyWorkshopTasks{display:flex;align-items:center;justify-content:center;gap:10px;min-height:80px;border:1px dashed #4b4235;border-radius:12px;margin-top:12px}
+.workshopTaskList{display:grid;gap:8px;margin-top:12px}
+.workshopTaskCard{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;border:1px solid #4b4235;border-radius:11px;background:#171511}
+.overdueWorkshopTask{border-color:#d76b61;background:rgba(215,107,97,.06)}
+.workshopTaskCheck{padding:8px}
+.workshopTaskInfo b{display:block;color:#f4efe4}
+.workshopTaskInfo p{margin:5px 0 0}
+.workshopTaskMeta{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+.workshopTaskMeta span{padding:3px 7px;border:1px solid #4b4235;border-radius:999px;font-size:11px}
+.overdueLabel{border-color:#d76b61!important;color:#ffb0a8!important}
+.workshopTaskActions{display:flex;gap:6px;flex-wrap:wrap}
+.upcomingWorkshopTasks{margin-top:12px;border-top:1px solid #382f22;padding-top:10px}
+.upcomingWorkshopTasks summary{cursor:pointer;color:#d3aa5d;font-weight:800}
+.upcomingTaskCard{grid-template-columns:auto minmax(0,1fr) auto}
+.workshopTaskModal{max-width:760px}
+.taskPresetSection{margin:12px 0;padding:12px;border:1px solid #382f22;border-radius:12px;background:#211e18}
+.taskPresetSection p{margin:0 0 8px}
+.taskPresetGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.taskPresetGrid button{display:grid;justify-items:start;text-align:left}
+.taskPresetGrid small{font-size:11px}
+.workshopTaskFormGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:760px){
+  .workshopTasksHeader{display:grid}
+  .workshopTaskCard,.upcomingTaskCard{grid-template-columns:auto minmax(0,1fr)}
+  .workshopTaskActions{grid-column:1/-1}
+  .workshopTaskActions button{flex:1;justify-content:center}
+  .taskPresetGrid,.workshopTaskFormGrid{grid-template-columns:1fr}
+}

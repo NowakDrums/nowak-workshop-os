@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
-  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore
+  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore, ClipboardList, Repeat2
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import nowakLogo from "./assets/nowak-logo-refined.png";
@@ -714,6 +714,48 @@ function formatPlanTime(hours){
   return `${hrs} hr ${mins} min`;
 }
 
+const workshopTaskPresets = [
+  {title:"Clean dust extractors",estimated_minutes:30},
+  {title:"Empty workshop bins",estimated_minutes:15},
+  {title:"Machine maintenance",estimated_minutes:30},
+  {title:"Sharpen tools",estimated_minutes:30},
+  {title:"Order supplies",estimated_minutes:15},
+  {title:"Send customer emails",estimated_minutes:20},
+  {title:"Workshop cleanup",estimated_minutes:30},
+];
+
+function addDaysISO(dateValue,days){
+  const date=new Date(`${dateValue}T12:00:00`);
+  date.setDate(date.getDate()+days);
+  return date.toISOString().slice(0,10);
+}
+
+function addMonthsISO(dateValue,months){
+  const date=new Date(`${dateValue}T12:00:00`);
+  const originalDay=date.getDate();
+  date.setDate(1);
+  date.setMonth(date.getMonth()+months);
+  const maxDay=new Date(date.getFullYear(),date.getMonth()+1,0).getDate();
+  date.setDate(Math.min(originalDay,maxDay));
+  return date.toISOString().slice(0,10);
+}
+
+function nextWorkshopTaskDate(task,fromDate){
+  if(task.recurrence==="Weekly") return addDaysISO(fromDate,7);
+  if(task.recurrence==="Monthly") return addMonthsISO(fromDate,1);
+  return fromDate;
+}
+
+function workshopTaskDue(task,date){
+  return task.status!=="Done" && String(task.next_due_date||"")<=date;
+}
+
+function workshopTaskRecurrenceLabel(task){
+  if(task.recurrence==="Weekly") return "Weekly";
+  if(task.recurrence==="Monthly") return "Monthly";
+  return "One-off";
+}
+
 
 function allocatedCustomerName(d){
   const name=String(d?.customer || "").trim();
@@ -1069,6 +1111,9 @@ function App(){
   const [projects,setProjects]=useState([]);
   const [repairs,setRepairs]=useState([]);
   const [workPlan,setWorkPlan]=useState([]);
+  const [workshopTasks,setWorkshopTasks]=useState([]);
+  const [showAddWorkshopTask,setShowAddWorkshopTask]=useState(false);
+  const [editingWorkshopTask,setEditingWorkshopTask]=useState(null);
   const [repairJob,setRepairJob]=useState(null);
   const [showAddRepair,setShowAddRepair]=useState(false);
   const [jobCard,setJobCard]=useState(null);
@@ -1086,14 +1131,15 @@ function App(){
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
     setLoading(true); setMessage("");
-    const [d,h,t,s,p,r,w]=await Promise.all([
+    const [d,h,t,s,p,r,w,wt]=await Promise.all([
       supabase.from("drums").select("*").order("created_at",{ascending:false}),
       supabase.from("hardware_parts").select("*").order("category",{ascending:true}),
       supabase.from("cost_templates").select("*").order("name",{ascending:true}),
       supabase.from("sales").select("*").order("sold_at",{ascending:false}),
       supabase.from("projects").select("*").order("created_at",{ascending:false}),
       supabase.from("repair_jobs").select("*").order("created_at",{ascending:false}),
-      supabase.from("work_plan_items").select("*").order("planned_date",{ascending:true}).order("created_at",{ascending:true})
+      supabase.from("work_plan_items").select("*").order("planned_date",{ascending:true}).order("created_at",{ascending:true}),
+      supabase.from("workshop_tasks").select("*").order("next_due_date",{ascending:true}).order("created_at",{ascending:true})
     ]);
     const loadedDrums=(d.data||[]).map(item=>{
       if(item.lifecycle_status) return item;
@@ -1111,6 +1157,7 @@ function App(){
     setProjects(p.data||[]);
     setRepairs(r.data||[]);
     setWorkPlan(w.data||[]);
+    setWorkshopTasks(wt.data||[]);
 
     const coreErrors=[d.error,h.error,t.error,s.error].filter(Boolean);
     if(coreErrors.length){
@@ -1121,6 +1168,8 @@ function App(){
       setMessage("Repairs & Modifications needs the v6.4.0 Supabase migration.");
     }else if(w.error){
       setMessage("Daily Planning needs the v6.5.0 Supabase migration.");
+    }else if(wt.error){
+      setMessage("Workshop Tasks needs the v6.7.0 Supabase migration.");
     }else{
       setMessage("");
     }
@@ -1163,6 +1212,9 @@ function App(){
   const tomorrowPlannedTaskByDrum=Object.fromEntries(
     tomorrowPlan.map(item=>[item.drum_id,item.task_label])
   );
+  const todayWorkshopTasks=workshopTasks.filter(task=>workshopTaskDue(task,localISODate(0)));
+  const todayWorkshopTaskMinutes=todayWorkshopTasks.reduce((sum,task)=>sum+Number(task.estimated_minutes||0),0);
+
   const staveInProduction=drums.filter(d=>
     d.build_type==="Stave" &&
     !isManufacturingComplete(d) &&
@@ -1596,6 +1648,84 @@ function App(){
     return true;
   }
 
+  async function createWorkshopTask(form){
+    const payload={
+      title:String(form.title||"").trim(),
+      notes:String(form.notes||"").trim(),
+      estimated_minutes:Number(form.estimated_minutes||0),
+      recurrence:form.recurrence||"None",
+      next_due_date:form.next_due_date||localISODate(0),
+      status:"Active",
+    };
+    if(!payload.title){
+      setMessage("Please enter a workshop task.");
+      return false;
+    }
+
+    const {data,error}=await supabase.from("workshop_tasks").insert(payload).select("*").single();
+    if(error){
+      setMessage("Could not create workshop task: "+error.message);
+      return false;
+    }
+    setWorkshopTasks(current=>[...current,data].sort((a,b)=>String(a.next_due_date).localeCompare(String(b.next_due_date))));
+    setShowAddWorkshopTask(false);
+    setEditingWorkshopTask(null);
+    setMessage("");
+    return true;
+  }
+
+  async function updateWorkshopTask(id,patch){
+    const {data,error}=await supabase
+      .from("workshop_tasks")
+      .update({...patch,updated_at:new Date().toISOString()})
+      .eq("id",id)
+      .select("*")
+      .single();
+
+    if(error){
+      setMessage("Could not update workshop task: "+error.message);
+      return false;
+    }
+    setWorkshopTasks(current=>current.map(item=>item.id===id?data:item));
+    setEditingWorkshopTask(null);
+    setMessage("");
+    return true;
+  }
+
+  async function completeWorkshopTask(task){
+    const today=localISODate(0);
+    if(task.recurrence==="None"){
+      return updateWorkshopTask(task.id,{
+        status:"Done",
+        last_completed_date:today,
+      });
+    }
+
+    return updateWorkshopTask(task.id,{
+      status:"Active",
+      last_completed_date:today,
+      next_due_date:nextWorkshopTaskDate(task,task.next_due_date || today),
+    });
+  }
+
+  async function moveWorkshopTaskToTomorrow(task){
+    return updateWorkshopTask(task.id,{
+      status:"Active",
+      next_due_date:localISODate(1),
+    });
+  }
+
+  async function deleteWorkshopTask(id){
+    if(!window.confirm("Delete this workshop task?")) return;
+    const {error}=await supabase.from("workshop_tasks").delete().eq("id",id);
+    if(error){
+      setMessage("Could not delete workshop task: "+error.message);
+      return;
+    }
+    setWorkshopTasks(current=>current.filter(item=>item.id!==id));
+    setEditingWorkshopTask(null);
+  }
+
   async function addDrumsToPlan(drumsToAdd,plannedDate=localISODate(1),batchName=""){
     const rows=drumsToAdd
       .map(drum=>{
@@ -1823,7 +1953,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.6.0 — Drum Archive for fully closed jobs.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v6.7.0 — simple recurring and one-off Workshop Tasks.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -1907,6 +2037,10 @@ function App(){
         <button className="dashboardStatCard" onClick={()=>setView("archive")}>
           <b>{archivedDrums.length}</b><span>Archived drums</span>
         </button>
+        <button className="dashboardStatCard" onClick={()=>setView("today")}>
+          <b>{todayWorkshopTasks.length}</b><span>Workshop tasks due</span>
+          <small>{formatPlanTime(todayWorkshopTaskMinutes/60)}</small>
+        </button>
       </section>
 
       <section className="quickGrid dashboardQuickGrid">
@@ -1951,6 +2085,14 @@ function App(){
         updatePlanItem={updatePlanItem}
         removePlanItem={removePlanItem}
         rollPlanItems={rollPlanItems}
+      />
+      <WorkshopTasksPanel
+        tasks={workshopTasks}
+        addTask={()=>{setEditingWorkshopTask(null);setShowAddWorkshopTask(true);}}
+        editTask={task=>{setEditingWorkshopTask(task);setShowAddWorkshopTask(true);}}
+        completeTask={completeWorkshopTask}
+        moveToTomorrow={moveWorkshopTaskToTomorrow}
+        deleteTask={deleteWorkshopTask}
       />
       <section className="batchGrid">
       {outstandingFinalWork.length>0 && <section className="panel todayTaskPanel outstandingTodayPanel">
@@ -2101,12 +2243,156 @@ function App(){
     />}
 
     {showAddWizard && <AddDrumWizard onClose={()=>{setShowAddWizard(false);setAddWizardPreset({});}} onCreate={addDrumFromWizard} drums={drums} projects={projects} createProject={createProject} preset={addWizardPreset}/>}
+    {showAddWorkshopTask && <WorkshopTaskModal
+      task={editingWorkshopTask}
+      onClose={()=>{setShowAddWorkshopTask(false);setEditingWorkshopTask(null);}}
+      onCreate={createWorkshopTask}
+      onUpdate={updateWorkshopTask}
+    />}
     {showAddRepair && <AddRepairModal repairs={repairs} onClose={()=>setShowAddRepair(false)} onCreate={createRepair}/>}
     {repairJob && <RepairJobModal repair={repairJob} onClose={()=>setRepairJob(null)} updateRepair={updateRepair} deleteRepair={deleteRepair} setMessage={setMessage}/>}
     {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}}/>}
   </main>
 }
 
+
+function WorkshopTasksPanel({tasks,addTask,editTask,completeTask,moveToTomorrow,deleteTask}){
+  const today=localISODate(0);
+  const tomorrow=localISODate(1);
+  const dueToday=tasks.filter(task=>workshopTaskDue(task,today));
+  const dueTomorrow=tasks.filter(task=>task.status!=="Done" && task.next_due_date===tomorrow);
+  const upcoming=tasks
+    .filter(task=>task.status!=="Done" && task.next_due_date>tomorrow)
+    .slice(0,6);
+  const todayMinutes=dueToday.reduce((sum,task)=>sum+Number(task.estimated_minutes||0),0);
+
+  function taskCard(task,showTomorrow=false){
+    const overdue=task.next_due_date<today;
+    return <article className={"workshopTaskCard "+(overdue?"overdueWorkshopTask":"")} key={task.id}>
+      <button className="workshopTaskCheck" onClick={()=>completeTask(task)} title="Mark complete"><CircleCheckBig size={21}/></button>
+      <div className="workshopTaskInfo">
+        <b>{task.title}</b>
+        <div className="workshopTaskMeta">
+          <span>{workshopTaskRecurrenceLabel(task)}</span>
+          <span>{Number(task.estimated_minutes||0)} min</span>
+          {overdue && <span className="overdueLabel">Overdue</span>}
+          {showTomorrow && <span>Tomorrow</span>}
+        </div>
+        {task.notes && <p>{task.notes}</p>}
+      </div>
+      <div className="workshopTaskActions">
+        <button onClick={()=>editTask(task)}>Edit</button>
+        {!showTomorrow && <button onClick={()=>moveToTomorrow(task)}><RotateCcw size={14}/> Tomorrow</button>}
+        <button className="dangerButton" onClick={()=>deleteTask(task.id)}><Trash2 size={14}/></button>
+      </div>
+    </article>;
+  }
+
+  return <section className="panel workshopTasksPanel">
+    <header className="workshopTasksHeader">
+      <div>
+        <span className="launchPackEyebrow">NON-DRUM WORK</span>
+        <h2>Workshop Tasks</h2>
+        <p>{dueToday.length} due today · approximately <b>{formatPlanTime(todayMinutes/60)}</b></p>
+      </div>
+      <button className="primary" onClick={addTask}><Plus size={16}/> Add Workshop Task</button>
+    </header>
+
+    {dueToday.length===0
+      ? <div className="emptyWorkshopTasks"><ClipboardList size={24}/><p>No workshop tasks are due today.</p></div>
+      : <div className="workshopTaskList">{dueToday.map(task=>taskCard(task))}</div>}
+
+    {(dueTomorrow.length>0 || upcoming.length>0) && <details className="upcomingWorkshopTasks">
+      <summary>Upcoming workshop tasks ({dueTomorrow.length+upcoming.length})</summary>
+      <div className="workshopTaskList">
+        {dueTomorrow.map(task=>taskCard(task,true))}
+        {upcoming.map(task=><article className="workshopTaskCard upcomingTaskCard" key={task.id}>
+          <Repeat2 size={18}/>
+          <div className="workshopTaskInfo">
+            <b>{task.title}</b>
+            <span>{task.next_due_date} · {workshopTaskRecurrenceLabel(task)} · {Number(task.estimated_minutes||0)} min</span>
+          </div>
+          <div className="workshopTaskActions"><button onClick={()=>editTask(task)}>Edit</button><button className="dangerButton" onClick={()=>deleteTask(task.id)}><Trash2 size={14}/></button></div>
+        </article>)}
+      </div>
+    </details>}
+  </section>;
+}
+
+function WorkshopTaskModal({task,onClose,onCreate,onUpdate}){
+  const [form,setForm]=useState({
+    title:task?.title||"",
+    notes:task?.notes||"",
+    estimated_minutes:Number(task?.estimated_minutes||15),
+    recurrence:task?.recurrence||"None",
+    next_due_date:task?.next_due_date||localISODate(0),
+  });
+  const [saving,setSaving]=useState(false);
+
+  function applyPreset(preset){
+    setForm(current=>({...current,title:preset.title,estimated_minutes:preset.estimated_minutes}));
+  }
+
+  async function save(){
+    if(!form.title.trim()){
+      alert("Please enter the task name.");
+      return;
+    }
+    setSaving(true);
+    if(task){
+      await onUpdate(task.id,{
+        title:form.title.trim(),
+        notes:form.notes.trim(),
+        estimated_minutes:Number(form.estimated_minutes||0),
+        recurrence:form.recurrence,
+        next_due_date:form.next_due_date,
+        status:"Active",
+      });
+    }else{
+      await onCreate(form);
+    }
+    setSaving(false);
+  }
+
+  return <div className="modalBg" onClick={onClose}><div className="modal workshopTaskModal" onClick={e=>e.stopPropagation()}>
+    <button className="close" onClick={onClose}>×</button>
+    <span className="launchPackEyebrow">{task?"EDIT TASK":"NEW WORKSHOP TASK"}</span>
+    <h2>{task?"Edit Workshop Task":"Add Workshop Task"}</h2>
+
+    {!task && <section className="taskPresetSection">
+      <p>Quick choices</p>
+      <div className="taskPresetGrid">{workshopTaskPresets.map(preset=><button key={preset.title} onClick={()=>applyPreset(preset)}>{preset.title}<small>{preset.estimated_minutes} min</small></button>)}</div>
+    </section>}
+
+    <label>Task</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Clean dust extractors"/>
+    <label>Notes (optional)</label><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Any useful detail..."/>
+
+    <section className="workshopTaskFormGrid">
+      <label>Estimated time
+        <select value={form.estimated_minutes} onChange={e=>setForm({...form,estimated_minutes:Number(e.target.value)})}>
+          {[5,10,15,20,30,45,60,90,120].map(minutes=><option key={minutes} value={minutes}>{minutes<60?`${minutes} minutes`:formatPlanTime(minutes/60)}</option>)}
+        </select>
+      </label>
+      <label>Repeat
+        <select value={form.recurrence} onChange={e=>setForm({...form,recurrence:e.target.value})}>
+          <option value="None">One-off</option>
+          <option value="Weekly">Weekly</option>
+          <option value="Monthly">Monthly</option>
+        </select>
+      </label>
+      <label>{form.recurrence==="None"?"Due date":"Next due date"}
+        <input type="date" value={form.next_due_date} onChange={e=>setForm({...form,next_due_date:e.target.value})}/>
+      </label>
+    </section>
+
+    {form.recurrence!=="None" && <p className="calcNote">Once completed, this task will automatically return on the next {form.recurrence.toLowerCase()} date.</p>}
+
+    <div className="buttonRow">
+      <button onClick={onClose}>Cancel</button>
+      <button className="primary" disabled={saving} onClick={save}><Save size={16}/> {saving?"Saving...":task?"Save Task":"Add Task"}</button>
+    </div>
+  </div></div>;
+}
 
 function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,removePlanItem,rollPlanItems}){
   const drumMap=Object.fromEntries(drums.map(d=>[d.id,d]));
