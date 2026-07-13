@@ -1497,3 +1497,44 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .marketingMediaItem img,.marketingMediaItem video{height:auto;max-height:380px}
   .marketingQueueActions button{flex:1;justify-content:center}
 }
+
+/* v6.9.2 lifecycle selection clarity */
+.completionStatusButtons .primary{
+  box-shadow:0 0 0 2px rgba(211,170,93,.24);
+}
+
+/* v7.0.0 Drum Register and workflow refinements */
+.drumRegisterIntro{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.drumRegisterIntro h2{margin:2px 0}
+.drumRegisterIntro b{font-size:2rem;color:#d3aa5d}
+.registerControls{margin-top:12px}
+.registerControls .searchBar{margin:0 0 10px}
+.registerFilterRow{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.registerSortLabel{margin-left:auto;color:#a99a80;font-size:12px;text-transform:uppercase}
+.registerTable{margin-top:12px;padding:0;overflow:hidden}
+.registerHeaderRow,.registerRow{display:grid;grid-template-columns:.8fr .7fr 1.2fr .8fr 1fr 1.35fr;gap:10px;align-items:center}
+.registerHeaderRow{padding:10px 13px;background:#211d17;color:#d3aa5d;font-size:12px;text-transform:uppercase}
+.registerRow{width:100%;text-align:left;border:0;border-radius:0;border-top:1px solid #342d24;padding:11px 13px;background:#171511}
+.registerRow:hover{background:#211e18}
+.registerExpanded{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:8px;padding:10px 13px 13px;background:#12110f;border-top:1px solid #342d24}
+.registerExpanded>div{padding:8px;border:1px solid #3e3529;border-radius:8px}
+.registerExpanded span{display:block;color:#9f927d;font-size:11px;text-transform:uppercase}
+.registerEmpty{padding:18px}
+.completedWorkshopTasks{border-top-color:#4e5a42}
+.completedTaskCard{opacity:.82;background:#151713}
+.photoLibraryGrid{margin-top:12px}
+@media(max-width:850px){
+  .registerHeaderRow{display:none}
+  .registerRow{grid-template-columns:repeat(2,1fr)}
+  .registerRow span:nth-child(1)::before{content:"Production: ";color:#9f927d}
+  .registerRow span:nth-child(2)::before{content:"CB: ";color:#9f927d}
+  .registerRow span:nth-child(3)::before{content:"Material: ";color:#9f927d}
+  .registerRow span:nth-child(4)::before{content:"Size: ";color:#9f927d}
+  .registerRow span:nth-child(5)::before{content:"Serial: ";color:#9f927d}
+  .registerRow span:nth-child(6)::before{content:"Customer: ";color:#9f927d}
+  .registerExpanded{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .registerRow,.registerExpanded{grid-template-columns:1fr}
+  .registerSortLabel{margin-left:0;width:100%}
+}

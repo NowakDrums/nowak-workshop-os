@@ -321,6 +321,8 @@ const photoMilestoneByChecklist = {
   "Glue up complete":"blank",
   "Machined":"machined",
   "Sealer coat":"sealer",
+  "Danish oil 3":"shellcomplete",
+  "Cure complete":"shellcomplete",
   "Assembled":"drumcomplete",
   "Polished":"shellcomplete",
 };
@@ -367,13 +369,27 @@ function photoMilestoneForCompletion(drum,item){
   const key=photoMilestoneByChecklist[item];
   if(!key) return null;
 
-  // Brady receives a photo prompt only when the completed shell is polished.
+  const finishText=String(drum.finish||"").toLowerCase();
+  const isNatural=finishText.includes("natural");
+  const isSatin=finishText.includes("satin");
+
+  // Natural-finish drums prompt after the third Danish oil coat.
+  if(item==="Danish oil 3"){
+    return isNatural ? "shellcomplete" : null;
+  }
+
+  // Satin drums prompt only after the satin finish has cured.
+  if(item==="Cure complete"){
+    return isSatin ? "shellcomplete" : null;
+  }
+
+  // Brady / CB shell work otherwise prompts only after polishing.
   if(drum.build_client==="Brady"){
     return item==="Polished" ? "shellcomplete" : null;
   }
 
-  // Stock and custom Nowak drums use the production milestones.
-  if(drum.build_client==="Nowak"){
+  // Stock and custom Nowak drums use the normal production milestones.
+  if(drum.build_client==="Nowak" || drum.build_client==="Unallocated"){
     if(drum.build_type==="Ply" && item==="Machined") return null;
     return key;
   }
@@ -682,7 +698,36 @@ function batchType(d){
       : "Stave Shell Sanding — After Machining";
   }
 
+  if(buildType==="Stave" && flow.nextStep==="Cut and prepare timber"){
+    return "Stave Blanks";
+  }
+
   return flow.nextStep;
+}
+
+function workshopBatchPriority(name){
+  const text=String(name||"").toLowerCase();
+  const order=[
+    ["assemble",10],
+    ["final",12],
+    ["polish",20],
+    ["cure",30],
+    ["satin",35],
+    ["polyurethane coat 4",40],
+    ["polyurethane coat 3",42],
+    ["polyurethane coat 2",44],
+    ["polyurethane coat 1",46],
+    ["sealer",48],
+    ["drill",55],
+    ["snare bed",57],
+    ["bearing edge",59],
+    ["sand",65],
+    ["machine",72],
+    ["glue",82],
+    ["prepare veneer",88],
+    ["stave blanks",99],
+  ];
+  return order.find(([key])=>text.includes(key))?.[1] ?? 90;
 }
 
 function localISODate(offsetDays=0){
@@ -1090,8 +1135,36 @@ function nextCbNumber(drums=[]){
   return String(Math.max(0,...drums.filter(d=>d.build_client==="Brady").map(d=>extractNumber(d.cb_number)))+1);
 }
 
+function normaliseJobNumber(value){
+  return String(value||"").trim().replace(/^#/,"").toLowerCase();
+}
 
-function defaultBuildSpecification(drumType){
+function duplicateNumberMessage(drums,{id=null,serial="",cbNumber="",buildClient=""}){
+  const production=normaliseJobNumber(serial);
+  const cb=normaliseJobNumber(cbNumber);
+
+  if(!production) return "A production number is required.";
+
+  const productionDuplicate=drums.find(d=>d.id!==id && normaliseJobNumber(d.serial)===production);
+  if(productionDuplicate){
+    return `Production number #${serial} is already used by ${productionDuplicate.timber||"another drum"}.`;
+  }
+
+  if(buildClient==="Brady"){
+    if(!cb) return "A CB number is required for Brady / CB drums.";
+    if(cb===production) return "The CB number and production number cannot be the same.";
+    const cbDuplicate=drums.find(d=>d.id!==id && d.build_client==="Brady" && normaliseJobNumber(d.cb_number)===cb);
+    if(cbDuplicate){
+      return `CB number ${cbNumber} is already used by production #${cbDuplicate.serial}.`;
+    }
+  }
+
+  return "";
+}
+
+
+function defaultBuildSpecification(drumType,buildType="Stave"){
+  if(buildType==="Ply") return "10 x ply = 6 mm shell thickness";
   if(drumType === "Snare") return "Shell thickness: 12 mm";
   if(drumType === "Tom") return "Shell thickness: 8 mm\nRe-ring: 14 x 30 mm";
   if(drumType === "Floor Tom") return "Shell thickness: 8 mm\nRe-ring: 14 x 40 mm";
@@ -1115,9 +1188,9 @@ function workshopSpecsText({serial,timber,size,buildType,drumType,diameter}){
   const s = staveSpecForDiameter(diameter);
   const lines = [`Production #${serial || ""}`,"",size || "","",`${timber || ""} ${buildType || ""}`,""];
   if(buildType === "Stave"){
-    lines.push("ROUGH OD",d?.rough || "","FINISHED OD",d?.finished || "","TRITON",s?.triton || "","STAVE",s?.stave || "","BUILD SPECIFICATION",defaultBuildSpecification(drumType || "Snare"));
+    lines.push("ROUGH OD",d?.rough || "","FINISHED OD",d?.finished || "","TRITON",s?.triton || "","STAVE",s?.stave || "","BUILD SPECIFICATION",defaultBuildSpecification(drumType || "Snare",buildType));
   }else{
-    lines.push("FINISHED OD",d?.finished || "","BUILD SPECIFICATION",defaultBuildSpecification(drumType || "Snare"));
+    lines.push("FINISHED OD",d?.finished || "","BUILD SPECIFICATION",defaultBuildSpecification(drumType || "Snare",buildType));
   }
   return lines.join("\\n");
 }
@@ -1344,6 +1417,19 @@ function App(){
 
   async function updateDrum(id,patch){
     const nextPatch={...patch};
+    const existing=drums.find(d=>d.id===id) || {};
+    if("serial" in nextPatch || "cb_number" in nextPatch || "build_client" in nextPatch){
+      const numberError=duplicateNumberMessage(drums,{
+        id,
+        serial:"serial" in nextPatch ? nextPatch.serial : existing.serial,
+        cbNumber:"cb_number" in nextPatch ? nextPatch.cb_number : existing.cb_number,
+        buildClient:"build_client" in nextPatch ? nextPatch.build_client : existing.build_client,
+      });
+      if(numberError){
+        setMessage(numberError);
+        return false;
+      }
+    }
 
     if("custom_price" in nextPatch || "shipping_cost" in nextPatch){
       const existing = drums.find(d=>d.id===id) || {};
@@ -1444,6 +1530,17 @@ function App(){
   }
 
   async function addDrumFromWizard(form){
+    const numberError=duplicateNumberMessage(drums,{
+      serial:form.serial,
+      cbNumber:form.cb_number,
+      buildClient:form.build_client,
+    });
+    if(numberError){
+      setMessage(numberError);
+      alert(numberError);
+      return false;
+    }
+
     const isPly = form.build_type === "Ply";
     const spec = staveSpecForDiameter(form.diameter);
     const construction = !isPly ? drumTypeComment(form.drum_type, form.diameter) : null;
@@ -1455,7 +1552,11 @@ function App(){
       drum_type:form.drum_type || "Snare",
       size:form.size,
       finish:form.finish || "TBD",
-      customer:form.order_type === "Stock" ? "Stock" : "",
+      customer:form.order_type === "Stock" ? "Stock" : (form.customer || ""),
+      customer_phone:form.customer_phone || "",
+      customer_email:form.customer_email || "",
+      shipping_address:form.shipping_address || "",
+      due_date:form.due_date || null,
       production_status:"Not Started",
       sales_status:salesStatusForNewDrum(form),
       next_step:isPly ? "Prepare veneer and confirm cut lengths" : "Prepare timber / staves",
@@ -1470,7 +1571,7 @@ function App(){
       cb_number:form.cb_number || "",
       stave_triton_setting:!isPly && spec ? spec.triton : null,
       stave_width:!isPly && spec ? spec.stave : null,
-      construction_note:form.construction_note || construction || defaultBuildSpecification(form.drum_type),
+      construction_note:form.construction_note || construction || defaultBuildSpecification(form.drum_type,form.build_type),
       shell_thickness:construction?.match(/(8mm|9mm|10mm)/)?.[1] || "",
       rering_size:construction?.match(/14mm x (30mm|40mm|50mm)/)?.[0] || "",
       timber_story:form.timber_story || "",
@@ -2033,7 +2134,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v6.9.1 — fixed Comms & Marketing content queue loading.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.0.0 — Drum Register, visible media, phone fields and Workshop Today refinements.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -2044,6 +2145,7 @@ function App(){
       <button className={view==="dashboard"?"active":""} onClick={()=>setView("dashboard")}><LayoutDashboard size={16}/> Dashboard</button>
       <button className={view==="today"?"active":""} onClick={()=>setView("today")}><Hammer size={16}/> Workshop Today</button>
       <button className={view==="production"?"active":""} onClick={()=>setView("production")}><ListChecks size={16}/> Production</button>
+      <button className={view==="register"?"active":""} onClick={()=>setView("register")}><ClipboardList size={16}/> Drum Register</button>
       <button className={view==="projects"?"active":""} onClick={()=>setView("projects")}><Layers3 size={16}/> Kits / Projects</button>
       <button className={view==="future"?"active":""} onClick={()=>setView("future")}><Lightbulb size={16}/> Future Projects</button>
       <button className={view==="orders"?"active":""} onClick={()=>setView("orders")}><Users size={16}/> Customers & Orders</button>
@@ -2197,7 +2299,7 @@ function App(){
         </div>
       </section>}
 
-      {Object.entries(batches).map(([name,items])=>{
+      {Object.entries(batches).sort(([a],[b])=>workshopBatchPriority(a)-workshopBatchPriority(b)).map(([name,items])=>{
         const projectMap=Object.fromEntries(projects.map(p=>[p.id,p.name]));
         const grouped={};
 
@@ -2309,6 +2411,7 @@ function App(){
           />}
     </section>}
 
+    {view==="register" && <DrumRegister drums={drums} openJobCard={setJobCard}/>}
     {view==="projects" && <ProjectsPage projects={projects} drums={drums} openJobCard={setJobCard} createProject={createProject} updateProject={updateProject} linkDrumsToProject={linkDrumsToProject} unlinkDrumFromProject={unlinkDrumFromProject}/>}
     {view==="future" && <FutureProjectsPage
       projects={futureProjects}
@@ -2367,6 +2470,10 @@ function WorkshopTasksPanel({tasks,addTask,editTask,completeTask,moveToTomorrow,
   const upcoming=tasks
     .filter(task=>task.status!=="Done" && task.next_due_date>tomorrow)
     .slice(0,6);
+  const recentlyCompleted=tasks
+    .filter(task=>task.status==="Done")
+    .sort((a,b)=>String(b.last_completed_date||b.updated_at||"").localeCompare(String(a.last_completed_date||a.updated_at||"")))
+    .slice(0,12);
   const todayMinutes=dueToday.reduce((sum,task)=>sum+Number(task.estimated_minutes||0),0);
 
   function taskCard(task,showTomorrow=false){
@@ -2416,6 +2523,24 @@ function WorkshopTasksPanel({tasks,addTask,editTask,completeTask,moveToTomorrow,
             <span>{task.next_due_date} · {workshopTaskRecurrenceLabel(task)} · {Number(task.estimated_minutes||0)} min</span>
           </div>
           <div className="workshopTaskActions"><button onClick={()=>editTask(task)}>Edit</button><button className="dangerButton" onClick={()=>deleteTask(task.id)}><Trash2 size={14}/></button></div>
+        </article>)}
+      </div>
+    </details>}
+
+    {recentlyCompleted.length>0 && <details className="upcomingWorkshopTasks completedWorkshopTasks">
+      <summary>Recently Completed Tasks ({recentlyCompleted.length})</summary>
+      <div className="workshopTaskList">
+        {recentlyCompleted.map(task=><article className="workshopTaskCard completedTaskCard" key={task.id}>
+          <CircleCheckBig size={19}/>
+          <div className="workshopTaskInfo">
+            <b>{task.title}</b>
+            <span>Completed {task.last_completed_date || "recently"} · {Number(task.estimated_minutes||0)} min</span>
+            {task.notes && <p>{task.notes}</p>}
+          </div>
+          <div className="workshopTaskActions">
+            <button onClick={()=>editTask(task)}>Edit</button>
+            <button className="dangerButton" onClick={()=>deleteTask(task.id)}><Trash2 size={14}/></button>
+          </div>
         </article>)}
       </div>
     </details>}
@@ -2680,6 +2805,7 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
     veneer:[1.2,1.2,1.2,1.2,1.2],
     project_id:preset.project_id || "",
     customer:preset.customer || "",
+    customer_phone:preset.customer_phone || "",
     customer_email:preset.customer_email || "",
     shipping_address:preset.shipping_address || "",
     due_date:preset.due_date || "",
@@ -2705,9 +2831,16 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
       }
 
       if(key==="drum_type"){
-        const previousDefault = defaultBuildSpecification(current.drum_type);
-        if(!current.construction_note || current.construction_note===previousDefault){
-          next.construction_note = defaultBuildSpecification(value);
+        const previousDefault = defaultBuildSpecification(current.drum_type,current.build_type);
+        if(!current.construction_note || current.construction_note===previousDefault || current.construction_note==="Shell thickness: 12 mm"){
+          next.construction_note = defaultBuildSpecification(value,current.build_type);
+        }
+      }
+
+      if(key==="build_type"){
+        const previousDefault = defaultBuildSpecification(current.drum_type,current.build_type);
+        if(!current.construction_note || current.construction_note===previousDefault || current.construction_note==="Shell thickness: 12 mm"){
+          next.construction_note = defaultBuildSpecification(current.drum_type,value);
         }
       }
 
@@ -2892,6 +3025,24 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
           </label>
         </div>
 
+        {form.order_type==="Custom" && <div className="twoInputGrid customerOrderFields">
+          <label>Customer name
+            <input value={form.customer} onChange={e=>setField("customer",e.target.value)} />
+          </label>
+          <label>Customer phone
+            <input value={form.customer_phone} onChange={e=>setField("customer_phone",e.target.value)} />
+          </label>
+          <label>Customer email
+            <input type="email" value={form.customer_email} onChange={e=>setField("customer_email",e.target.value)} />
+          </label>
+          <label>Due date
+            <input type="date" value={form.due_date} onChange={e=>setField("due_date",e.target.value)} />
+          </label>
+          <label className="wide">Shipping address
+            <textarea value={form.shipping_address} onChange={e=>setField("shipping_address",e.target.value)} />
+          </label>
+        </div>}
+
         {form.build_client==="Brady" && form.drum_type==="Snare" && <p className="pricingNote">
           Brady snare shell pricing: Stave Satin $600 · Stave High Gloss $650 · Ply Satin $400 · Ply High Gloss $450.
           Select Satin or High Gloss to calculate the wholesale price.
@@ -2935,7 +3086,7 @@ function StaveSpecPanel({diameter, drumType, buildType="Stave", serial="", timbe
       <div><b>Finished Outside Diameter</b><span>{diameterSpec?.finished || "Not set"}</span></div>
       <div><b>Triton Saw Setting</b><span>{staveSpec?.triton || "Not set"}</span></div>
       <div><b>Finished Stave Width</b><span>{staveSpec?.stave || "Not set"}</span></div>
-      <div className="wide"><b>Recommended Build Specification</b><span>{defaultBuildSpecification(drumType)}</span></div>
+      <div className="wide"><b>Recommended Build Specification</b><span>{defaultBuildSpecification(drumType,buildType)}</span></div>
     </section> : <section className="staveSpec">
       <div className="wide"><b>Finished Outside Diameter</b><span>{diameterSpec?.finished || "Not set"}</span></div>
     </section>}
@@ -3658,6 +3809,7 @@ function Orders({drums, openJobCard}){
 
       <div className="customerOrderMeta">
         <div><span>Customer</span><b>{customer}</b></div>
+        <div><span>Phone</span><b>{d.customer_phone || "Not entered"}</b></div>
         <div><span>Email</span><b>{d.customer_email || "Not entered"}</b></div>
         <div><span>Status</span><b>{isShippedStatus(d) ? "Shipped" : isSoldStatus(d) ? "Sold — awaiting shipment" : flow.status}</b></div>
         <div><span>Next</span><b>{isShippedStatus(d) ? "Complete" : isSoldStatus(d) ? "Ship the drum" : flow.nextStep}</b></div>
@@ -4085,6 +4237,7 @@ function LaunchMediaModal({drum,stage,onClose,onUploaded,setMessage}){
         if(rowError) throw new Error(rowError.message);
       }
 
+      window.dispatchEvent(new CustomEvent("drum-media-updated",{detail:{drumId:drum.id}}));
       setStatus(`${files.length} file${files.length===1?"":"s"} uploaded and stored.`);
       setMessage?.("");
       onUploaded?.();
@@ -4347,6 +4500,79 @@ function MarketingCentre({drums,openJobCard,setMessage,embedded=false}){
   </section>
 }
 
+
+function DrumRegister({drums,openJobCard}){
+  const [owner,setOwner]=useState("All");
+  const [sortBy,setSortBy]=useState("Production");
+  const [search,setSearch]=useState("");
+  const [expanded,setExpanded]=useState("");
+
+  const filtered=drums
+    .filter(d=>owner==="All" || d.build_client===owner)
+    .filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b)=>{
+      if(sortBy==="CB"){
+        const aCb=a.build_client==="Brady" ? extractNumber(a.cb_number) : Number.MAX_SAFE_INTEGER;
+        const bCb=b.build_client==="Brady" ? extractNumber(b.cb_number) : Number.MAX_SAFE_INTEGER;
+        return aCb-bCb || extractNumber(a.serial)-extractNumber(b.serial);
+      }
+      return extractNumber(a.serial)-extractNumber(b.serial);
+    });
+
+  function customerLabel(d){
+    if(d.build_client==="Brady") return allocatedCustomerName(d) || "Brady / CB";
+    return allocatedCustomerName(d) || (d.sales_status==="Stock" ? "Stock" : "Not entered");
+  }
+
+  return <section className="drumRegisterPage">
+    <section className="panel drumRegisterIntro">
+      <div>
+        <span className="launchPackEyebrow">PERMANENT DRUM RECORD</span>
+        <h2>Drum Register</h2>
+        <p>All active, completed and archived drums in one simple ordered list.</p>
+      </div>
+      <b>{drums.length}</b>
+    </section>
+
+    <section className="panel registerControls">
+      <div className="searchBar"><Search size={16}/><input placeholder="Search production number, CB number, timber, size, serial or customer..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+      <div className="registerFilterRow">
+        {["All","Nowak","Brady","Unallocated"].map(value=><button key={value} className={owner===value?"primary":""} onClick={()=>setOwner(value)}>{value==="Brady"?"Brady / CB":value}</button>)}
+        <span className="registerSortLabel">Sort by</span>
+        <button className={sortBy==="Production"?"primary":""} onClick={()=>setSortBy("Production")}>Production #</button>
+        <button className={sortBy==="CB"?"primary":""} onClick={()=>setSortBy("CB")}>CB #</button>
+      </div>
+    </section>
+
+    <section className="panel registerTable">
+      <div className="registerHeaderRow">
+        <b>Production #</b><b>CB #</b><b>Material</b><b>Size</b><b>Serial #</b><b>Customer</b>
+      </div>
+      {filtered.length===0
+        ? <p className="registerEmpty">No drums match this view.</p>
+        : filtered.map(d=>{
+            const open=expanded===d.id;
+            return <article className={"registerRowWrap "+(open?"expanded":"")} key={d.id}>
+              <button className="registerRow" onClick={()=>setExpanded(open?"":d.id)}>
+                <span>#{d.serial||"—"}</span>
+                <span>{d.build_client==="Brady" ? (d.cb_number||"—") : "—"}</span>
+                <span>{d.timber||"—"}</span>
+                <span>{d.size||"—"}</span>
+                <span>{d.build_client==="Nowak" ? (d.nowak_serial||"—") : "—"}</span>
+                <span>{customerLabel(d)}</span>
+              </button>
+              {open && <section className="registerExpanded">
+                <div><span>Owner</span><b>{ownershipLabel(d)}</b></div>
+                <div><span>Status</span><b>{drumLifecycleStatus(d)||workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).status}</b></div>
+                <div><span>Construction</span><b>{d.build_type||"—"} · {d.drum_type||"Snare"}</b></div>
+                <div><span>Phone</span><b>{d.customer_phone||"Not entered"}</b></div>
+                <button onClick={()=>openJobCard(d)}>Open Job Card</button>
+              </section>}
+            </article>;
+          })}
+    </section>
+  </section>;
+}
 
 function FutureProjectsPage({projects,addProject,editProject,deleteProject}){
   const [search,setSearch]=useState("");
@@ -4633,7 +4859,14 @@ function DrumPhotoLibrary({drum,setMessage,onAddPhoto}){
     setLoadingPhotos(false);
   }
 
-  useEffect(()=>{ loadPhotos(); },[drum.id]);
+  useEffect(()=>{
+    loadPhotos();
+    const refresh=(event)=>{
+      if(!event?.detail?.drumId || event.detail.drumId===drum.id) loadPhotos();
+    };
+    window.addEventListener("drum-media-updated",refresh);
+    return ()=>window.removeEventListener("drum-media-updated",refresh);
+  },[drum.id]);
 
   async function deleteStoredMedia(item){
     const confirmed=window.confirm("Delete this stored photo or video?");
@@ -4927,6 +5160,7 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
 
       setUploaded(saved);
       setFiles([]);
+      window.dispatchEvent(new CustomEvent("drum-media-updated",{detail:{drumId:drum.id}}));
       setStatus(`${saved.length} photo${saved.length===1?"":"s"} uploaded and stored successfully.`);
       setMessage?.("");
     }catch(error){
@@ -5003,7 +5237,11 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
-  const [localBuildSpec,setLocalBuildSpec]=useState(drum.construction_note || defaultBuildSpecification(drum.drum_type || "Snare"));
+  const [localBuildSpec,setLocalBuildSpec]=useState(
+    drum.build_type==="Ply" && (!drum.construction_note || drum.construction_note==="Shell thickness: 12 mm")
+      ? defaultBuildSpecification(drum.drum_type || "Snare","Ply")
+      : (drum.construction_note || defaultBuildSpecification(drum.drum_type || "Snare",drum.build_type || "Stave"))
+  );
   const [checked,setChecked]=useState(parseChecked(drum.notes));
   const [timeAmount,setTimeAmount]=useState(0.5);
   const [timeLabel,setTimeLabel]=useState("Workshop time");
@@ -5014,6 +5252,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     serial:drum.serial||"",
     timber:drum.timber||"",
     customer:drum.customer||"",
+    customer_phone:drum.customer_phone||"",
     customer_email:drum.customer_email||"",
     shipping_address:drum.shipping_address||"",
     due_date:drum.due_date||"",
@@ -5075,6 +5314,17 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
   async function saveAllChanges(){
     if(isSaving) return false;
+    const numberError=duplicateNumberMessage(drums,{
+      id:drum.id,
+      serial:draft.serial,
+      cbNumber:localCbNumber,
+      buildClient:localOwnership,
+    });
+    if(numberError){
+      setSavedMessage(numberError);
+      setMessage(numberError);
+      return false;
+    }
     setIsSaving(true);
     const nextFlow=workflowState(localBuildType,checked,draft.finish,localOwnership);
     setSavedMessage("Saving...");
@@ -5110,6 +5360,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       serial:draft.serial,
       timber:draft.timber,
       customer:draft.customer,
+      customer_phone:draft.customer_phone,
       customer_email:draft.customer_email,
       shipping_address:draft.shipping_address,
       due_date:draft.due_date || null,
@@ -5374,6 +5625,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           </select>
         </>}
         <label>Customer name</label><input value={draft.customer} onChange={e=>setDraft({...draft,customer:e.target.value})}/>
+        <label>Customer phone</label><input value={draft.customer_phone} onChange={e=>setDraft({...draft,customer_phone:e.target.value})}/>
         <label>Customer email</label><input value={draft.customer_email} onChange={e=>setDraft({...draft,customer_email:e.target.value})}/>
         <label>Shipping address</label><textarea value={draft.shipping_address} onChange={e=>setDraft({...draft,shipping_address:e.target.value})}/>
         <label>Due date</label><input type="date" value={draft.due_date} onChange={e=>setDraft({...draft,due_date:e.target.value})}/>
@@ -5391,8 +5643,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         </select>
         <label>Drum type</label><select defaultValue={drum.drum_type||"Snare"} onChange={e=>{
           const newType=e.target.value;
-          const previousDefault=defaultBuildSpecification(drum.drum_type||"Snare");
-          const nextSpec=(!localBuildSpec || localBuildSpec===previousDefault) ? defaultBuildSpecification(newType) : localBuildSpec;
+          const previousDefault=defaultBuildSpecification(drum.drum_type||"Snare",localBuildType);
+          const nextSpec=(!localBuildSpec || localBuildSpec===previousDefault || (localBuildType==="Ply" && localBuildSpec==="Shell thickness: 12 mm"))
+            ? defaultBuildSpecification(newType,localBuildType)
+            : localBuildSpec;
           setLocalBuildSpec(nextSpec);
           updateDrum(drum.id,{drum_type:newType, construction_note:nextSpec});
         }}>{drumTypeOptions.map(t=><option key={t}>{t}</option>)}</select>
@@ -5493,7 +5747,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
         <div className="completionStatusButtons">
           <button
-            className={!isManufacturingComplete({...drum,notes:setChecklistInNotes(draft.notes,checked)}) ? "primary" : ""}
+            className={["Completed","Sold","Shipped","Archived"].includes(drumLifecycleStatus(drum)) ? "primary" : ""}
             onClick={markManufacturingComplete}
           >
             <CheckCircle2 size={16}/> Complete
@@ -5570,6 +5824,21 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       <p>Take or upload an additional build photo at any time. It will be stored against this Job Card.</p>
       <button type="button" className="primary" onClick={()=>setPhotoPrompt({milestoneKey:"general",item:null})}><Camera size={16}/> Take or Upload a Photo</button>
     </section>
+    <DrumPhotoLibrary
+      drum={{
+        ...drum,
+        ...draft,
+        build_client:localOwnership,
+        build_type:localBuildType,
+        sales_status:localOwnership==="Nowak"
+          ? (draft.order_type==="Custom" ? "Custom Order" : "Stock")
+          : localOwnership==="Brady"
+            ? "Brady Production"
+            : "Unallocated"
+      }}
+      setMessage={setMessage}
+      onAddPhoto={(stageDrum,milestoneKey)=>setPhotoPrompt({drum:stageDrum,milestoneKey})}
+    />
     <StageCommunications
       drum={{
         ...drum,
