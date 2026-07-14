@@ -737,6 +737,17 @@ function localISODate(offsetDays=0){
   return date.toISOString().slice(0,10);
 }
 
+function friendlyPlanDate(dateValue){
+  if(!dateValue) return "";
+  if(dateValue===localISODate(0)) return "Today";
+  if(dateValue===localISODate(1)) return "Tomorrow";
+  try{
+    return new Intl.DateTimeFormat("en-AU",{day:"numeric",month:"short",year:"numeric"}).format(new Date(`${dateValue}T12:00:00`));
+  }catch{
+    return dateValue;
+  }
+}
+
 function planDetailsForDrum(drum){
   const buildType=drum.build_type || "Stave";
   const flow=workflowState(buildType,parseChecked(drum.notes),drum.finish,drum.build_client);
@@ -1312,6 +1323,20 @@ function App(){
   const tomorrowPlannedTaskByDrum=Object.fromEntries(
     tomorrowPlan.map(item=>[item.drum_id,item.task_label])
   );
+  const activePlanByDrum=workPlan
+    .filter(item=>item.status!=="Done")
+    .reduce((acc,item)=>{
+      acc[item.drum_id] ??=[];
+      acc[item.drum_id].push(item);
+      return acc;
+    },{});
+  const plannedDatesByDrum=Object.fromEntries(
+    Object.entries(activePlanByDrum).map(([drumId,items])=>[
+      drumId,
+      [...new Set(items.map(item=>item.planned_date))].sort()
+    ])
+  );
+
   const todayWorkshopTasks=workshopTasks.filter(task=>workshopTaskDue(task,localISODate(0)));
   const todayWorkshopTaskMinutes=todayWorkshopTasks.reduce((sum,task)=>sum+Number(task.estimated_minutes||0),0);
 
@@ -1945,7 +1970,7 @@ function App(){
       (data||[]).forEach(item=>map.set(item.id,item));
       return [...map.values()];
     });
-    setMessage(`${rows.length} task${rows.length===1?"":"s"} added to ${plannedDate===localISODate(1)?"tomorrow":"the work plan"}.`);
+    setMessage(`${rows.length} task${rows.length===1?"":"s"} added to ${friendlyPlanDate(plannedDate).toLowerCase()}.`);
     return true;
   }
 
@@ -2162,7 +2187,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.0.2 — zero-price saving and planned-task workflow progression fixed.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.1.0 — schedule drums, batches and kits for today, tomorrow or any date.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -2322,8 +2347,9 @@ function App(){
               progressDrum={progressDrumFromCard}
               progressing={progressingDrumId===d.id}
               onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
-              scheduledTomorrow={tomorrowPlannedDrumIds.has(d.id)}
-              scheduledTask={tomorrowPlannedTaskByDrum[d.id]}
+              plannedDates={plannedDatesByDrum[d.id]||[]}
+              scheduledTask={activePlanByDrum[d.id]?.[0]?.task_label||""}
+              scheduleDrum={(drum,date)=>addDrumsToPlan([drum],date,batchType(drum)||"")}
             />)}
         </div>
       </section>}
@@ -2343,7 +2369,11 @@ function App(){
         return <section className="panel todayTaskPanel" key={name}>
           <div className="todayBatchHeader">
             <h2>{name} <span className="taskCount">({items.length})</span></h2>
-            <button className="primary" onClick={()=>addDrumsToPlan(items,localISODate(1),name)}><CalendarDays size={15}/> Plan Batch for Tomorrow</button>
+            <ScheduleWorkControl
+              label="Schedule Batch"
+              onSchedule={date=>addDrumsToPlan(items,date,name)}
+              compact
+            />
           </div>
 
           {Object.entries(grouped).map(([groupName,groupItems])=>
@@ -2352,8 +2382,10 @@ function App(){
               <div className="todayDrumGrid">
                 {groupItems.map(d=>{
                   const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client);
-                  const scheduledTomorrow=tomorrowPlannedDrumIds.has(d.id);
-                  return <article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduledTomorrow?" scheduledTomorrowCard":"")} key={d.id}>
+                  const plannedDates=plannedDatesByDrum[d.id] || [];
+                  const scheduled=plannedDates.length>0;
+                  const firstPlan=activePlanByDrum[d.id]?.[0];
+                  return <article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduled?" scheduledTomorrowCard":"")} key={d.id}>
                     <div className="cardHeading">
                       <b>#{d.serial} {d.timber}</b>
                       {allocatedCustomerName(d) && <span className="customerNameBadge">{allocatedCustomerName(d)}</span>}
@@ -2364,8 +2396,12 @@ function App(){
                     <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
                     <p><b>Status:</b> {flow.status}</p>
                     <p><b>Next:</b> {flow.nextStep}</p>
-                    {scheduledTomorrow && <div className="scheduledTomorrowBadge"><CalendarDays size={14}/><span>Scheduled tomorrow · {tomorrowPlannedTaskByDrum[d.id]}</span></div>}
-                    {flow.nextStep!=="Complete" && <button type="button" className={scheduledTomorrow?"scheduledButton":""} disabled={scheduledTomorrow} onClick={()=>addDrumsToPlan([d],localISODate(1),name)}><CalendarDays size={15}/> {scheduledTomorrow?"Scheduled Tomorrow":"Plan Tomorrow"}</button>}
+                    {scheduled && <div className="scheduledTomorrowBadge"><CalendarDays size={14}/><span>Scheduled: {plannedDates.map(friendlyPlanDate).join(", ")}{firstPlan?.task_label?` · ${firstPlan.task_label}`:""}</span></div>}
+                    {flow.nextStep!=="Complete" && <ScheduleWorkControl
+                      label="Schedule Work"
+                      onSchedule={date=>addDrumsToPlan([d],date,name)}
+                      scheduledDates={plannedDates}
+                    />}
                     {flow.nextStep!=="Complete" && <button type="button" className="primary" disabled={progressingDrumId===d.id} onClick={()=>progressDrumFromCard(d)}><CheckCircle2 size={15}/> {progressingDrumId===d.id ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
                     <button type="button" onClick={()=>setGlobalPhotoPrompt({drum:d,milestoneKey:"general"})}><Camera size={15}/> Add Photo</button>
                     <button type="button" onClick={()=>setJobCard(d)}>Open job card</button>
@@ -2433,10 +2469,10 @@ function App(){
             progressDrum={progressDrumFromCard}
             progressingDrumId={progressingDrumId}
             onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
-            addToPlan={drum=>addDrumsToPlan([drum],localISODate(1),batchType(drum)||"")}
-            addBatchToPlan={(items,name)=>addDrumsToPlan(items,localISODate(1),name)}
-            scheduledDrumIds={tomorrowPlannedDrumIds}
-            scheduledTaskByDrum={tomorrowPlannedTaskByDrum}
+            scheduleDrum={(drum,date)=>addDrumsToPlan([drum],date,batchType(drum)||"")}
+            scheduleBatch={(items,name,date)=>addDrumsToPlan(items,date,name)}
+            plannedDatesByDrum={plannedDatesByDrum}
+            activePlanByDrum={activePlanByDrum}
           />}
     </section>}
 
@@ -2651,6 +2687,43 @@ function WorkshopTaskModal({task,onClose,onCreate,onUpdate}){
   </div></div>;
 }
 
+function ScheduleWorkControl({label="Schedule Work",onSchedule,scheduledDates=[],compact=false}){
+  const [choice,setChoice]=useState("");
+  const [customDate,setCustomDate]=useState("");
+
+  async function schedule(value){
+    let date=value;
+    if(value==="today") date=localISODate(0);
+    if(value==="tomorrow") date=localISODate(1);
+    if(value==="date"){
+      setChoice("date");
+      return;
+    }
+    if(!date) return;
+    await onSchedule?.(date);
+    setChoice("");
+    setCustomDate("");
+  }
+
+  return <div className={"scheduleWorkControl "+(compact?"compactScheduleControl":"")}>
+    <div className="scheduleSelectWrap">
+      <CalendarDays size={15}/>
+      <select value={choice} onChange={e=>{setChoice(e.target.value);schedule(e.target.value);}}>
+        <option value="">{label}</option>
+        <option value="today" disabled={scheduledDates.includes(localISODate(0))}>Today{scheduledDates.includes(localISODate(0))?" — scheduled":""}</option>
+        <option value="tomorrow" disabled={scheduledDates.includes(localISODate(1))}>Tomorrow{scheduledDates.includes(localISODate(1))?" — scheduled":""}</option>
+        <option value="date">Choose date…</option>
+      </select>
+    </div>
+    {choice==="date" && <div className="customScheduleDate">
+      <input type="date" min={localISODate(0)} value={customDate} onChange={e=>setCustomDate(e.target.value)}/>
+      <button type="button" className="primary" disabled={!customDate || scheduledDates.includes(customDate)} onClick={()=>schedule(customDate)}>
+        {scheduledDates.includes(customDate)?"Already Scheduled":"Add"}
+      </button>
+    </div>}
+  </div>;
+}
+
 function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,completePlannedWork,removePlanItem,rollPlanItems}){
   const drumMap=Object.fromEntries(drums.map(d=>[d.id,d]));
   const today=localISODate(0);
@@ -2710,7 +2783,7 @@ function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,completePlanne
   </section>;
 }
 
-function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,progressingDrumId,onAddPhoto,addToPlan,addBatchToPlan,scheduledDrumIds=new Set(),scheduledTaskByDrum={}}){
+function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,progressingDrumId,onAddPhoto,scheduleDrum,scheduleBatch,plannedDatesByDrum={},activePlanByDrum={}}){
   const projectMap=Object.fromEntries(projects.map(p=>[p.id,p]));
   const linkedGroups={};
   const unlinked=[];
@@ -2751,11 +2824,15 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
           </div>
           <div className="kitGroupProgress">
             <div className="progress"><i style={{width:overall+"%"}}></i></div>
-            <button onClick={()=>addBatchToPlan?.(items,project.name)}><CalendarDays size={15}/> Plan Kit for Tomorrow</button>
+            <ScheduleWorkControl
+              label="Schedule Kit"
+              onSchedule={date=>scheduleBatch?.(items,project.name,date)}
+              compact
+            />
           </div>
         </header>
         <div className="productionList kitDrumGrid">
-          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} addToPlan={addToPlan} scheduledTomorrow={scheduledDrumIds.has(d.id)} scheduledTask={scheduledTaskByDrum[d.id]}/>)}
+          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} scheduleDrum={scheduleDrum} plannedDates={plannedDatesByDrum[d.id]||[]} scheduledTask={activePlanByDrum[d.id]?.[0]?.task_label||""}/>)}
         </div>
       </section>
     })}
@@ -2771,18 +2848,19 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
       <div className="productionList">
         {[...unlinked]
           .sort(productionPriorityCompare)
-          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} addToPlan={addToPlan} scheduledTomorrow={scheduledDrumIds.has(d.id)} scheduledTask={scheduledTaskByDrum[d.id]}/>)}
+          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} scheduleDrum={scheduleDrum} plannedDates={plannedDatesByDrum[d.id]||[]} scheduledTask={activePlanByDrum[d.id]?.[0]?.task_label||""}/>)}
       </div>
     </section>}
   </section>
 }
 
 
-function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto, addToPlan, scheduledTomorrow=false, scheduledTask=""}){
+function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto, scheduleDrum, plannedDates=[], scheduledTask=""}){
   const checked=parseChecked(drum.notes);
   const flow=workflowState(drum.build_type || "Stave",checked,drum.finish,drum.build_client);
 
-  return <article className={"card " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduledTomorrow?" scheduledTomorrowCard":"")}>
+  const scheduled=plannedDates.length>0;
+  return <article className={"card " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduled?" scheduledTomorrowCard":"")}>
     <div className="cardHeading">
       <b>#{drum.serial} {drum.timber}</b>
       {allocatedCustomerName(drum) && <span className="customerNameBadge">{allocatedCustomerName(drum)}</span>}
@@ -2802,9 +2880,13 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     <p><b>Estimated:</b> {flow.estimatedTotal.toFixed(2)} hr production · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
     {trackingNumberFromNotes(drum.notes) && <p className="trackingNumberLine"><b>Tracking:</b> {trackingNumberFromNotes(drum.notes)}</p>}
-    {scheduledTomorrow && <div className="scheduledTomorrowBadge"><CalendarDays size={14}/><span>Scheduled tomorrow{scheduledTask?` · ${scheduledTask}`:""}</span></div>}
+    {scheduled && <div className="scheduledTomorrowBadge"><CalendarDays size={14}/><span>Scheduled: {plannedDates.map(friendlyPlanDate).join(", ")}{scheduledTask?` · ${scheduledTask}`:""}</span></div>}
     <section className="cardActionRow">
-      {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && addToPlan && <button type="button" className={scheduledTomorrow?"scheduledButton":""} disabled={scheduledTomorrow} onClick={()=>addToPlan(drum)}><CalendarDays size={15}/> {scheduledTomorrow?"Scheduled Tomorrow":"Plan Tomorrow"}</button>}
+      {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && scheduleDrum && <ScheduleWorkControl
+        label="Schedule Work"
+        onSchedule={date=>scheduleDrum(drum,date)}
+        scheduledDates={plannedDates}
+      />}
       {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && <button type="button" className="primary" disabled={progressing || !progressDrum} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
       {onAddPhoto && <button type="button" onClick={()=>onAddPhoto(drum)}><Camera size={15}/> Add Photo</button>}
       <button type="button" onClick={()=>openJobCard(drum)}>Open job card</button>

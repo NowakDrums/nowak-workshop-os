@@ -1541,3 +1541,18 @@ button:disabled{opacity:.55;cursor:not-allowed}
 
 /* v7.0.2 planning behaviour note */
 .planProgressNote{display:block;margin-top:5px;color:#a99a80}
+
+/* v7.1.0 flexible work scheduling */
+.scheduleWorkControl{display:grid;gap:6px}
+.scheduleSelectWrap{display:flex;align-items:center;gap:6px;border:1px solid #5b4c35;border-radius:8px;padding:0 8px;background:#171511}
+.scheduleSelectWrap select{border:0;background:transparent;min-width:145px;padding:8px 3px}
+.scheduleSelectWrap select:focus{outline:none}
+.customScheduleDate{display:flex;gap:6px;align-items:center}
+.customScheduleDate input{min-width:145px}
+.compactScheduleControl{min-width:180px}
+.compactScheduleControl .scheduleSelectWrap select{min-width:130px}
+.cardActionRow .scheduleWorkControl{width:100%}
+@media(max-width:620px){
+  .scheduleSelectWrap select,.customScheduleDate input{min-width:0;width:100%}
+  .customScheduleDate{display:grid;grid-template-columns:1fr auto}
+}

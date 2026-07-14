@@ -1,34 +1,38 @@
-# Nowak Workshop OS v7.0.2
+# Nowak Workshop OS v7.1.0
 
-## Zero-price saving fix
+## Flexible scheduling
 
-A saved price of `$0` was being treated as an empty value when the Job Card reopened, causing the previous retail price to appear again.
+The old `Plan Tomorrow` button has been replaced with a simple `Schedule Work` dropdown.
 
-The Job Card now distinguishes between:
+Options:
 
-- an intentionally entered `$0`
-- a genuinely missing price
+- Today
+- Tomorrow
+- Choose date
 
-Brady / CB shell prices can now be saved as zero and remain zero after closing and reopening the Job Card.
+This is available for:
 
-## Planned work now progresses production
+- individual drums in Production
+- individual drums in Workshop Today
+- suggested work batches
+- complete kits and projects
 
-In Today's Plan, ticking a drum task complete now:
+## Scheduled indicators
 
-1. advances the actual drum Job Card workflow by one stage
-2. updates the drum's next step
-3. marks the planned task complete
+Drum cards now show every active scheduled date, for example:
 
-For example, completing a planned **Poly coat 2** task moves the drum to **Poly coat 3**.
+`Scheduled: Today, Tomorrow · Spray polyurethane coat 2`
 
-If the drum's current workflow stage no longer matches the planned item, the app shows a confirmation before progressing it.
+Dates already scheduled are disabled in the dropdown, preventing duplicate tasks for the same drum, date and production stage.
 
-Unticking a completed plan item only returns the plan item to Planned; it does not reverse the drum workflow.
+Choosing a custom date opens a small date picker. Past dates cannot be selected.
+
+Today's Plan updates immediately when Today is selected.
 
 ## Supabase
 
-No migration is required.
+No migration is required. This uses the existing `work_plan_items` table.
 
 ## Rollback
 
-The unchanged v7.0.1 ZIP remains the rollback version.
+The unchanged v7.0.2 ZIP remains the rollback version.
