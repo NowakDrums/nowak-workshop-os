@@ -698,7 +698,7 @@ function batchType(d){
       : "Stave Shell Sanding — After Machining";
   }
 
-  if(buildType==="Stave" && flow.nextStep==="Cut and prepare timber"){
+  if(buildType==="Stave" && ["Cut and prepare timber","Machine the shell"].includes(flow.nextStep)){
     return "Stave Blanks";
   }
 
@@ -2134,7 +2134,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.0.0 — Drum Register, visible media, phone fields and Workshop Today refinements.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.0.1 — Stave Blanks batch label corrected throughout the dashboard.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
