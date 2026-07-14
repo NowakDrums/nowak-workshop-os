@@ -1960,6 +1960,34 @@ function App(){
     return true;
   }
 
+  async function completePlannedWork(item){
+    if(item.status==="Done"){
+      return updatePlanItem(item.id,{status:"Planned"});
+    }
+
+    const drum=drums.find(d=>d.id===item.drum_id);
+    if(!drum){
+      setMessage("The planned drum could not be found.");
+      return false;
+    }
+
+    const checked=parseChecked(drum.notes);
+    const flow=workflowState(drum.build_type || "Stave",checked,drum.finish,drum.build_client);
+    const currentTask=flow.steps[flow.completedCount] || "";
+
+    if(currentTask && item.task_item && currentTask!==item.task_item){
+      const proceed=window.confirm(
+        `This drum is now at "${checklistDisplayLabel(currentTask,drum.build_type||"Stave")}", but the plan item is "${item.task_label}".\n\nProgress the drum's current workflow stage anyway?`
+      );
+      if(!proceed) return false;
+    }
+
+    const progressed=await progressDrumFromCard(drum);
+    if(!progressed) return false;
+
+    return updatePlanItem(item.id,{status:"Done"});
+  }
+
   async function removePlanItem(id){
     const {error}=await supabase.from("work_plan_items").delete().eq("id",id);
     if(error){
@@ -2134,7 +2162,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.0.1 — Stave Blanks batch label corrected throughout the dashboard.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.0.2 — zero-price saving and planned-task workflow progression fixed.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -2268,6 +2296,7 @@ function App(){
         drums={drums}
         openJobCard={setJobCard}
         updatePlanItem={updatePlanItem}
+        completePlannedWork={completePlannedWork}
         removePlanItem={removePlanItem}
         rollPlanItems={rollPlanItems}
       />
@@ -2622,7 +2651,7 @@ function WorkshopTaskModal({task,onClose,onCreate,onUpdate}){
   </div></div>;
 }
 
-function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,removePlanItem,rollPlanItems}){
+function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,completePlannedWork,removePlanItem,rollPlanItems}){
   const drumMap=Object.fromEntries(drums.map(d=>[d.id,d]));
   const today=localISODate(0);
   const tomorrow=localISODate(1);
@@ -2644,6 +2673,7 @@ function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,removePlanItem
           <span className="launchPackEyebrow">{date===today?"WORKSHOP PLAN":"NEXT DAY PLAN"}</span>
           <h2>{title}</h2>
           <p>{unfinished.length} unfinished task{unfinished.length===1?"":"s"} · approximately <b>{formatPlanTime(totalHours)}</b></p>
+          {date===today && <small className="planProgressNote">Ticking a planned drum task complete also advances its Job Card to the next production stage.</small>}
         </div>
         {date===today && unfinished.length>0 && <button onClick={()=>rollPlanItems(unfinished,tomorrow)}><RotateCcw size={15}/> Move Unfinished to Tomorrow</button>}
       </header>
@@ -2657,7 +2687,7 @@ function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,removePlanItem
               <div className="planItemList">{groupItems.map(item=>{
                 const drum=drumMap[item.drum_id];
                 return <article className={"planItem "+(item.status==="Done"?"planItemDone":"")} key={item.id}>
-                  <button className="planCheck" title={item.status==="Done"?"Mark unfinished":"Mark done"} onClick={()=>updatePlanItem(item.id,{status:item.status==="Done"?"Planned":"Done"})}>
+                  <button className="planCheck" title={item.status==="Done"?"Mark unfinished":"Complete task and progress drum"} onClick={()=>completePlannedWork(item)}>
                     <CircleCheckBig size={20}/>
                   </button>
                   <div className="planItemInfo">
@@ -5245,7 +5275,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [checked,setChecked]=useState(parseChecked(drum.notes));
   const [timeAmount,setTimeAmount]=useState(0.5);
   const [timeLabel,setTimeLabel]=useState("Workshop time");
-  const [customPrice,setCustomPrice]=useState(drum.custom_price||drum.retail_price||0);
+  const [customPrice,setCustomPrice]=useState(drum.custom_price ?? drum.retail_price ?? 0);
   const [shipping,setShipping]=useState(drum.shipping_cost||0);
   const [veneer,setVeneer]=useState([drum.veneer_1_thickness,drum.veneer_2_thickness,drum.veneer_3_thickness,drum.veneer_4_thickness,drum.veneer_5_thickness].map(x=>x||1.2));
   const [draft,setDraft]=useState({

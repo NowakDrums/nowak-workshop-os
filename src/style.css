@@ -1538,3 +1538,6 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .registerRow,.registerExpanded{grid-template-columns:1fr}
   .registerSortLabel{margin-left:0;width:100%}
 }
+
+/* v7.0.2 planning behaviour note */
+.planProgressNote{display:block;margin-top:5px;color:#a99a80}
