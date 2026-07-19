@@ -1568,3 +1568,35 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .serialSuggestionBox span,.serialSuggestionBox small{display:block;color:#a99a80}
 .serialSuggestionBox b{display:block;font-size:1.35rem;color:#efc46b;margin:3px 0}
 @media(max-width:620px){.serialSuggestionBox{display:grid}}
+
+/* v7.3.0 historical drum migration */
+.historicalImportIntro{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.historicalImportIntro h2{margin:3px 0}
+.historicalImportStats{grid-template-columns:repeat(5,minmax(0,1fr));margin-top:12px}
+.historicalImportStats button{display:grid;text-align:left}
+.historicalImportStats b{font-size:1.5rem}
+.historicalImportNotice{margin-top:12px;border-color:#665334}
+.historicalImportNotice b{color:#efc46b}
+.historicalImportToolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:12px}
+.historicalImportToolbar .searchBar{margin:0;flex:1}
+.historicalImportTable{padding:0;overflow:hidden;margin-top:12px}
+.historicalImportHeader,.historicalImportRow{display:grid;grid-template-columns:.75fr .9fr 1.6fr .9fr 1.2fr 1fr;gap:10px;align-items:center}
+.historicalImportHeader{padding:10px 12px;background:#211d17;color:#d3aa5d;font-size:12px;text-transform:uppercase}
+.historicalImportRow{padding:10px 12px;border-top:1px solid #342d24}
+.historicalImportDetail{display:flex;gap:12px;align-items:center;padding:0 12px 10px;color:#a99a80;font-size:12px}
+.historicalImportDetail button{margin-left:auto}
+.historicalStatus{display:inline-flex;width:max-content;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.historicalReady{background:#26351f;color:#b8d99e}
+.historicalAlreadyimported{background:#23313c;color:#a9cce3}
+.historicalConflict,.historicalSourceconflict{background:#49251f;color:#efb1a5}
+@media(max-width:900px){
+  .historicalImportStats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .historicalImportHeader{display:none}
+  .historicalImportRow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .historicalImportDetail{display:grid}
+  .historicalImportDetail button{margin-left:0}
+}
+@media(max-width:560px){
+  .historicalImportIntro{display:grid}
+  .historicalImportRow{grid-template-columns:1fr}
+}

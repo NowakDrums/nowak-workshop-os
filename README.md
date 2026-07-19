@@ -1,53 +1,58 @@
-# Nowak Workshop OS v7.2.0
+# Nowak Workshop OS v7.3.0
 
-## Revised timing allowances
+## Historical Drum Import
 
-### Stave
+A new Historical Import page contains the 97 completed drums found in `Serial Number Record.xlsx`.
 
-Added:
-- High Gloss preparation/back-cutting: 0.50 hr
-- Final shell preparation: 0.25 hr
-- Prepare hardware and heads: 0.25 hr
+Before importing, the app cross-references every spreadsheet row against all current and archived drum records using:
 
-### Ply
+- production number
+- Nowak serial number
 
-Updated:
-- Cut veneer and glue pairs: 0.75 hr
-- Lay up shell: 0.30 hr
-- Sand shell: 0.30 hr
-- Bearing edges: 0.15 hr
-- Snare beds: 0.15 hr
-- Mark and drill: 0.75 hr
-- Prepare hardware and heads: 0.25 hr
-- Assemble: 0.30 hr
-- High Gloss preparation: 0.50 hr
-- Final shell preparation: 0.25 hr
+Records are classified as:
 
-Brady / CB shell-only jobs exclude hardware preparation and assembly.
+- Ready
+- Already imported
+- Conflict
+- Source conflict
 
-## Fiddleback High Gloss
+Only Ready records are imported. Existing records are never overwritten.
 
-A non-mandatory notice suggests considering a fifth polyurethane coat. It is not a required checklist stage and does not prevent progression.
+## Imported Job Cards
 
-## Veneer calculator
+Every imported drum is created as a complete archived Nowak Job Card. Imported records:
 
-Layers 3 and 5 are highlighted:
-- 1.0 mm pairs: Layer 3 suggests 2 mm shorter; Layer 5 suggests 1 mm shorter
-- other thicknesses: warning that practical fit may vary by about 1 mm
+- appear in Drum Register and Archive
+- remain fully editable
+- support stored photos and videos
+- allow customer phone, email and address to be added later
+- allow prices to be added later
+- preserve every original spreadsheet field in Job Card notes
+- remain excluded from active production and Workshop Today
 
-The original calculation remains visible.
+## Source data mapping
 
-## Encoded Nowak serial number
+Imported where identifiable:
 
-Nowak Job Cards show an encoded serial suggestion based on:
-`(day of year + production number + year) × production number`
+- production number
+- Nowak serial number
+- completion date
+- timber/material description
+- size
+- customer name
+- finish
+- stave or ply construction
 
-The suggestion is optional. The app checks for duplicate Nowak serials and blocks saving a duplicate.
+The source workbook does not contain a price column. Prices are imported as $0 rather than guessed.
+
+The spreadsheet contains a duplicate production number 43. The Historical Import page identifies this as a source conflict and does not import either conflicting row automatically.
 
 ## Supabase
 
-No migration is required.
+No new migration is required. This uses the existing drums table.
+
+The earlier v7.0.0 customer-phone migration is still required if it has not already been run.
 
 ## Rollback
 
-Use v7.1.0 to roll back.
+Use v7.2.0 to roll back.
