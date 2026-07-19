@@ -23,7 +23,8 @@ const checklist = [
   "Bearing edges cut","Snare beds cut","Drilled","Inside oiled / sealed",
   "Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Satin coat",
   "Danish oil 1","Danish oil 2","Danish oil 3",
-  "Cure complete","Polished","Assembled","Photos taken","Website listing",
+  "Cure complete","High Gloss preparation","Polished","Final shell preparation",
+  "Prepare hardware / heads","Assembled","Photos taken","Website listing",
   "Facebook / Instagram","YouTube demo","Packed","Shipped"
 ];
 
@@ -35,7 +36,7 @@ function manufacturingChecklist(buildType,finish="",buildClient=""){
     if(fulfilmentChecklist.includes(item) || marketingChecklist.includes(item)) return false;
     // Brady / CB work is normally shell-only. Assembly can still be recorded
     // manually in notes, but it is not required for workflow completion.
-    if(buildClient==="Brady" && item==="Assembled") return false;
+    if(buildClient==="Brady" && ["Prepare hardware / heads","Assembled"].includes(item)) return false;
     return true;
   });
 }
@@ -61,7 +62,10 @@ const workflowEstimates = {
     "Danish oil 2":0.25,
     "Danish oil 3":0.25,
     "Cure complete":0,
+    "High Gloss preparation":0.50,
     "Polished":1.00,
+    "Final shell preparation":0.25,
+    "Prepare hardware / heads":0.25,
     "Assembled":0.50,
     "Photos taken":0.50,
     "Website listing":0.25,
@@ -71,12 +75,12 @@ const workflowEstimates = {
     "Shipped":0.25,
   },
   Ply: {
-    "Timber / veneer ready":1.25,
-    "Glue up complete":0.50,
-    "Sanded":0.50,
-    "Bearing edges cut":0.25,
-    "Snare beds cut":0.25,
-    "Drilled":0.50,
+    "Timber / veneer ready":0.75,
+    "Glue up complete":0.30,
+    "Sanded":0.30,
+    "Bearing edges cut":0.15,
+    "Snare beds cut":0.15,
+    "Drilled":0.75,
     "Inside oiled / sealed":0.25,
     "Sealer coat":0.20,
     "Poly coat 1":0.20,
@@ -88,8 +92,11 @@ const workflowEstimates = {
     "Danish oil 2":0.25,
     "Danish oil 3":0.25,
     "Cure complete":0,
+    "High Gloss preparation":0.50,
     "Polished":1.00,
-    "Assembled":0.50,
+    "Final shell preparation":0.25,
+    "Prepare hardware / heads":0.25,
+    "Assembled":0.30,
     "Photos taken":0.50,
     "Website listing":0.25,
     "Facebook / Instagram":0.25,
@@ -117,8 +124,11 @@ const workflowLabels = {
   "Danish oil 1": {status:"Danish Oil Coat 1 Complete", next:"Apply Danish oil coat 2"},
   "Danish oil 2": {status:"Danish Oil Coat 2 Complete", next:"Apply Danish oil coat 3"},
   "Danish oil 3": {status:"Danish Oil Complete", next:"Allow the finish to cure"},
-  "Cure complete": {status:"Finish Cured", next:"Polish the shell"},
-  "Polished": {status:"Polishing Complete", next:"Assemble the drum"},
+  "Cure complete": {status:"Finish Cured", next:"Prepare the High Gloss shell"},
+  "High Gloss preparation": {status:"High Gloss Preparation Complete", next:"Polish the shell"},
+  "Polished": {status:"Polishing Complete", next:"Complete final shell preparation"},
+  "Final shell preparation": {status:"Final Shell Preparation Complete", next:"Prepare hardware and heads"},
+  "Prepare hardware / heads": {status:"Hardware and Heads Ready", next:"Assemble the drum"},
   "Assembled": {status:"Drum Assembled", next:"Take final photographs"},
   "Photos taken": {status:"Photography Complete", next:"Create the website listing"},
   "Website listing": {status:"Website Listed", next:"Create Facebook and Instagram content"},
@@ -135,6 +145,8 @@ function applicableChecklist(buildType, finish=""){
 
   return checklist.filter(item=>{
     if(buildType==="Ply" && item==="Machined") return false;
+    if(item==="High Gloss preparation" && (isNatural || isSatin)) return false;
+    if(item==="Final shell preparation" && (isNatural || isSatin)) return false;
 
     if(isNatural){
       if([
@@ -245,7 +257,10 @@ function workflowNextInstruction(nextItem,buildType){
     "Danish oil 2":"Apply Danish oil coat 2",
     "Danish oil 3":"Apply Danish oil coat 3",
     "Cure complete":"Allow the finish to cure",
+    "High Gloss preparation":"Prepare the High Gloss shell",
     "Polished":"Polish the shell",
+    "Final shell preparation":"Fine steel wool and final inside oil",
+    "Prepare hardware / heads":"Prepare hardware, heads and throw-off",
     "Assembled":"Assemble the drum",
     "Photos taken":"Take final photographs",
     "Website listing":"Create the website listing",
@@ -364,6 +379,12 @@ const photoMilestones = {
     social:"The drum is now complete. From the original timber through every stage of machining, finishing and assembly, it has been built by hand in Western Australia and is now ready to be played.",
   },
 };
+
+function shouldSuggestExtraFiddlebackCoat(drum){
+  const timber=String(drum?.timber||"").toLowerCase();
+  const finish=String(drum?.finish||"").toLowerCase();
+  return timber.includes("fiddleback") && finish.includes("high gloss");
+}
 
 function photoMilestoneForCompletion(drum,item){
   const key=photoMilestoneByChecklist[item];
@@ -709,7 +730,9 @@ function workshopBatchPriority(name){
   const text=String(name||"").toLowerCase();
   const order=[
     ["assemble",10],
-    ["final",12],
+    ["prepare hardware",11],
+    ["final shell",12],
+    ["high gloss preparation",18],
     ["polish",20],
     ["cure",30],
     ["satin",35],
@@ -1148,6 +1171,25 @@ function nextCbNumber(drums=[]){
 
 function normaliseJobNumber(value){
   return String(value||"").trim().replace(/^#/,"").toLowerCase();
+}
+
+function dayOfYear(dateValue=new Date()){
+  const date=dateValue instanceof Date ? dateValue : new Date(dateValue);
+  const start=new Date(date.getFullYear(),0,0);
+  return Math.floor((date-start)/86400000);
+}
+
+function calculateEncodedNowakSerial(productionNumber,dateValue=new Date()){
+  const drumNumber=extractNumber(productionNumber);
+  if(!drumNumber) return "";
+  const date=dateValue instanceof Date ? dateValue : new Date(dateValue);
+  return String((dayOfYear(date)+drumNumber+date.getFullYear())*drumNumber);
+}
+
+function encodedSerialConflict(drums,serial,excludeId=null){
+  const value=String(serial||"").trim();
+  if(!value) return null;
+  return drums.find(d=>d.id!==excludeId && String(d.nowak_serial||"").trim()===value) || null;
 }
 
 function duplicateNumberMessage(drums,{id=null,serial="",cbNumber="",buildClient=""}){
@@ -2187,7 +2229,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.1.0 — schedule drums, batches and kits for today, tomorrow or any date.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.2.0 — revised timings, veneer fit guidance and encoded serial suggestions.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3115,7 +3157,7 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
               </label>
             )}
           </div>
-          <VeneerResult lengths={lengths}/>
+          <VeneerResult lengths={lengths} thicknesses={form.veneer}/>
         </> : <>
           <StaveSpecPanel diameter={form.diameter} drumType={form.drum_type} buildType="Stave" serial={form.serial} timber={timber} size={size}/>
         </>}
@@ -3225,12 +3267,29 @@ function VeneerCalculator({drums, updateDrum, openJobCard}){
   const manualLengths=adjustedLengths(manual, manualSize);
   return <section>
     <div className="panel"><h2>Ply Veneer Cut Calculator</h2><p>12&quot;, 13&quot; and 14&quot; cut lists are adjusted automatically from the selected shell size, then fine-tuned by actual thickness.</p></div>
-    <section className="panel"><h2>Manual Calculator</h2><label>Shell size</label><select value={manualSize} onChange={e=>setManualSize(e.target.value)}><option>14 x 6.5</option><option>14 x 5.5</option><option>13 x 7</option><option>12 x 7</option></select><p className="calcNote">{sizeAdjustmentLabel(manualSize)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><VeneerResult lengths={manualLengths}/></section>
+    <section className="panel"><h2>Manual Calculator</h2><label>Shell size</label><select value={manualSize} onChange={e=>setManualSize(e.target.value)}><option>14 x 6.5</option><option>14 x 5.5</option><option>13 x 7</option><option>12 x 7</option></select><p className="calcNote">{sizeAdjustmentLabel(manualSize)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><VeneerResult lengths={manualLengths} thicknesses={manual}/></section>
     <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>#{d.serial} {d.timber}</b><span>{d.size} · {d.production_status}</span><p className="calcNote">{sizeAdjustmentLabel(d.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(t, d.size)}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
   </section>
 }
 
-function VeneerResult({lengths}){ return <div className="resultList">{lengths.map((l,i)=><div key={i}><b>Layer {i+1}</b><span>{l.toFixed(1)} mm</span></div>)}</div> }
+function VeneerResult({lengths,thicknesses=[]}){
+  return <div className="resultList veneerResultList">{lengths.map((l,i)=>{
+    const thickness=Number(thicknesses[i] ?? 0);
+    const isOneMm=Math.abs(thickness-1)<0.051;
+    const isLayer3=i===2;
+    const isLayer5=i===4;
+    const practicalAdjustment=isOneMm && isLayer3 ? 2 : isOneMm && isLayer5 ? 1 : 0;
+    return <div className={(isLayer3||isLayer5)?"veneerSensitiveLayer":""} key={i}>
+      <b>Layer {i+1}</b>
+      <span>{l.toFixed(1)} mm</span>
+      {practicalAdjustment>0
+        ? <small className="veneerPracticalHighlight">Observed practical trial: {(l-practicalAdjustment).toFixed(1)} mm ({practicalAdjustment} mm shorter)</small>
+        : (isLayer3||isLayer5)
+          ? <small className="veneerFitWarning">Check fit before cutting — practical length may vary by about 1 mm.</small>
+          : null}
+    </div>;
+  })}</div>;
+}
 
 
 function localDateKey(value){
@@ -5385,6 +5444,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [isSaving,setIsSaving]=useState(false);
   const [projectMessage,setProjectMessage]=useState("");
   const [photoPrompt,setPhotoPrompt]=useState(null);
+  const suggestedNowakSerial=calculateEncodedNowakSerial(draft.serial,new Date());
+  const serialConflict=encodedSerialConflict(drums,suggestedNowakSerial,drum.id);
   const flow=workflowState(localBuildType,checked,draft.finish,localOwnership);
   const totalCost=templateCost(template,labourRate);
   const totalPrice=Number(customPrice||0)+Number(shipping||0);
@@ -5432,6 +5493,15 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       cbNumber:localCbNumber,
       buildClient:localOwnership,
     });
+    const nowakSerialDuplicate=localOwnership==="Nowak"
+      ? encodedSerialConflict(drums,draft.nowak_serial,drum.id)
+      : null;
+    if(nowakSerialDuplicate){
+      const detail=`Nowak serial ${draft.nowak_serial} is already used by production #${nowakSerialDuplicate.serial}.`;
+      setSavedMessage(detail);
+      setMessage(detail);
+      return false;
+    }
     if(numberError){
       setSavedMessage(numberError);
       setMessage(numberError);
@@ -5781,9 +5851,13 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     </section>
 
     {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Stave" serial={drum.serial} timber={draft.timber} size={drum.size}/></section>}
-    {localBuildType==="Ply" && <section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={draft.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)}/></section>}
+    {localBuildType==="Ply" && <section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={draft.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)} thicknesses={veneer}/></section>}
 
     <section className="panel inner"><h2>Manufacturing Checklist</h2>
+      {shouldSuggestExtraFiddlebackCoat({...drum,...draft,timber:draft.timber,finish:draft.finish}) && <div className="fiddlebackCoatSuggestion">
+        <b>Fiddleback High Gloss consideration</b>
+        <span>Consider applying an additional fifth polyurethane coat for extra build and depth. This is a workshop suggestion only and is not required to complete the workflow.</span>
+      </div>}
       {String(draft.finish||"").toLowerCase().includes("natural") && <p className="naturalFinishNote">
         Natural finish workflow: 3 × Danish oil coats. Sealer and polyurethane coats are not required.
       </p>}
@@ -5977,15 +6051,32 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         <span className="serialStatusBadge">{flow.percent===100 ? "Ready to assign" : "Assign when complete"}</span>
       </div>
       <p>{flow.percent===100
-        ? "This drum is complete. Enter the final Nowak serial number."
-        : "The field is available now, but normally the final serial number is entered when the drum is completed."}</p>
+        ? "This drum is complete. Use the private encoded suggestion or enter a serial manually."
+        : "The calculator is available now, but the final serial is normally assigned when the drum is completed."}</p>
+      <section className="serialSuggestionBox">
+        <div>
+          <span>Encoded suggestion</span>
+          <b>{suggestedNowakSerial || "Production number required"}</b>
+          <small>Generated from the private production number and today's completion date. It does not show an obvious production sequence.</small>
+        </div>
+        <button
+          type="button"
+          disabled={!suggestedNowakSerial || Boolean(serialConflict)}
+          onClick={()=>setDraft({...draft,nowak_serial:suggestedNowakSerial})}
+        >
+          Use Suggested Serial
+        </button>
+      </section>
+      {serialConflict && <p className="dangerText">This suggested serial is already used by production #{serialConflict.serial}.</p>}
       <label>Nowak serial number</label>
       <input
         value={draft.nowak_serial}
         onChange={e=>setDraft({...draft,nowak_serial:e.target.value})}
-        placeholder="Enter final Nowak serial number"
+        placeholder="Enter or generate final Nowak serial number"
       />
-      <small>Use the main Save Changes button to store the serial number.</small>
+      {draft.nowak_serial && encodedSerialConflict(drums,draft.nowak_serial,drum.id)
+        ? <small className="dangerText">Duplicate serial number — it will not be saved.</small>
+        : <small>Use the main Save Changes button to store the serial number.</small>}
     </section>}
 
     {photoPrompt && <MilestonePhotoModal

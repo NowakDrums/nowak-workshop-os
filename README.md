@@ -1,38 +1,53 @@
-# Nowak Workshop OS v7.1.0
+# Nowak Workshop OS v7.2.0
 
-## Flexible scheduling
+## Revised timing allowances
 
-The old `Plan Tomorrow` button has been replaced with a simple `Schedule Work` dropdown.
+### Stave
 
-Options:
+Added:
+- High Gloss preparation/back-cutting: 0.50 hr
+- Final shell preparation: 0.25 hr
+- Prepare hardware and heads: 0.25 hr
 
-- Today
-- Tomorrow
-- Choose date
+### Ply
 
-This is available for:
+Updated:
+- Cut veneer and glue pairs: 0.75 hr
+- Lay up shell: 0.30 hr
+- Sand shell: 0.30 hr
+- Bearing edges: 0.15 hr
+- Snare beds: 0.15 hr
+- Mark and drill: 0.75 hr
+- Prepare hardware and heads: 0.25 hr
+- Assemble: 0.30 hr
+- High Gloss preparation: 0.50 hr
+- Final shell preparation: 0.25 hr
 
-- individual drums in Production
-- individual drums in Workshop Today
-- suggested work batches
-- complete kits and projects
+Brady / CB shell-only jobs exclude hardware preparation and assembly.
 
-## Scheduled indicators
+## Fiddleback High Gloss
 
-Drum cards now show every active scheduled date, for example:
+A non-mandatory notice suggests considering a fifth polyurethane coat. It is not a required checklist stage and does not prevent progression.
 
-`Scheduled: Today, Tomorrow · Spray polyurethane coat 2`
+## Veneer calculator
 
-Dates already scheduled are disabled in the dropdown, preventing duplicate tasks for the same drum, date and production stage.
+Layers 3 and 5 are highlighted:
+- 1.0 mm pairs: Layer 3 suggests 2 mm shorter; Layer 5 suggests 1 mm shorter
+- other thicknesses: warning that practical fit may vary by about 1 mm
 
-Choosing a custom date opens a small date picker. Past dates cannot be selected.
+The original calculation remains visible.
 
-Today's Plan updates immediately when Today is selected.
+## Encoded Nowak serial number
+
+Nowak Job Cards show an encoded serial suggestion based on:
+`(day of year + production number + year) × production number`
+
+The suggestion is optional. The app checks for duplicate Nowak serials and blocks saving a duplicate.
 
 ## Supabase
 
-No migration is required. This uses the existing `work_plan_items` table.
+No migration is required.
 
 ## Rollback
 
-The unchanged v7.0.2 ZIP remains the rollback version.
+Use v7.1.0 to roll back.
