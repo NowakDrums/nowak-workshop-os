@@ -1355,7 +1355,7 @@ function App(){
   const overdue=active.filter(d=>d.due_date && new Date(d.due_date) < new Date()).length;
   const cureQueue=active.filter(d=>["Polyurethane Coat 4","Finished Spraying / Curing"].includes(d.production_status)).length;
   const photoQueue=active.filter(d=>d.production_status==="Finished / Ready to Sell").length;
-  const outstandingFinalWork=filtered.filter(d=>outstandingWorkFromNotes(d.notes));
+  const outstandingFinalWork=filtered.filter(d=>!isArchivedStatus(d) && !isSoldStatus(d) && !isShippedStatus(d) && outstandingWorkFromNotes(d.notes));
   const activeRepairs=repairs.filter(r=>r.status!=="Collected & Paid");
   const readyRepairs=repairs.filter(r=>r.status==="Ready for Collection");
   const repairIncome=repairs
@@ -2317,7 +2317,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.3.0 — safe historical drum import with live duplicate checking.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.3.1 — kit prefill, project ordering and archived-drum visibility fixed.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -2449,7 +2449,7 @@ function App(){
     {view==="today" && <>
       <DailyWorkPlan
         workPlan={workPlan}
-        drums={drums}
+        drums={operationalDrums}
         openJobCard={setJobCard}
         updatePlanItem={updatePlanItem}
         completePlannedWork={completePlannedWork}
@@ -2867,7 +2867,8 @@ function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,completePlanne
   const tomorrow=localISODate(1);
 
   function PlanSection({date,title}){
-    const items=workPlan.filter(item=>item.planned_date===date);
+    const activeDrumIds=new Set(drums.map(drum=>drum.id));
+    const items=workPlan.filter(item=>item.planned_date===date && activeDrumIds.has(item.drum_id));
     const unfinished=items.filter(item=>item.status!=="Done");
     const totalHours=unfinished.reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
     const grouped={};
@@ -3093,6 +3094,45 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
         }
       }
 
+      if(key==="project_id" && value){
+        const selectedProject=projects.find(project=>project.id===value);
+        const linkedDrums=drums
+          .filter(drum=>drum.project_id===value && !isArchivedStatus(drum))
+          .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial));
+        const sourceDrum=linkedDrums.find(drum=>
+          drum.customer || drum.customer_phone || drum.customer_email || drum.shipping_address
+        ) || linkedDrums[0];
+
+        if(selectedProject?.customer && (!current.customer || current.customer==="Stock")){
+          next.customer=selectedProject.customer;
+          next.order_type="Custom";
+        }
+        if(selectedProject?.due_date && !current.due_date){
+          next.due_date=selectedProject.due_date;
+        }
+
+        if(sourceDrum){
+          if(sourceDrum.build_client) next.build_client=sourceDrum.build_client;
+          if(sourceDrum.customer && sourceDrum.customer!=="Stock"){
+            next.customer=sourceDrum.customer;
+            next.order_type="Custom";
+          }
+          if(sourceDrum.customer_phone) next.customer_phone=sourceDrum.customer_phone;
+          if(sourceDrum.customer_email) next.customer_email=sourceDrum.customer_email;
+          if(sourceDrum.shipping_address) next.shipping_address=sourceDrum.shipping_address;
+          if(sourceDrum.timber){
+            if(timberOptions.includes(sourceDrum.timber)){
+              next.timber=sourceDrum.timber;
+              next.customTimber="";
+            }else{
+              next.timber="Custom / Other";
+              next.customTimber=sourceDrum.timber;
+            }
+          }
+          if(sourceDrum.finish) next.finish=sourceDrum.finish;
+        }
+      }
+
       return next;
     });
   }
@@ -3163,6 +3203,9 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
             {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </label>
+        {form.project_id && <p className="projectPrefillNote">
+          Customer details, material and finish have been copied from the existing active drums in this kit where available. You can still change them for this drum.
+        </p>}
         <button type="button" onClick={async()=>{
           const name=window.prompt("New kit / project name");
           if(!name) return;
@@ -5073,6 +5116,7 @@ function FutureProjectModal({project,onClose,onCreate,onUpdate}){
 }
 
 function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,linkDrumsToProject,unlinkDrumFromProject}){
+  const activeDrums=drums.filter(d=>!isArchivedStatus(d));
   const [selectedProject,setSelectedProject]=useState(projects[0]?.id || "");
   const [selectedDrums,setSelectedDrums]=useState([]);
 
@@ -5102,7 +5146,7 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
     <section className="panel projectToolbar">
       <div>
         <h2>Kits / Projects</h2>
-        <p>You can link drums here in bulk, or open any Job Card and use its Kit / Project dropdown. Each drum keeps its own job card and production number.</p>
+        <p>Active kits and projects appear first. Open a linked drum to view its Job Card, or use the section below to link additional active drums.</p>
       </div>
       <button className="primary" onClick={createProject}><FolderPlus size={16}/> New Kit / Project</button>
     </section>
@@ -5112,36 +5156,9 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
       <p>Click New Kit / Project first. If creation fails, run the included v5.0 Supabase setup.</p>
     </section>}
 
-    <section className="panel linkExistingPanel">
-      <h2>Link Existing Drums</h2>
-      <div className="twoInputGrid">
-        <label>Choose kit / project
-          <select value={selectedProject} onChange={e=>setSelectedProject(e.target.value)}>
-            <option value="">Choose a kit / project</option>
-            {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </label>
-        <div className="linkAction">
-          <button className="primary" onClick={linkSelected}><Layers3 size={16}/> Link Selected Drums</button>
-        </div>
-      </div>
-
-      <div className="drumLinkGrid">
-        {[...drums].sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial)).map(d=>
-          <label className={"drumLinkItem "+(selectedDrums.includes(d.id)?"selected":"")} key={d.id}>
-            <input type="checkbox" checked={selectedDrums.includes(d.id)} onChange={()=>toggleDrum(d.id)}/>
-            <span>
-              <b>#{d.serial} · {d.size} · {d.drum_type||"Snare"}</b>
-              <small>{d.timber} · Currently: {projectName(d.project_id)}</small>
-            </span>
-          </label>
-        )}
-      </div>
-    </section>
-
     <section className="templateGrid">
       {projects.map(project=>{
-        const linked=drums
+        const linked=activeDrums
           .filter(d=>d.project_id===project.id)
           .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial));
         const complete=linked.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).percent===100).length;
@@ -5168,6 +5185,34 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
         </article>
       })}
     </section>
+
+    <section className="panel linkExistingPanel">
+      <h2>Link Existing Drums</h2>
+      <div className="twoInputGrid">
+        <label>Choose kit / project
+          <select value={selectedProject} onChange={e=>setSelectedProject(e.target.value)}>
+            <option value="">Choose a kit / project</option>
+            {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
+        <div className="linkAction">
+          <button className="primary" onClick={linkSelected}><Layers3 size={16}/> Link Selected Drums</button>
+        </div>
+      </div>
+
+      <div className="drumLinkGrid">
+        {[...activeDrums].sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial)).map(d=>
+          <label className={"drumLinkItem "+(selectedDrums.includes(d.id)?"selected":"")} key={d.id}>
+            <input type="checkbox" checked={selectedDrums.includes(d.id)} onChange={()=>toggleDrum(d.id)}/>
+            <span>
+              <b>#{d.serial} · {d.size} · {d.drum_type||"Snare"}</b>
+              <small>{d.timber} · Currently: {projectName(d.project_id)}</small>
+            </span>
+          </label>
+        )}
+      </div>
+    </section>
+
   </section>
 }
 

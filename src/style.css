@@ -1600,3 +1600,6 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .historicalImportIntro{display:grid}
   .historicalImportRow{grid-template-columns:1fr}
 }
+
+/* v7.3.1 project workflow refinements */
+.projectPrefillNote{margin:8px 0 0;padding:9px 10px;border:1px solid #5d4b2e;border-radius:8px;background:#1b1711;color:#d7c4a2}

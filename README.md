@@ -1,58 +1,44 @@
-# Nowak Workshop OS v7.3.0
+# Nowak Workshop OS v7.3.1
 
-## Historical Drum Import
+## Kit / project prefill
 
-A new Historical Import page contains the 97 completed drums found in `Serial Number Record.xlsx`.
+When a kit or project is selected in Add Drum, the app now looks at the existing active drums in that kit and copies available:
 
-Before importing, the app cross-references every spreadsheet row against all current and archived drum records using:
-
-- production number
-- Nowak serial number
-
-Records are classified as:
-
-- Ready
-- Already imported
-- Conflict
-- Source conflict
-
-Only Ready records are imported. Existing records are never overwritten.
-
-## Imported Job Cards
-
-Every imported drum is created as a complete archived Nowak Job Card. Imported records:
-
-- appear in Drum Register and Archive
-- remain fully editable
-- support stored photos and videos
-- allow customer phone, email and address to be added later
-- allow prices to be added later
-- preserve every original spreadsheet field in Job Card notes
-- remain excluded from active production and Workshop Today
-
-## Source data mapping
-
-Imported where identifiable:
-
-- production number
-- Nowak serial number
-- completion date
-- timber/material description
-- size
 - customer name
+- customer phone
+- customer email
+- shipping address
+- due date
+- ownership
+- timber/material
 - finish
-- stave or ply construction
 
-The source workbook does not contain a price column. Prices are imported as $0 rather than guessed.
+The copied information remains editable for the new drum.
 
-The spreadsheet contains a duplicate production number 43. The Historical Import page identifies this as a source conflict and does not import either conflicting row automatically.
+Project-level customer and due-date information are used where available. Archived drums are not used as the source for prefilled details.
+
+## Kits / Projects page
+
+- Kit and project cards now appear at the top.
+- The Link Existing Drums section appears below them.
+- Archived drums are excluded from project cards.
+- Archived drums are excluded from the list of drums available to link.
+
+## Workshop Today
+
+Archived drums are now excluded from:
+
+- Today's Plan, including stale scheduled items
+- Tomorrow's Plan
+- Outstanding Final Work
+- suggested workshop batches
+
+The underlying old plan entry is retained for history, but it is not shown as current workshop work.
 
 ## Supabase
 
-No new migration is required. This uses the existing drums table.
-
-The earlier v7.0.0 customer-phone migration is still required if it has not already been run.
+No migration is required.
 
 ## Rollback
 
-Use v7.2.0 to roll back.
+Use v7.3.0 to roll back.
