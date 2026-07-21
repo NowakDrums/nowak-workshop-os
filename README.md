@@ -1,45 +1,21 @@
-# Nowak Workshop OS v7.4.0
+# Nowak Workshop OS v7.4.1
 
-## Project / Kit Media
+## Project / Kit Media blank-page fix
 
-Each active kit or project now has its own media library, separate from the individual drum Job Cards.
+Clicking **Add Media** opened a blank page because the media-picker icon was referenced but not imported into the application.
 
-Available actions:
+The icon import has been corrected. The Project / Kit Media upload window now opens normally.
 
-- take a photo or video
-- choose one or more files from the device
-- view stored project media
-- open the full-size file
-- delete media
-- add an optional caption or note
+All v7.4.0 project-media features remain unchanged.
 
-Categories:
+## Supabase
 
-- Project Progress
-- Shells Together
-- Finished Kit
-- Final Photos
-- Video
-- General
+No new migration is required.
 
-Project media is stored against the project itself, so photos showing the full kit or multiple matching shells do not need to be attached to one individual drum.
-
-Individual drum media remains unchanged.
-
-## Storage
-
-Project files use the existing public `drum-photos` storage bucket under:
-
-`projects/<project-id>/<category>/...`
-
-## Supabase migration required
-
-Run this migration once:
+The v7.4.0 migration is still required if it has not already been run:
 
 `supabase/v7_4_0_project_media.sql`
 
-It creates the additive `project_media` table and does not alter existing drum, project or photo records.
-
 ## Rollback
 
-Use v7.3.3 to roll back the app. The additive `project_media` table can remain in Supabase without affecting the rollback version.
+Use v7.4.0 to roll back.
