@@ -1,21 +1,40 @@
-# Nowak Workshop OS v7.4.1
+# Nowak Workshop OS v7.4.2
 
-## Project / Kit Media blank-page fix
+## Upload and save to iPhone
 
-Clicking **Add Media** opened a blank page because the media-picker icon was referenced but not imported into the application.
+Photo and video upload buttons now use one combined action:
 
-The icon import has been corrected. The Project / Kit Media upload window now opens normally.
+`Upload & Save to iPhone`
 
-All v7.4.0 project-media features remain unchanged.
+When supported by the device:
+
+1. Tap the button once.
+2. The iPhone share sheet opens with the selected original photo or video.
+3. Choose `Save Image` or `Save Video`.
+4. Workshop OS then uploads the same media to the relevant drum, Launch Pack or project.
+
+If the share sheet is closed or cancelled, the app upload still continues.
+
+This flow is available for:
+
+- drum milestone photos
+- Launch Pack photos and videos
+- Project / Kit Media
+
+## Important iPhone limitation
+
+Safari still requires the user to choose `Save Image` or `Save Video` in the Apple share sheet. A web app cannot silently write into the Photos library.
+
+On devices that do not support sharing files, the button simply uploads the media to Workshop OS.
 
 ## Supabase
 
 No new migration is required.
 
-The v7.4.0 migration is still required if it has not already been run:
+The v7.4.0 project-media migration is still required if it has not already been run:
 
 `supabase/v7_4_0_project_media.sql`
 
 ## Rollback
 
-Use v7.4.0 to roll back.
+Use v7.4.1 to roll back.

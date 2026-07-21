@@ -1644,3 +1644,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .projectMediaGrid{grid-template-columns:1fr}
   .projectMediaHeader{align-items:flex-start}
 }
+
+/* v7.4.2 iPhone save/share workflow */
+.saveToPhoneNote{display:block;margin-top:6px;color:#a99a80;line-height:1.4}
+.modalActions .saveToPhoneNote{grid-column:1/-1}

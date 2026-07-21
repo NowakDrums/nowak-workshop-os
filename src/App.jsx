@@ -2326,7 +2326,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.4.1 — fixed blank Project / Kit Media upload window.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.4.2 — combined media upload with the iPhone save/share flow.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4511,6 +4511,28 @@ function CommsCard({drum, openJobCard, onAddPhoto}){
 }
 
 
+async function offerSaveToDevice(files,title="Nowak Drum Media"){
+  const shareFiles=Array.from(files||[]).filter(Boolean);
+  if(!shareFiles.length) return {supported:false,shared:false};
+
+  const shareData={files:shareFiles,title};
+  const supported=Boolean(
+    navigator.share &&
+    (!navigator.canShare || navigator.canShare(shareData))
+  );
+
+  if(!supported) return {supported:false,shared:false};
+
+  try{
+    await navigator.share(shareData);
+    return {supported:true,shared:true};
+  }catch(error){
+    // Cancelling the share sheet should not prevent the upload.
+    if(error?.name==="AbortError") return {supported:true,shared:false,cancelled:true};
+    return {supported:true,shared:false,error:error?.message || String(error)};
+  }
+}
+
 function LaunchMediaModal({drum,stage,onClose,onUploaded,setMessage}){
   const cameraInputRef=useRef(null);
   const libraryInputRef=useRef(null);
@@ -4523,7 +4545,10 @@ function LaunchMediaModal({drum,stage,onClose,onUploaded,setMessage}){
       return;
     }
 
-    setStatus("Uploading...");
+    const shareResult=await offerSaveToDevice(files,`${drum.timber||"Nowak drum"} — ${stage.label}`);
+    setStatus(shareResult.supported
+      ? "Saving to the app..."
+      : "Uploading...");
     try{
       for(let index=0; index<files.length; index+=1){
         const file=files[index];
@@ -4583,9 +4608,10 @@ function LaunchMediaModal({drum,stage,onClose,onUploaded,setMessage}){
       <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept={stage.accept} multiple onChange={e=>setFiles(Array.from(e.target.files || []))}/>
 
       {files.length>0 && <p className="okText">{files.length} file{files.length===1?"":"s"} selected.</p>}
-      <button className="primary uploadPhotosButton" disabled={status==="Uploading..."} onClick={upload}>
-        <Camera size={16}/> {status==="Uploading..." ? "Uploading..." : "Upload and Store"}
+      <button className="primary uploadPhotosButton" disabled={status==="Uploading..." || status==="Saving to the app..."} onClick={upload}>
+        <Camera size={16}/> {(status==="Uploading..." || status==="Saving to the app...") ? "Uploading..." : "Upload & Save to iPhone"}
       </button>
+      <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> or <b>Save Video</b> in the share sheet. The app upload continues even if the share sheet is closed.</small>
       {status && <p className={status.includes("failed")?"dangerText":"okText"}>{status}</p>}
     </div>
   </div>
@@ -5229,7 +5255,10 @@ function ProjectMediaModal({project,onClose,onUploaded}){
     }
 
     setUploading(true);
-    setStatus("Uploading project media...");
+    const shareResult=await offerSaveToDevice(files,`${project.name} project media`);
+    setStatus(shareResult.supported
+      ? "Saving project media to the app..."
+      : "Uploading project media...");
     const saved=[];
 
     try{
@@ -5329,8 +5358,9 @@ function ProjectMediaModal({project,onClose,onUploaded}){
       <div className="modalActions">
         <button onClick={onClose}>Close</button>
         <button className="primary" disabled={uploading || !files.length} onClick={upload}>
-          {uploading?"Uploading...":"Upload Project Media"}
+          {uploading?"Uploading...":"Upload & Save to iPhone"}
         </button>
+        <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> or <b>Save Video</b> in the share sheet. The media will also be uploaded to this project.</small>
       </div>
     </div>
   </div>;
@@ -5867,7 +5897,10 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       return;
     }
 
-    setStatus("Uploading photos...");
+    const shareResult=await offerSaveToDevice(files,`${drum.timber||"Nowak drum"} — ${milestone.label}`);
+    setStatus(shareResult.supported
+      ? "Saving photos to the app..."
+      : "Uploading photos...");
     const saved=[];
 
     try{
@@ -5945,7 +5978,8 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept="image/*" multiple onChange={e=>setFiles(Array.from(e.target.files || []))}/>
       {files.length>0 && <p className="okText">{files.length} photo{files.length===1?"":"s"} selected and ready to upload.</p>}
 
-      <button type="button" className="primary uploadPhotosButton" disabled={status==="Uploading photos..."} onClick={uploadPhotos}><Camera size={16}/> {status==="Uploading photos..." ? "Uploading..." : "Upload and Store Photos"}</button>
+      <button type="button" className="primary uploadPhotosButton" disabled={status==="Uploading photos..." || status==="Saving photos to the app..."} onClick={uploadPhotos}><Camera size={16}/> {(status==="Uploading photos..." || status==="Saving photos to the app...") ? "Uploading..." : "Upload & Save to iPhone"}</button>
+      <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> in the share sheet. The photo will also be uploaded to this drum.</small>
       {status && <p className={(status.toLowerCase().includes("failed") || status.toLowerCase().includes("error")) ? "dangerText" : "okText"}>{status}</p>}
 
       {drum.build_client!=="Brady" && <>
