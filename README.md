@@ -1,39 +1,49 @@
-# Nowak Workshop OS v7.3.1
+# Nowak Workshop OS v7.3.2
 
-## Kit / project prefill
+## Drum Register search
 
-When a kit or project is selected in Add Drum, the app now looks at the existing active drums in that kit and copies available:
+Register search now normalises common drum-size formats.
 
-- customer name
-- customer phone
-- customer email
-- shipping address
-- due date
-- ownership
-- timber/material
-- finish
+These searches match the same drum:
 
-The copied information remains editable for the new drum.
+- 14x4.5
+- 14 x 4.5
+- 14 x 4 1/2
+- 14x4½
 
-Project-level customer and due-date information are used where available. Archived drums are not used as the source for prefilled details.
+The same matching applies to other half-inch depths such as 5.5 / 5 1/2 and 6.5 / 6 1/2.
 
-## Kits / Projects page
+Search also covers production number, CB number, Nowak serial, timber, customer, contact details, build type, finish and status.
 
-- Kit and project cards now appear at the top.
-- The Link Existing Drums section appears below them.
-- Archived drums are excluded from project cards.
-- Archived drums are excluded from the list of drums available to link.
+## Register ordering
 
-## Workshop Today
+The default order is now newest production number first.
 
-Archived drums are now excluded from:
+Sort options:
 
-- Today's Plan, including stale scheduled items
-- Tomorrow's Plan
-- Outstanding Final Work
-- suggested workshop batches
+- Newest
+- Oldest
+- CB number
+- Nowak serial number
 
-The underlying old plan entry is retained for history, but it is not shown as current workshop work.
+## Ownership and status visibility
+
+- Brady / CB rows have a blue outline and subtle blue shading.
+- In Production drums have an amber status badge.
+- Completed, Sold and Shipped drums are grouped under Completed.
+- Archived drums are subdued and have an Archived badge.
+
+Filters:
+
+- All
+- In Production
+- Completed
+- Archived
+- Nowak
+- Brady / CB
+- Unallocated
+
+All drums remain in the permanent register from the moment they receive a production number.
 
 ## Supabase
 
@@ -41,4 +51,4 @@ No migration is required.
 
 ## Rollback
 
-Use v7.3.0 to roll back.
+Use v7.3.1 to roll back.

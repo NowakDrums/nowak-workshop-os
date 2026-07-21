@@ -2317,7 +2317,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.3.1 — kit prefill, project ordering and archived-drum visibility fixed.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.3.2 — improved Drum Register search, status visibility and sorting.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4932,56 +4932,143 @@ function HistoricalDrumImport({sourceRecords,drums,importRecords,openJobCard}){
 
 function DrumRegister({drums,openJobCard}){
   const [owner,setOwner]=useState("All");
-  const [sortBy,setSortBy]=useState("Production");
+  const [statusFilter,setStatusFilter]=useState("All");
+  const [sortBy,setSortBy]=useState("Newest");
   const [search,setSearch]=useState("");
   const [expanded,setExpanded]=useState("");
 
+  function normaliseRegisterSearch(value){
+    return String(value||"")
+      .toLowerCase()
+      .replace(/[“”"]/g,"")
+      .replace(/½/g,".5")
+      .replace(/¼/g,".25")
+      .replace(/¾/g,".75")
+      .replace(/(\d+)\s+1\/2/g,"$1.5")
+      .replace(/(\d+)\s+1\/4/g,"$1.25")
+      .replace(/(\d+)\s+3\/4/g,"$1.75")
+      .replace(/(\d+)1\/2/g,"$1.5")
+      .replace(/(\d+)1\/4/g,"$1.25")
+      .replace(/(\d+)3\/4/g,"$1.75")
+      .replace(/\s*x\s*/g,"x")
+      .replace(/[^a-z0-9.]+/g," ")
+      .replace(/\s+/g," ")
+      .trim();
+  }
+
+  function registerState(drum){
+    const lifecycle=drumLifecycleStatus(drum);
+    if(lifecycle==="Archived") return "Archived";
+    if(["Completed","Sold","Shipped"].includes(lifecycle) || isManufacturingComplete(drum)) return "Completed";
+    return "In Production";
+  }
+
+  function registerSearchText(drum){
+    const size=normaliseRegisterSearch(drum.size);
+    const sizeCompact=size.replace(/\s+/g,"");
+    const decimalAliases=[];
+    const halfMatches=size.match(/\d+\.5/g) || [];
+    halfMatches.forEach(value=>{
+      const whole=value.replace(".5","");
+      decimalAliases.push(`${whole} 1/2`,`${whole}1/2`,`${whole}½`);
+    });
+
+    return normaliseRegisterSearch([
+      drum.serial,
+      drum.cb_number,
+      drum.nowak_serial,
+      drum.timber,
+      drum.size,
+      sizeCompact,
+      ...decimalAliases,
+      drum.customer,
+      drum.customer_phone,
+      drum.customer_email,
+      drum.build_type,
+      drum.drum_type,
+      drum.finish,
+      drum.build_client,
+      registerState(drum),
+      drumLifecycleStatus(drum),
+    ].filter(Boolean).join(" "));
+  }
+
+  const query=normaliseRegisterSearch(search);
   const filtered=drums
     .filter(d=>owner==="All" || d.build_client===owner)
-    .filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()))
+    .filter(d=>statusFilter==="All" || registerState(d)===statusFilter)
+    .filter(d=>!query || registerSearchText(d).includes(query))
     .sort((a,b)=>{
+      if(sortBy==="Oldest") return extractNumber(a.serial)-extractNumber(b.serial);
       if(sortBy==="CB"){
         const aCb=a.build_client==="Brady" ? extractNumber(a.cb_number) : Number.MAX_SAFE_INTEGER;
         const bCb=b.build_client==="Brady" ? extractNumber(b.cb_number) : Number.MAX_SAFE_INTEGER;
-        return aCb-bCb || extractNumber(a.serial)-extractNumber(b.serial);
+        return aCb-bCb || extractNumber(b.serial)-extractNumber(a.serial);
       }
-      return extractNumber(a.serial)-extractNumber(b.serial);
+      if(sortBy==="Serial"){
+        const aSerial=extractNumber(a.nowak_serial);
+        const bSerial=extractNumber(b.nowak_serial);
+        return bSerial-aSerial || extractNumber(b.serial)-extractNumber(a.serial);
+      }
+      return extractNumber(b.serial)-extractNumber(a.serial);
     });
 
   function customerLabel(d){
     if(d.build_client==="Brady") return allocatedCustomerName(d) || "Brady / CB";
     return allocatedCustomerName(d) || (d.sales_status==="Stock" ? "Stock" : "Not entered");
   }
+  function stateClass(state){ return state.replaceAll(" ","").toLowerCase(); }
 
   return <section className="drumRegisterPage">
     <section className="panel drumRegisterIntro">
       <div>
         <span className="launchPackEyebrow">PERMANENT DRUM RECORD</span>
         <h2>Drum Register</h2>
-        <p>All active, completed and archived drums in one simple ordered list.</p>
+        <p>All drums from production through completion and archive, with the newest records shown first.</p>
       </div>
       <b>{drums.length}</b>
     </section>
 
     <section className="panel registerControls">
-      <div className="searchBar"><Search size={16}/><input placeholder="Search production number, CB number, timber, size, serial or customer..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-      <div className="registerFilterRow">
-        {["All","Nowak","Brady","Unallocated"].map(value=><button key={value} className={owner===value?"primary":""} onClick={()=>setOwner(value)}>{value==="Brady"?"Brady / CB":value}</button>)}
-        <span className="registerSortLabel">Sort by</span>
-        <button className={sortBy==="Production"?"primary":""} onClick={()=>setSortBy("Production")}>Production #</button>
-        <button className={sortBy==="CB"?"primary":""} onClick={()=>setSortBy("CB")}>CB #</button>
+      <div className="searchBar"><Search size={16}/><input placeholder="Search 14x4.5, 14 x 4 1/2, timber, customer, production or serial..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+      <div className="registerControlGroup">
+        <span className="filterLabel">Ownership</span>
+        <div className="registerFilterRow">
+          {["All","Nowak","Brady","Unallocated"].map(value=><button key={value} className={owner===value?"primary":""} onClick={()=>setOwner(value)}>{value==="Brady"?"Brady / CB":value}</button>)}
+        </div>
+      </div>
+      <div className="registerControlGroup">
+        <span className="filterLabel">Status</span>
+        <div className="registerFilterRow">
+          {["All","In Production","Completed","Archived"].map(value=><button key={value} className={statusFilter===value?"primary":""} onClick={()=>setStatusFilter(value)}>{value}</button>)}
+        </div>
+      </div>
+      <div className="registerControlGroup">
+        <span className="filterLabel">Sort</span>
+        <div className="registerFilterRow">
+          <button className={sortBy==="Newest"?"primary":""} onClick={()=>setSortBy("Newest")}>Newest</button>
+          <button className={sortBy==="Oldest"?"primary":""} onClick={()=>setSortBy("Oldest")}>Oldest</button>
+          <button className={sortBy==="CB"?"primary":""} onClick={()=>setSortBy("CB")}>CB #</button>
+          <button className={sortBy==="Serial"?"primary":""} onClick={()=>setSortBy("Serial")}>Serial #</button>
+        </div>
       </div>
     </section>
 
     <section className="panel registerTable">
       <div className="registerHeaderRow">
-        <b>Production #</b><b>CB #</b><b>Material</b><b>Size</b><b>Serial #</b><b>Customer</b>
+        <b>Production #</b><b>CB #</b><b>Material</b><b>Size</b><b>Serial #</b><b>Customer</b><b>Status</b>
       </div>
       {filtered.length===0
         ? <p className="registerEmpty">No drums match this view.</p>
         : filtered.map(d=>{
             const open=expanded===d.id;
-            return <article className={"registerRowWrap "+(open?"expanded":"")} key={d.id}>
+            const state=registerState(d);
+            return <article className={[
+              "registerRowWrap",
+              open?"expanded":"",
+              d.build_client==="Brady"?"registerBradyRow":"",
+              `registerState-${stateClass(state)}`
+            ].filter(Boolean).join(" ")} key={d.id}>
               <button className="registerRow" onClick={()=>setExpanded(open?"":d.id)}>
                 <span>#{d.serial||"—"}</span>
                 <span>{d.build_client==="Brady" ? (d.cb_number||"—") : "—"}</span>
@@ -4989,10 +5076,11 @@ function DrumRegister({drums,openJobCard}){
                 <span>{d.size||"—"}</span>
                 <span>{d.build_client==="Nowak" ? (d.nowak_serial||"—") : "—"}</span>
                 <span>{customerLabel(d)}</span>
+                <span className={`registerStatusBadge ${stateClass(state)}`}>{state}</span>
               </button>
               {open && <section className="registerExpanded">
                 <div><span>Owner</span><b>{ownershipLabel(d)}</b></div>
-                <div><span>Status</span><b>{drumLifecycleStatus(d)||workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).status}</b></div>
+                <div><span>Detailed status</span><b>{drumLifecycleStatus(d)||workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).status}</b></div>
                 <div><span>Construction</span><b>{d.build_type||"—"} · {d.drum_type||"Snare"}</b></div>
                 <div><span>Phone</span><b>{d.customer_phone||"Not entered"}</b></div>
                 <button onClick={()=>openJobCard(d)}>Open Job Card</button>
