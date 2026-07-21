@@ -1,49 +1,21 @@
-# Nowak Workshop OS v7.3.2
+# Nowak Workshop OS v7.3.3
 
-## Drum Register search
+## Drum Register search cleanup
 
-Register search now normalises common drum-size formats.
+The general app-wide search bar is now hidden while viewing the Drum Register.
 
-These searches match the same drum:
+The Drum Register keeps its own enhanced search field, which supports:
 
-- 14x4.5
-- 14 x 4.5
-- 14 x 4 1/2
-- 14x4½
-
-The same matching applies to other half-inch depths such as 5.5 / 5 1/2 and 6.5 / 6 1/2.
-
-Search also covers production number, CB number, Nowak serial, timber, customer, contact details, build type, finish and status.
-
-## Register ordering
-
-The default order is now newest production number first.
-
-Sort options:
-
-- Newest
-- Oldest
+- production number
 - CB number
 - Nowak serial number
+- timber
+- customer and contact details
+- build type and finish
+- status
+- equivalent size formats such as 4.5, 4 1/2 and 4½
 
-## Ownership and status visibility
-
-- Brady / CB rows have a blue outline and subtle blue shading.
-- In Production drums have an amber status badge.
-- Completed, Sold and Shipped drums are grouped under Completed.
-- Archived drums are subdued and have an Archived badge.
-
-Filters:
-
-- All
-- In Production
-- Completed
-- Archived
-- Nowak
-- Brady / CB
-- Unallocated
-
-All drums remain in the permanent register from the moment they receive a production number.
+This removes the confusing duplicate search field shown above the register.
 
 ## Supabase
 
@@ -51,4 +23,4 @@ No migration is required.
 
 ## Rollback
 
-Use v7.3.1 to roll back.
+Use v7.3.2 to roll back.
