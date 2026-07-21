@@ -1620,3 +1620,27 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .registerRow{grid-template-columns:repeat(2,1fr)}
   .registerRow span:nth-child(7)::before{content:"Status: ";color:#9f927d}
 }
+
+/* v7.4.0 Project / Kit Media */
+.projectMediaSection{margin-top:14px;padding-top:12px;border-top:1px solid #4a3d2c}
+.projectMediaHeader{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.projectMediaHeader>div:first-child{display:grid}
+.projectMediaHeader span{font-size:12px;color:#a99a80}
+.projectMediaHeader>div:last-child{display:flex;gap:6px;flex-wrap:wrap}
+.projectMediaEmpty{margin:9px 0 0;color:#a99a80}
+.projectMediaGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:10px}
+.projectMediaCard{position:relative;padding:8px;border:1px solid #4b3e2c;border-radius:9px;background:#15130f}
+.projectMediaCard img,.projectMediaCard video{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:7px;background:#090909}
+.projectMediaCard>b{display:block;margin-top:6px;color:#efc46b}
+.projectMediaCard p{margin:4px 0;color:#cfc0a7;font-size:12px}
+.projectMediaCard>div{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.projectMediaExpandButton{margin-top:9px;width:100%}
+.projectMediaChooseRow{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.selectedMediaSummary{display:grid;gap:3px;padding:9px;border:1px solid #4b3e2c;border-radius:8px;background:#15130f}
+.selectedMediaSummary span{font-size:12px;color:#a99a80;overflow-wrap:anywhere}
+.projectMediaModal textarea{min-height:90px}
+.hiddenFileInput{display:none!important}
+@media(max-width:700px){
+  .projectMediaGrid{grid-template-columns:1fr}
+  .projectMediaHeader{align-items:flex-start}
+}

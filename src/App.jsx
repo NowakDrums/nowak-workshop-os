@@ -344,6 +344,15 @@ const photoMilestoneByChecklist = {
   "Polished":"shellcomplete",
 };
 
+const projectMediaCategories = [
+  {key:"project_progress",label:"Project Progress"},
+  {key:"shells_together",label:"Shells Together"},
+  {key:"finished_kit",label:"Finished Kit"},
+  {key:"final_photos",label:"Final Photos"},
+  {key:"video",label:"Video"},
+  {key:"general",label:"General"},
+];
+
 const photoMilestones = {
   general:{
     label:"Additional Build Photo",
@@ -2317,7 +2326,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.3.3 — removed the duplicate global search from the Drum Register.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.4.0 — added project and kit photo and video libraries.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5203,6 +5212,230 @@ function FutureProjectModal({project,onClose,onCreate,onUpdate}){
   </div></div>;
 }
 
+
+function ProjectMediaModal({project,onClose,onUploaded}){
+  const cameraInputRef=useRef(null);
+  const libraryInputRef=useRef(null);
+  const [category,setCategory]=useState("project_progress");
+  const [caption,setCaption]=useState("");
+  const [files,setFiles]=useState([]);
+  const [status,setStatus]=useState("");
+  const [uploading,setUploading]=useState(false);
+
+  async function upload(){
+    if(!files.length){
+      setStatus("Choose or take at least one photo or video first.");
+      return;
+    }
+
+    setUploading(true);
+    setStatus("Uploading project media...");
+    const saved=[];
+
+    try{
+      for(let index=0;index<files.length;index+=1){
+        const file=files[index];
+        const safeName=String(file.name || `project-media-${index+1}`).replace(/[^a-zA-Z0-9._-]/g,"-");
+        const uniqueId=globalThis.crypto?.randomUUID?.() || `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`;
+        const path=`projects/${project.id}/${category}/${uniqueId}-${safeName}`;
+
+        const {error:uploadError}=await supabase.storage
+          .from("drum-photos")
+          .upload(path,file,{
+            upsert:false,
+            cacheControl:"3600",
+            contentType:file.type || "application/octet-stream"
+          });
+        if(uploadError) throw new Error("Storage upload: "+uploadError.message);
+
+        const {data:publicData}=supabase.storage.from("drum-photos").getPublicUrl(path);
+        const publicUrl=publicData?.publicUrl || "";
+        const mediaType=String(file.type||"").startsWith("video/") ? "video" : "image";
+
+        const {data:row,error:rowError}=await supabase
+          .from("project_media")
+          .insert({
+            project_id:project.id,
+            category,
+            storage_path:path,
+            public_url:publicUrl,
+            caption:caption.trim(),
+            media_type:mediaType,
+          })
+          .select("*")
+          .single();
+        if(rowError) throw new Error("Project media record: "+rowError.message);
+        saved.push(row);
+      }
+
+      setFiles([]);
+      setCaption("");
+      setStatus(`${saved.length} project media file${saved.length===1?"":"s"} uploaded.`);
+      window.dispatchEvent(new CustomEvent("project-media-updated",{detail:{projectId:project.id}}));
+      onUploaded?.(saved);
+    }catch(error){
+      setStatus("Could not upload project media: "+(error?.message || String(error)));
+    }finally{
+      setUploading(false);
+    }
+  }
+
+  return <div className="modalBg" onClick={onClose}>
+    <div className="modal projectMediaModal" onClick={e=>e.stopPropagation()}>
+      <button className="close" onClick={onClose}>×</button>
+      <span className="launchPackEyebrow">KIT / PROJECT MEDIA</span>
+      <h2>{project.name}</h2>
+
+      <label>Media category
+        <select value={category} onChange={e=>setCategory(e.target.value)}>
+          {projectMediaCategories.map(item=><option key={item.key} value={item.key}>{item.label}</option>)}
+        </select>
+      </label>
+
+      <label>Caption or note
+        <textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Optional note about this photo or video"/>
+      </label>
+
+      <div className="projectMediaChooseRow">
+        <button type="button" onClick={()=>cameraInputRef.current?.click()}><Camera size={16}/> Take Photo / Video</button>
+        <button type="button" onClick={()=>libraryInputRef.current?.click()}><Images size={16}/> Choose From Device</button>
+      </div>
+
+      <input
+        ref={cameraInputRef}
+        className="hiddenFileInput"
+        type="file"
+        accept="image/*,video/*"
+        capture="environment"
+        multiple
+        onChange={e=>setFiles(Array.from(e.target.files||[]))}
+      />
+      <input
+        ref={libraryInputRef}
+        className="hiddenFileInput"
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        onChange={e=>setFiles(Array.from(e.target.files||[]))}
+      />
+
+      {files.length>0 && <div className="selectedMediaSummary">
+        <b>{files.length} file{files.length===1?"":"s"} selected</b>
+        <span>{files.map(file=>file.name).join(", ")}</span>
+      </div>}
+
+      {status && <p className={status.startsWith("Could not")?"dangerText":"okText"}>{status}</p>}
+
+      <div className="modalActions">
+        <button onClick={onClose}>Close</button>
+        <button className="primary" disabled={uploading || !files.length} onClick={upload}>
+          {uploading?"Uploading...":"Upload Project Media"}
+        </button>
+      </div>
+    </div>
+  </div>;
+}
+
+function ProjectMediaSection({project}){
+  const [media,setMedia]=useState([]);
+  const [loading,setLoading]=useState(false);
+  const [status,setStatus]=useState("");
+  const [showUpload,setShowUpload]=useState(false);
+  const [expanded,setExpanded]=useState(false);
+
+  async function load(){
+    setLoading(true);
+    const {data,error}=await supabase
+      .from("project_media")
+      .select("*")
+      .eq("project_id",project.id)
+      .order("created_at",{ascending:false});
+
+    if(error){
+      setStatus("Could not load project media: "+error.message);
+      setMedia([]);
+    }else{
+      setMedia(data||[]);
+      setStatus("");
+    }
+    setLoading(false);
+  }
+
+  useEffect(()=>{
+    load();
+    const refresh=event=>{
+      if(!event?.detail?.projectId || event.detail.projectId===project.id) load();
+    };
+    window.addEventListener("project-media-updated",refresh);
+    return ()=>window.removeEventListener("project-media-updated",refresh);
+  },[project.id]);
+
+  async function remove(item){
+    if(!window.confirm("Delete this project photo or video?")) return;
+    setStatus("Deleting project media...");
+    try{
+      if(item.storage_path){
+        const {error:storageError}=await supabase.storage.from("drum-photos").remove([item.storage_path]);
+        if(storageError) throw new Error(storageError.message);
+      }
+      const {error}=await supabase.from("project_media").delete().eq("id",item.id);
+      if(error) throw new Error(error.message);
+      await load();
+      setStatus("Project media deleted.");
+    }catch(error){
+      setStatus("Could not delete project media: "+(error?.message || String(error)));
+    }
+  }
+
+  const shown=expanded ? media : media.slice(0,4);
+
+  return <section className="projectMediaSection">
+    <div className="projectMediaHeader">
+      <div>
+        <b>Project / Kit Media</b>
+        <span>{media.length} stored file{media.length===1?"":"s"}</span>
+      </div>
+      <div>
+        <button onClick={load}>{loading?"Loading...":"Refresh"}</button>
+        <button className="primary" onClick={()=>setShowUpload(true)}><Camera size={15}/> Add Media</button>
+      </div>
+    </div>
+
+    {media.length===0
+      ? <p className="projectMediaEmpty">Add photos or videos showing the complete kit, matching shells, progress or final reveal.</p>
+      : <div className="projectMediaGrid">{shown.map(item=>{
+          const isVideo=item.media_type==="video" || /\.(mp4|mov|m4v|webm)$/i.test(item.storage_path||item.public_url||"");
+          const label=projectMediaCategories.find(category=>category.key===item.category)?.label || item.category || "General";
+          return <article className="projectMediaCard" key={item.id}>
+            <a href={item.public_url} target="_blank" rel="noreferrer">
+              {isVideo
+                ? <video src={item.public_url} controls muted playsInline preload="metadata"/>
+                : <img src={item.public_url} alt={item.caption||label}/>}
+              {isVideo && <span className="videoMediaBadge">VIDEO</span>}
+            </a>
+            <b>{label}</b>
+            {item.caption && <p>{item.caption}</p>}
+            <div>
+              <a className="buttonLike" href={item.public_url} target="_blank" rel="noreferrer">Open</a>
+              <button className="mediaDeleteButton" onClick={()=>remove(item)}>Delete</button>
+            </div>
+          </article>;
+        })}</div>}
+
+    {media.length>4 && <button className="projectMediaExpandButton" onClick={()=>setExpanded(!expanded)}>
+      {expanded?"Show Less":`View All ${media.length} Files`}
+    </button>}
+
+    {status && <p className={status.startsWith("Could not")?"dangerText":"okText"}>{status}</p>}
+
+    {showUpload && <ProjectMediaModal
+      project={project}
+      onClose={()=>setShowUpload(false)}
+      onUploaded={()=>{setShowUpload(false);load();}}
+    />}
+  </section>;
+}
+
 function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,linkDrumsToProject,unlinkDrumFromProject}){
   const activeDrums=drums.filter(d=>!isArchivedStatus(d));
   const [selectedProject,setSelectedProject]=useState(projects[0]?.id || "");
@@ -5270,6 +5503,8 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
               <button className="unlinkButton" onClick={()=>unlinkDrumFromProject(d.id)}>Unlink</button>
             </div>)}
           </div>
+
+          <ProjectMediaSection project={project}/>
         </article>
       })}
     </section>
