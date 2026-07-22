@@ -2432,7 +2432,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.5.0 — seven-day cure tracking and automatic spray-batch mixing.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.5.1 — scheduled-only spray mixing and seven-day cure tracking.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -2621,8 +2621,6 @@ function App(){
               compact
             />}
           </div>
-
-          <SprayMixCalculator batchName={name} count={items.length}/>
 
           {Object.entries(grouped).map(([groupName,groupItems])=>
             <section className={"todayProjectGroup "+(groupName==="Individual Drums"?"individualTodayGroup":"")} key={groupName}>
@@ -3058,8 +3056,11 @@ function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,completePlanne
         ? <div className="emptyPlan"><CalendarDays size={24}/><p>No work deliberately planned for this day yet.</p></div>
         : <div className="dailyPlanGroups">{Object.entries(grouped).map(([group,groupItems])=>{
             const groupHours=groupItems.filter(i=>i.status!=="Done").reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
+            const mixCount=groupItems.filter(i=>i.status!=="Done").length;
+            const mixRecipe=sprayMixForBatch(group,mixCount);
             return <section className="dailyPlanGroup" key={group}>
               <header><div><h3>{group}</h3><span>{groupItems.length} drum{groupItems.length===1?"":"s"} · {formatPlanTime(groupHours)}</span></div></header>
+              {mixRecipe && mixCount>0 && <SprayMixCalculator batchName={group} count={mixCount}/>}
               <div className="planItemList">{groupItems.map(item=>{
                 const drum=drumMap[item.drum_id];
                 return <article className={"planItem "+(item.status==="Done"?"planItemDone":"")} key={item.id}>
