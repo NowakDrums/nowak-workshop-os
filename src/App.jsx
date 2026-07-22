@@ -313,6 +313,91 @@ function formatStageDate(value){
   }
 }
 
+function cureStatusForDrum(drum){
+  const finishText=String(drum?.finish||"").toLowerCase();
+  if(!finishText.includes("gloss") && !finishText.includes("satin")) return null;
+
+  const checked=parseChecked(drum?.notes);
+  const history=Array.isArray(drum?.stage_history) ? drum.stage_history : [];
+  const now=new Date();
+  now.setHours(12,0,0,0);
+
+  function statusFor(item,type,nextInstruction){
+    const entry=[...history].reverse().find(record=>record.item===item && record.completed && record.completed_at);
+    if(!entry) return null;
+    const completedAt=new Date(entry.completed_at);
+    const readyAt=new Date(completedAt);
+    readyAt.setDate(readyAt.getDate()+7);
+    readyAt.setHours(12,0,0,0);
+    const milliseconds=readyAt-now;
+    const daysRemaining=Math.max(0,Math.ceil(milliseconds/86400000));
+    return {
+      type,
+      item,
+      completedAt:entry.completed_at,
+      readyAt:readyAt.toISOString(),
+      readyDate:readyAt.toISOString().slice(0,10),
+      ready:milliseconds<=0,
+      daysRemaining,
+      nextInstruction,
+    };
+  }
+
+  // Final coat cure takes priority once the final coat is complete.
+  if(finishText.includes("satin") && checked.has("Satin coat") && !checked.has("Cure complete")){
+    return statusFor("Satin coat","final","Complete cure inspection and progress to final preparation");
+  }
+  if(finishText.includes("gloss") && checked.has("Poly coat 4") && !checked.has("Cure complete")){
+    return statusFor("Poly coat 4","final","Complete cure inspection and progress to High Gloss preparation");
+  }
+
+  // The sealer must cure for seven days before polyurethane coat 1.
+  if(checked.has("Sealer coat") && !checked.has("Poly coat 1")){
+    return statusFor("Sealer coat","sealer","Spray polyurethane coat 1");
+  }
+
+  return null;
+}
+
+function cureDisplayText(cure){
+  if(!cure) return "";
+  if(cure.ready){
+    return cure.type==="sealer"
+      ? "Seal coat cured — ready for polyurethane coat 1"
+      : "Final cure complete — ready to progress";
+  }
+  const dayLabel=cure.daysRemaining===1 ? "day" : "days";
+  return cure.type==="sealer"
+    ? `Seal coat curing — ${cure.daysRemaining} ${dayLabel} remaining`
+    : `Final coat curing — ${cure.daysRemaining} ${dayLabel} remaining`;
+}
+
+function sprayMixForBatch(name,count){
+  const batchName=String(name||"").toLowerCase();
+  const drums=Math.max(0,Number(count||0));
+  let recipe=null;
+
+  if(batchName.includes("sealer")){
+    recipe={label:"Sealer coat",product:"Polyurethane",basePerDrum:30,hardenerPerDrum:15,hardener:"Standard hardener",thinnerPercent:20};
+  }else if(batchName.includes("satin")){
+    recipe={label:"Final satin coat",product:"Satin",basePerDrum:30,hardenerPerDrum:15,hardener:"Rapid hardener",thinnerPercent:10};
+  }else if(batchName.includes("polyurethane coat")){
+    recipe={label:"High-gloss polyurethane coat",product:"Polyurethane",basePerDrum:40,hardenerPerDrum:20,hardener:"Standard hardener",thinnerPercent:0};
+  }
+
+  if(!recipe || !drums) return null;
+  const base=recipe.basePerDrum*drums;
+  const hardener=recipe.hardenerPerDrum*drums;
+  const combined=base+hardener;
+  const thinners=combined*(recipe.thinnerPercent/100);
+  return {...recipe,drums,base,hardener,combined,thinners,total:combined+thinners};
+}
+
+function formatMixMl(value){
+  const number=Number(value||0);
+  return Number.isInteger(number) ? `${number} ml` : `${number.toFixed(1)} ml`;
+}
+
 const drumDiameters = ["8","10","12","13","14","16","18","20","22","24"];
 const drumDepths = ["5","5 1/2","6","6 1/2","7","8","10","12","14","16","18"];
 const drumTypeOptions = ["Snare","Tom","Floor Tom","Bass Drum"];
@@ -719,6 +804,18 @@ function batchType(d){
     d.finish,
     d.build_client
   );
+  const cure=cureStatusForDrum(d);
+
+  if(cure){
+    if(cure.ready){
+      return cure.type==="sealer"
+        ? "Seal Coat Cure Complete — Ready for Polyurethane Coat 1"
+        : "Final Cure Complete — Ready to Progress";
+    }
+    return cure.type==="sealer"
+      ? `Seal Coat Curing — ${cure.daysRemaining} day${cure.daysRemaining===1?"":"s"} remaining`
+      : `Final Coat Curing — ${cure.daysRemaining} day${cure.daysRemaining===1?"":"s"} remaining`;
+  }
 
   if(!flow.nextStep || flow.nextStep==="Complete") return null;
 
@@ -740,6 +837,8 @@ function batchType(d){
 function workshopBatchPriority(name){
   const text=String(name||"").toLowerCase();
   const order=[
+    ["cure complete — ready",5],
+    ["seal coat cure complete",6],
     ["assemble",10],
     ["prepare hardware",11],
     ["final shell",12],
@@ -785,7 +884,9 @@ function friendlyPlanDate(dateValue){
 function planDetailsForDrum(drum){
   const buildType=drum.build_type || "Stave";
   const flow=workflowState(buildType,parseChecked(drum.notes),drum.finish,drum.build_client);
+  const cure=cureStatusForDrum(drum);
   const taskItem=flow.steps[flow.completedCount] || "";
+  if(cure && !cure.ready) return null;
   if(!taskItem || isManufacturingComplete(drum) || ["Sold","Shipped"].includes(drumLifecycleStatus(drum))) return null;
   return {
     task_item:taskItem,
@@ -1364,6 +1465,11 @@ function App(){
   const overdue=active.filter(d=>d.due_date && new Date(d.due_date) < new Date()).length;
   const cureQueue=active.filter(d=>["Polyurethane Coat 4","Finished Spraying / Curing"].includes(d.production_status)).length;
   const photoQueue=active.filter(d=>d.production_status==="Finished / Ready to Sell").length;
+  const cureReadyDrums=active.filter(d=>cureStatusForDrum(d)?.ready);
+  const curingDrums=active.filter(d=>{
+    const cure=cureStatusForDrum(d);
+    return cure && !cure.ready;
+  });
   const outstandingFinalWork=filtered.filter(d=>!isArchivedStatus(d) && !isSoldStatus(d) && !isShippedStatus(d) && outstandingWorkFromNotes(d.notes));
   const activeRepairs=repairs.filter(r=>r.status!=="Collected & Paid");
   const readyRepairs=repairs.filter(r=>r.status==="Ready for Collection");
@@ -2326,7 +2432,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.4.2 — combined media upload with the iPhone save/share flow.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.5.0 — seven-day cure tracking and automatic spray-batch mixing.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -2509,12 +2615,14 @@ function App(){
         return <section className="panel todayTaskPanel" key={name}>
           <div className="todayBatchHeader">
             <h2>{name} <span className="taskCount">({items.length})</span></h2>
-            <ScheduleWorkControl
+            {!String(name).toLowerCase().includes("curing") && <ScheduleWorkControl
               label="Schedule Batch"
               onSchedule={date=>addDrumsToPlan(items,date,name)}
               compact
-            />
+            />}
           </div>
+
+          <SprayMixCalculator batchName={name} count={items.length}/>
 
           {Object.entries(grouped).map(([groupName,groupItems])=>
             <section className={"todayProjectGroup "+(groupName==="Individual Drums"?"individualTodayGroup":"")} key={groupName}>
@@ -2536,13 +2644,20 @@ function App(){
                     <div className="progress"><i style={{width:flow.percent+"%"}}></i></div>
                     <p><b>Status:</b> {flow.status}</p>
                     <p><b>Next:</b> {flow.nextStep}</p>
+                    {cureStatusForDrum(d) && <div className={"cureStatusCard "+(cureStatusForDrum(d).ready?"cureReady":"cureWaiting")}>
+                      <Clock size={15}/>
+                      <div>
+                        <b>{cureDisplayText(cureStatusForDrum(d))}</b>
+                        <span>Ready date: {formatStageDate(cureStatusForDrum(d).readyAt)}</span>
+                      </div>
+                    </div>}
                     {scheduled && <div className="scheduledTomorrowBadge"><CalendarDays size={14}/><span>Scheduled: {plannedDates.map(friendlyPlanDate).join(", ")}{firstPlan?.task_label?` · ${firstPlan.task_label}`:""}</span></div>}
-                    {flow.nextStep!=="Complete" && <ScheduleWorkControl
+                    {flow.nextStep!=="Complete" && (!cureStatusForDrum(d) || cureStatusForDrum(d).ready) && <ScheduleWorkControl
                       label="Schedule Work"
                       onSchedule={date=>addDrumsToPlan([d],date,name)}
                       scheduledDates={plannedDates}
                     />}
-                    {flow.nextStep!=="Complete" && <button type="button" className="primary" disabled={progressingDrumId===d.id} onClick={()=>progressDrumFromCard(d)}><CheckCircle2 size={15}/> {progressingDrumId===d.id ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
+                    {flow.nextStep!=="Complete" && <button type="button" className="primary" disabled={progressingDrumId===d.id || Boolean(cureStatusForDrum(d) && !cureStatusForDrum(d).ready)} onClick={()=>progressDrumFromCard(d)}><CheckCircle2 size={15}/> {progressingDrumId===d.id ? "Progressing..." : cureStatusForDrum(d) && !cureStatusForDrum(d).ready ? "Curing — not ready" : `Progress: ${flow.nextStep}`}</button>}
                     <button type="button" onClick={()=>setGlobalPhotoPrompt({drum:d,milestoneKey:"general"})}><Camera size={15}/> Add Photo</button>
                     <button type="button" onClick={()=>setJobCard(d)}>Open job card</button>
                   </article>
@@ -2833,6 +2948,47 @@ function WorkshopTaskModal({task,onClose,onCreate,onUpdate}){
   </div></div>;
 }
 
+
+function SprayMixCalculator({batchName,count}){
+  const [wastage,setWastage]=useState(0);
+  const mix=sprayMixForBatch(batchName,count);
+  if(!mix) return null;
+
+  const multiplier=1+(Number(wastage||0)/100);
+  const base=mix.base*multiplier;
+  const hardener=mix.hardener*multiplier;
+  const combined=base+hardener;
+  const thinners=combined*(mix.thinnerPercent/100);
+  const total=combined+thinners;
+
+  return <section className="sprayMixCard">
+    <header>
+      <div>
+        <span className="launchPackEyebrow">BATCH MIX CALCULATOR</span>
+        <h3>{mix.label} — {mix.drums} drum{mix.drums===1?"":"s"}</h3>
+      </div>
+      <label>Extra allowance
+        <select value={wastage} onChange={e=>setWastage(Number(e.target.value))}>
+          <option value={0}>0%</option>
+          <option value={5}>5%</option>
+          <option value={10}>10%</option>
+        </select>
+      </label>
+    </header>
+    <div className="sprayMixGrid">
+      <div><span>{mix.product}</span><b>{formatMixMl(base)}</b></div>
+      <div><span>{mix.hardener}</span><b>{formatMixMl(hardener)}</b></div>
+      <div><span>Base mixture</span><b>{formatMixMl(combined)}</b></div>
+      <div><span>Thinners ({mix.thinnerPercent}%)</span><b>{formatMixMl(thinners)}</b></div>
+      <div className="sprayMixTotal"><span>Total mixed volume</span><b>{formatMixMl(total)}</b></div>
+    </div>
+    <p>
+      {formatMixMl(base)} + {formatMixMl(hardener)} = {formatMixMl(combined)}
+      {mix.thinnerPercent>0 ? ` + ${mix.thinnerPercent}% (${formatMixMl(thinners)}) = ${formatMixMl(total)}` : ` total = ${formatMixMl(total)}`}
+    </p>
+  </section>;
+}
+
 function ScheduleWorkControl({label="Schedule Work",onSchedule,scheduledDates=[],compact=false}){
   const [choice,setChoice]=useState("");
   const [customDate,setCustomDate]=useState("");
@@ -3005,6 +3161,7 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
 function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto, scheduleDrum, plannedDates=[], scheduledTask=""}){
   const checked=parseChecked(drum.notes);
   const flow=workflowState(drum.build_type || "Stave",checked,drum.finish,drum.build_client);
+  const cure=cureStatusForDrum(drum);
 
   const scheduled=plannedDates.length>0;
   return <article className={"card " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduled?" scheduledTomorrowCard":"")}>
@@ -3024,17 +3181,24 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
     <div className="progress"><i style={{width:(isManufacturingComplete(drum)?100:flow.percent)+"%"}}></i></div>
     <p><b>Status:</b> {isShippedStatus(drum) ? "Shipped" : isSoldStatus(drum) ? "Sold" : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status}</p>
     <p><b>Next:</b> {isShippedStatus(drum) ? "Complete" : isSoldStatus(drum) ? "Ship the drum" : isManufacturingComplete(drum) ? "Marketing / launch optional" : flow.nextStep}</p>
+    {cure && <div className={"cureStatusCard "+(cure.ready?"cureReady":"cureWaiting")}>
+      <Clock size={15}/>
+      <div>
+        <b>{cureDisplayText(cure)}</b>
+        <span>Ready date: {formatStageDate(cure.readyAt)}</span>
+      </div>
+    </div>}
     <p><b>Estimated:</b> {flow.estimatedTotal.toFixed(2)} hr production · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
     <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
     {trackingNumberFromNotes(drum.notes) && <p className="trackingNumberLine"><b>Tracking:</b> {trackingNumberFromNotes(drum.notes)}</p>}
     {scheduled && <div className="scheduledTomorrowBadge"><CalendarDays size={14}/><span>Scheduled: {plannedDates.map(friendlyPlanDate).join(", ")}{scheduledTask?` · ${scheduledTask}`:""}</span></div>}
     <section className="cardActionRow">
-      {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && scheduleDrum && <ScheduleWorkControl
+      {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && (!cure || cure.ready) && scheduleDrum && <ScheduleWorkControl
         label="Schedule Work"
         onSchedule={date=>scheduleDrum(drum,date)}
         scheduledDates={plannedDates}
       />}
-      {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && <button type="button" className="primary" disabled={progressing || !progressDrum} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : `Progress: ${flow.nextStep}`}</button>}
+      {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && <button type="button" className="primary" disabled={progressing || !progressDrum || Boolean(cure && !cure.ready)} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : cure && !cure.ready ? "Curing — not ready" : `Progress: ${flow.nextStep}`}</button>}
       {onAddPhoto && <button type="button" onClick={()=>onAddPhoto(drum)}><Camera size={15}/> Add Photo</button>}
       <button type="button" onClick={()=>openJobCard(drum)}>Open job card</button>
     </section>

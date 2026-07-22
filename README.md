@@ -1,40 +1,77 @@
-# Nowak Workshop OS v7.4.2
+# Nowak Workshop OS v7.5.0
 
-## Upload and save to iPhone
+## Seven-day cure tracking
 
-Photo and video upload buttons now use one combined action:
+High Gloss and Satin drums now have two automatic cure checkpoints based on the recorded checklist completion time.
 
-`Upload & Save to iPhone`
+### Sealer cure
 
-When supported by the device:
+After `Sealer coat` is completed:
 
-1. Tap the button once.
-2. The iPhone share sheet opens with the selected original photo or video.
-3. Choose `Save Image` or `Save Video`.
-4. Workshop OS then uploads the same media to the relevant drum, Launch Pack or project.
+- a seven-day cure period begins
+- Workshop Today shows the drum as curing
+- the remaining number of days and ready date are shown
+- scheduling and progression are disabled until the ready date
+- once ready, the drum is highlighted as `Seal coat cured — ready for polyurethane coat 1`
 
-If the share sheet is closed or cancelled, the app upload still continues.
+### Final finish cure
 
-This flow is available for:
+After:
 
-- drum milestone photos
-- Launch Pack photos and videos
-- Project / Kit Media
+- `Poly coat 4` for High Gloss, or
+- `Satin coat` for Satin
 
-## Important iPhone limitation
+the app begins another seven-day cure period.
 
-Safari still requires the user to choose `Save Image` or `Save Video` in the Apple share sheet. A web app cannot silently write into the Photos library.
+Once ready, the drum is highlighted as:
 
-On devices that do not support sharing files, the button simply uploads the media to Workshop OS.
+`Final cure complete — ready to progress`
+
+The checklist is not advanced automatically. The user still confirms progression after inspecting the finish.
+
+The Dashboard also shows:
+
+- cure-complete drums ready to progress
+- drums currently curing
+
+No cure logic is applied to Natural / Danish oil finishes.
+
+## Spray batch mixing calculator
+
+Workshop Today now automatically displays a mixing calculator for spray batches.
+
+### Sealer coat, per drum
+
+- 30 ml polyurethane
+- 15 ml standard hardener
+- 20% thinners calculated from the combined polyurethane and hardener
+
+For three drums:
+
+- 90 ml polyurethane
+- 45 ml standard hardener
+- 135 ml base mixture
+- 27 ml thinners
+- 162 ml total
+
+### High Gloss polyurethane coats, per drum
+
+- 40 ml polyurethane
+- 20 ml standard hardener
+- no thinners
+
+### Final Satin coat, per drum
+
+- 30 ml satin
+- 15 ml rapid hardener
+- 10% thinners calculated from the combined satin and hardener
+
+The calculator includes optional 0%, 5% or 10% extra allowance.
 
 ## Supabase
 
-No new migration is required.
-
-The v7.4.0 project-media migration is still required if it has not already been run:
-
-`supabase/v7_4_0_project_media.sql`
+No migration is required. Cure dates use the existing `stage_history` completion timestamps.
 
 ## Rollback
 
-Use v7.4.1 to roll back.
+Use v7.4.2 to roll back.
