@@ -836,31 +836,42 @@ function batchType(d){
 
 function workshopBatchPriority(name){
   const text=String(name||"").toLowerCase();
+  // Workshop Today is deliberately ordered from closest to completion
+  // through to the earliest production work, with Stave Blanks last.
   const order=[
-    ["cure complete — ready",5],
-    ["seal coat cure complete",6],
     ["assemble",10],
-    ["prepare hardware",11],
-    ["final shell",12],
-    ["high gloss preparation",18],
-    ["polish",20],
-    ["cure",30],
-    ["satin",35],
-    ["polyurethane coat 4",40],
-    ["polyurethane coat 3",42],
-    ["polyurethane coat 2",44],
-    ["polyurethane coat 1",46],
-    ["sealer",48],
-    ["drill",55],
-    ["snare bed",57],
-    ["bearing edge",59],
-    ["sand",65],
-    ["machine",72],
-    ["glue",82],
-    ["prepare veneer",88],
-    ["stave blanks",99],
+    ["prepare hardware",15],
+    ["final shell",20],
+    ["polish",25],
+    ["high gloss preparation",30],
+    ["final cure complete",35],
+    ["final coat curing",40],
+    ["satin",45],
+    ["polyurethane coat 4",50],
+    ["polyurethane coat 3",55],
+    ["polyurethane coat 2",60],
+    ["seal coat cure complete",65],
+    ["seal coat curing",70],
+    ["polyurethane coat 1",75],
+    ["sealer",80],
+    ["inside",85],
+    ["drill",90],
+    ["snare bed",95],
+    ["bearing edge",100],
+    ["sand",105],
+    ["machine",110],
+    ["glue",115],
+    ["prepare veneer",120],
+    ["stave blanks",999],
   ];
-  return order.find(([key])=>text.includes(key))?.[1] ?? 90;
+  return order.find(([key])=>text.includes(key))?.[1] ?? 500;
+}
+
+function workshopDrumPriorityCompare(a,b){
+  const aFlow=workflowState(a.build_type||"Stave",parseChecked(a.notes),a.finish,a.build_client);
+  const bFlow=workflowState(b.build_type||"Stave",parseChecked(b.notes),b.finish,b.build_client);
+  if(aFlow.percent!==bFlow.percent) return bFlow.percent-aFlow.percent;
+  return extractNumber(a.serial)-extractNumber(b.serial);
 }
 
 function localISODate(offsetDays=0){
@@ -2432,7 +2443,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.5.1 — scheduled-only spray mixing and seven-day cure tracking.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.5.2 — Workshop Today ordered from closest to finished through to Stave Blanks.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -2605,7 +2616,7 @@ function App(){
         const grouped={};
 
         items
-          .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial))
+          .sort(workshopDrumPriorityCompare)
           .forEach(d=>{
             const groupName=d.project_id ? (projectMap[d.project_id] || "Kit / Project") : "Individual Drums";
             grouped[groupName] ??=[];
