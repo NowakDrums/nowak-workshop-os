@@ -845,6 +845,7 @@ function workshopBatchPriority(name){
     ["polish",25],
     ["high gloss preparation",30],
     ["final cure complete",35],
+    ["allow the finish to cure",38],
     ["final coat curing",40],
     ["satin",45],
     ["polyurethane coat 4",50],
@@ -2443,7 +2444,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.5.2 — Workshop Today ordered from closest to finished through to Stave Blanks.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.5.3 — corrected cure-stage priority in Workshop Today.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>

@@ -1,26 +1,10 @@
-# Nowak Workshop OS v7.5.2
+# Nowak Workshop OS v7.5.3
 
-## Workshop Today priority order
+## Workshop Today cure-stage priority fix
 
-Workshop Today now sorts suggested production batches from the drums closest to completion down through the production sequence.
+The batch labelled **Allow the finish to cure** is now recognised as a near-complete finishing stage and appears near the top of Workshop Today rather than near Stave Blanks.
 
-The practical order begins with:
-
-- Assembly
-- Hardware preparation
-- Final shell preparation
-- Polishing and High Gloss preparation
-- Final cure stages
-- Satin and polyurethane coats
-- Sealer cure and sealer work
-- Drilling, snare beds and bearing edges
-- Sanding and machining
-- Glue-up and veneer preparation
-- Stave Blanks last
-
-Drums within each batch are also sorted by completion percentage, with the most advanced drum first.
-
-The scheduled-only spray mix calculator and seven-day cure tracking remain unchanged.
+The existing closest-to-finished ordering remains unchanged for all other batches.
 
 ## Supabase
 
@@ -28,4 +12,4 @@ No migration is required.
 
 ## Rollback
 
-Use v7.5.1 to roll back.
+Use v7.5.2 to roll back.
