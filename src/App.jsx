@@ -677,6 +677,30 @@ const priceRules = {
   "Brady Custom": { label:"Brady Custom", wholesaleFactor:.70, customFactor:1.05 },
 };
 
+// Current agreed pricing guide. Tom and bass-drum prices use the snare as the
+// minimum baseline, with a 24-inch drum representing approximately 4x the work.
+const nowakTomRetailPrices = {
+  "10": 1400,
+  "12": 1600,
+  "14": 1900,
+  "20": 3000,
+};
+
+// Brady assists with these builds, so the agreed four-shell kit total is $4,000.
+const bradyTomWholesalePrices = {
+  "10": 650,
+  "12": 750,
+  "14": 950,
+  "20": 1650,
+};
+
+const nowakKitRetailPrice = 8000;
+const bradyKitWholesalePrice = 4000;
+
+function drumDiameterFromSize(size=""){
+  return String(size).match(/\d+(?:\.\d+)?/)?.[0] || "";
+}
+
 const defaultPlyLengths14 = [1106,1096,1087.5,1079.5,1069];
 const defaultPairThickness = 1.2;
 const mouldDiameters = {
@@ -1092,19 +1116,30 @@ function autoPrice({
   const isHighGloss=finishText.includes("high");
   const isSatin=finishText.includes("satin");
 
-  // Brady shell-only wholesale pricing: snare shells only.
-  if(build_client==="Brady" && drum_type==="Snare"){
-    if(build_type==="Stave"){
-      if(isHighGloss) return 650;
-      if(isSatin) return 600;
-      return 0;
+  // Brady shell-only wholesale pricing.
+  if(build_client==="Brady"){
+    if(drum_type==="Snare"){
+      if(build_type==="Stave"){
+        if(isHighGloss) return 650;
+        if(isSatin) return 600;
+        return 0;
+      }
+
+      if(build_type==="Ply"){
+        if(isHighGloss) return 450;
+        if(isSatin) return 400;
+        return 0;
+      }
     }
 
-    if(build_type==="Ply"){
-      if(isHighGloss) return 450;
-      if(isSatin) return 400;
-      return 0;
-    }
+    const bradyTomPrice=bradyTomWholesalePrices[drumDiameterFromSize(size)];
+    if(bradyTomPrice) return bradyTomPrice;
+  }
+
+  // Current Nowak retail guide for the standard 10/12/14/20 four-piece kit.
+  if(build_client==="Nowak" && drum_type!=="Snare"){
+    const tomRetailPrice=nowakTomRetailPrices[drumDiameterFromSize(size)];
+    if(tomRetailPrice) return tomRetailPrice;
   }
 
   // Published Nowak website price guide:
@@ -2444,7 +2479,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.5.3 — corrected cure-stage priority in Workshop Today.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.5.4 — retail, Brady wholesale and kit pricing added to Costing.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4246,7 +4281,41 @@ function RepairJobModal({repair,onClose,updateRepair,deleteRepair,setMessage}){
 
 function Inventory({hardware, updateHardware, lowStock, inventoryValue}){ return <section className="panel"><h2>Hardware Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p><div className="tableWrap"><table><thead><tr><th>Part</th><th>Code</th><th>Finish</th><th>Size</th><th>Qty</th><th>Reorder</th><th>Landed AUD</th><th>Status</th></tr></thead><tbody>{hardware.map(p=><tr key={p.id}><td>{p.part_name}<br/><small>{p.category}</small></td><td>{p.code}</td><td>{p.finish}</td><td>{p.size}</td><td><input value={p.qty_on_hand??0} onChange={e=>updateHardware(p.id,{qty_on_hand:Number(e.target.value)})}/></td><td>{p.reorder_level}</td><td>{money(p.landed_cost_aud)}</td><td>{Number(p.qty_on_hand||0)<=Number(p.reorder_level||0)?<span className="dangerText">Order</span>:<span className="okText">OK</span>}</td></tr>)}</tbody></table></div></section> }
 
-function Costing({templates, labourRate, setLabourRate}){ return <section className="panel"><h2>Costing Templates</h2><label className="inlineLabel">Labour rate <input value={labourRate} onChange={e=>setLabourRate(Number(e.target.value))}/></label><div className="templateGrid">{templates.map(t=>{const total=templateCost(t,labourRate), profit=Number(t.retail_price||0)-total; return <article className="card" key={t.id}><b>{t.name}</b><span>Hardware: {money(t.hardware_cost)}</span><span>Timber: {money(t.timber_cost)}</span><span>Consumables: {money(t.consumables)}</span><span>Labour: {t.labour_hours} hrs × {money(labourRate)}</span><hr/><span>Total cost: {money(total)}</span><span>Retail: {money(t.retail_price)}</span><b>Estimated profit: {money(profit)}</b></article>})}</div></section> }
+function Costing({templates, labourRate, setLabourRate}){
+  const nowakKitTotal=Object.values(nowakTomRetailPrices).reduce((sum,value)=>sum+value,0);
+  const bradyKitTotal=Object.values(bradyTomWholesalePrices).reduce((sum,value)=>sum+value,0);
+  const tomRows=[
+    {label:'10" tom',diameter:"10"},
+    {label:'12" tom',diameter:"12"},
+    {label:'14" floor tom',diameter:"14"},
+    {label:'20" bass drum',diameter:"20"},
+  ];
+
+  return <section className="panel">
+    <h2>Costing & Price Guide</h2>
+    <label className="inlineLabel">Labour rate <input value={labourRate} onChange={e=>setLabourRate(Number(e.target.value))}/></label>
+
+    <h3>Current snare pricing</h3>
+    <div className="templateGrid">
+      <article className="card"><b>Nowak retail — Stave snare</b><span>Satin / Natural: {money(1300)}</span><span>High Gloss: {money(1400)}</span><small>Timber tier and custom specifications may increase the final price.</small></article>
+      <article className="card"><b>Nowak retail — Ply snare</b><span>Satin / Natural: {money(1100)}</span><span>High Gloss: {money(1250)}</span></article>
+      <article className="card"><b>Brady wholesale — Stave snare shell</b><span>Satin: {money(600)}</span><span>High Gloss: {money(650)}</span></article>
+      <article className="card"><b>Brady wholesale — Ply snare shell</b><span>Satin: {money(400)}</span><span>High Gloss: {money(450)}</span></article>
+    </div>
+
+    <h3>Tom and kit pricing</h3>
+    <div className="priceGuideTable">
+      <div className="priceGuideHeader"><b>Drum</b><b>Nowak retail</b><b>Brady wholesale shell</b></div>
+      {tomRows.map(row=><div className="priceGuideRow" key={row.diameter}><span>{row.label}</span><strong>{money(nowakTomRetailPrices[row.diameter])}</strong><strong>{money(bradyTomWholesalePrices[row.diameter])}</strong></div>)}
+      <div className="priceGuideRow priceGuideSubtotal"><span>Individual total</span><strong>{money(nowakKitTotal)}</strong><strong>{money(bradyKitTotal)}</strong></div>
+      <div className="priceGuideRow priceGuideTotal"><span>Agreed four-piece kit price</span><strong>{money(nowakKitRetailPrice)}</strong><strong>{money(bradyKitWholesalePrice)}</strong></div>
+    </div>
+    <p className="pricingNote">Brady pricing reflects the current agreement and Brady assisting with the builds. Freight, unusual specifications, premium timber and special finishing can be quoted separately.</p>
+
+    <h3>Costing templates</h3>
+    <div className="templateGrid">{templates.map(t=>{const total=templateCost(t,labourRate), profit=Number(t.retail_price||0)-total; return <article className="card" key={t.id}><b>{t.name}</b><span>Hardware: {money(t.hardware_cost)}</span><span>Timber: {money(t.timber_cost)}</span><span>Consumables: {money(t.consumables)}</span><span>Labour: {t.labour_hours} hrs × {money(labourRate)}</span><hr/><span>Total cost: {money(total)}</span><span>Retail: {money(t.retail_price)}</span><b>Estimated profit: {money(profit)}</b></article>})}</div>
+  </section>
+}
 
 function Orders({drums, openJobCard}){
   const customerOrders=drums.filter(d=>{

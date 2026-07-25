@@ -1,15 +1,10 @@
-# Nowak Workshop OS v7.5.3
+# Nowak Workshop OS v7.5.4
 
-## Workshop Today cure-stage priority fix
+Adds the current Nowak retail and Brady wholesale pricing guide to the Costing page.
 
-The batch labelled **Allow the finish to cure** is now recognised as a near-complete finishing stage and appears near the top of Workshop Today rather than near Stave Blanks.
+- Nowak 10/12/14/20 four-piece kit target: $8,000 retail
+- Brady 10/12/14/20 shell-only kit agreement: $4,000 wholesale
+- Brady individual shell prices total exactly $4,000
+- Add Drum automatic pricing recognises these tom and bass-drum sizes
 
-The existing closest-to-finished ordering remains unchanged for all other batches.
-
-## Supabase
-
-No migration is required.
-
-## Rollback
-
-Use v7.5.2 to roll back.
+No Supabase migration is required.
