@@ -4,9 +4,10 @@ import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
-  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore, ClipboardList, Repeat2, Lightbulb, Pencil, Images
+  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore, ClipboardList, Repeat2, Lightbulb, Pencil, Images, Printer, Download
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
+import QRCode from "qrcode";
 import nowakLogo from "./assets/nowak-logo-refined.png";
 import "./style.css";
 
@@ -33,8 +34,8 @@ const historicalDrumRecords = [{"source_row":2,"serial":"1","nowak_serial":"2037
 const fulfilmentChecklist = ["Photos taken","Packed","Shipped"];
 const marketingChecklist = ["Website listing","Facebook / Instagram","YouTube demo"];
 
-function manufacturingChecklist(buildType,finish="",buildClient=""){
-  return applicableChecklist(buildType,finish).filter(item=>{
+function manufacturingChecklist(buildType,finish="",buildClient="",drumType="Snare"){
+  return applicableChecklist(buildType,finish,drumType).filter(item=>{
     if(fulfilmentChecklist.includes(item) || marketingChecklist.includes(item)) return false;
     // Brady / CB work is normally shell-only. Assembly can still be recorded
     // manually in notes, but it is not required for workflow completion.
@@ -80,7 +81,7 @@ const workflowEstimates = {
     "Timber / veneer ready":0.75,
     "Glue up complete":0.30,
     "Sanded":0.30,
-    "Bearing edges cut":0.15,
+    "Bearing edges cut":0.25,
     "Snare beds cut":0.15,
     "Drilled":0.75,
     "Inside oiled / sealed":0.25,
@@ -140,13 +141,16 @@ const workflowLabels = {
   "Shipped": {status:"Sold / Shipped", next:"Complete"},
 };
 
-function applicableChecklist(buildType, finish=""){
+function applicableChecklist(buildType, finish="", drumType="Snare"){
   const finishText=String(finish || "").toLowerCase();
   const isNatural=finishText.includes("natural");
   const isSatin=finishText.includes("satin");
 
+  const isSnare=String(drumType||"Snare").toLowerCase().includes("snare");
+
   return checklist.filter(item=>{
     if(buildType==="Ply" && item==="Machined") return false;
+    if(!isSnare && item==="Snare beds cut") return false;
     if(item==="High Gloss preparation" && (isNatural || isSatin)) return false;
     if(item==="Final shell preparation" && (isNatural || isSatin)) return false;
 
@@ -274,8 +278,17 @@ function workflowNextInstruction(nextItem,buildType){
   return instructions[nextItem] || nextItem || "Complete";
 }
 
-function workflowState(buildType, checked, finish="", buildClient=""){
-  const steps=manufacturingChecklist(buildType,finish,buildClient);
+function drumTimingMultiplier(drumType="Snare", size=""){
+  const type=String(drumType||"Snare").toLowerCase();
+  if(type.includes("snare")) return 1;
+  const diameter=Number(String(size||"").match(/\d+(?:\.\d+)?/)?.[0]||0);
+  const scale={8:1.10,10:1.25,12:1.50,13:1.65,14:1.85,16:2.30,18:2.90,20:3.20,22:3.60,24:4.00};
+  return scale[diameter] || (diameter>=24?4:diameter>=20?3.2:diameter>=16?2.3:diameter>0?1.25:1);
+}
+
+function workflowState(buildType, checked, finish="", buildClient="", drumType="Snare", size=""){
+
+  const steps=manufacturingChecklist(buildType,finish,buildClient,drumType);
   let completedCount=0;
   for(const step of steps){
     if(checked.has(step)) completedCount += 1;
@@ -287,8 +300,9 @@ function workflowState(buildType, checked, finish="", buildClient=""){
   const status=previous ? workflowStatusLabel(previous,buildType) : "Ready to Start";
   const nextStep=next ? workflowNextInstruction(next,buildType) : "Complete";
   const estimates=workflowEstimates[buildType] || workflowEstimates.Stave;
-  const estimatedCompleted=steps.slice(0,completedCount).reduce((sum,item)=>sum+Number(estimates[item]||0),0);
-  const estimatedTotal=steps.reduce((sum,item)=>sum+Number(estimates[item]||0),0);
+  const multiplier=drumTimingMultiplier(drumType,size);
+  const estimatedCompleted=steps.slice(0,completedCount).reduce((sum,item)=>sum+Number(estimates[item]||0)*multiplier,0);
+  const estimatedTotal=steps.reduce((sum,item)=>sum+Number(estimates[item]||0)*multiplier,0);
   const percent=steps.length ? Math.round((completedCount/steps.length)*100) : 0;
 
   return {
@@ -826,7 +840,9 @@ function batchType(d){
     buildType,
     parseChecked(d.notes),
     d.finish,
-    d.build_client
+    d.build_client,
+    d.drum_type,
+    d.size
   );
   const cure=cureStatusForDrum(d);
 
@@ -893,8 +909,8 @@ function workshopBatchPriority(name){
 }
 
 function workshopDrumPriorityCompare(a,b){
-  const aFlow=workflowState(a.build_type||"Stave",parseChecked(a.notes),a.finish,a.build_client);
-  const bFlow=workflowState(b.build_type||"Stave",parseChecked(b.notes),b.finish,b.build_client);
+  const aFlow=workflowState(a.build_type||"Stave",parseChecked(a.notes),a.finish,a.build_client,a.drum_type,a.size);
+  const bFlow=workflowState(b.build_type||"Stave",parseChecked(b.notes),b.finish,b.build_client,b.drum_type,b.size);
   if(aFlow.percent!==bFlow.percent) return bFlow.percent-aFlow.percent;
   return extractNumber(a.serial)-extractNumber(b.serial);
 }
@@ -919,7 +935,7 @@ function friendlyPlanDate(dateValue){
 
 function planDetailsForDrum(drum){
   const buildType=drum.build_type || "Stave";
-  const flow=workflowState(buildType,parseChecked(drum.notes),drum.finish,drum.build_client);
+  const flow=workflowState(buildType,parseChecked(drum.notes),drum.finish,drum.build_client,drum.drum_type,drum.size);
   const cure=cureStatusForDrum(drum);
   const taskItem=flow.steps[flow.completedCount] || "";
   if(cure && !cure.ready) return null;
@@ -927,7 +943,7 @@ function planDetailsForDrum(drum){
   return {
     task_item:taskItem,
     task_label:checklistDisplayLabel(taskItem,buildType),
-    estimated_hours:Number(workflowEstimates[buildType]?.[taskItem] || 0),
+    estimated_hours:Number(workflowEstimates[buildType]?.[taskItem] || 0) * drumTimingMultiplier(drum.drum_type,drum.size),
     drum_label:`#${drum.serial || "—"} ${drum.timber || "Drum"} · ${drum.size || ""}`.trim(),
   };
 }
@@ -1355,7 +1371,7 @@ function duplicateNumberMessage(drums,{id=null,serial="",cbNumber="",buildClient
   const production=normaliseJobNumber(serial);
   const cb=normaliseJobNumber(cbNumber);
 
-  if(!production) return "A production number is required.";
+  if(!production) return "";
 
   const productionDuplicate=drums.find(d=>d.id!==id && normaliseJobNumber(d.serial)===production);
   if(productionDuplicate){
@@ -1405,6 +1421,48 @@ function workshopSpecsText({serial,timber,size,buildType,drumType,diameter}){
     lines.push("FINISHED OD",d?.finished || "","BUILD SPECIFICATION",defaultBuildSpecification(drumType || "Snare",buildType));
   }
   return lines.join("\\n");
+}
+
+
+function DrumQrPanel({serial}){
+  const [dataUrl,setDataUrl]=useState("");
+  const publicUrl=serial ? `${window.location.origin}${window.location.pathname}?drumSerial=${encodeURIComponent(serial)}` : "";
+  useEffect(()=>{
+    if(!publicUrl){ setDataUrl(""); return; }
+    QRCode.toDataURL(publicUrl,{width:700,margin:2}).then(setDataUrl).catch(()=>setDataUrl(""));
+  },[publicUrl]);
+  if(!serial) return null;
+  function download(){
+    const a=document.createElement("a"); a.href=dataUrl; a.download=`Nowak-QR-${serial}.png`; a.click();
+  }
+  function print(){
+    const w=window.open("","_blank","width=500,height=650");
+    if(!w) return;
+    w.document.write(`<html><body style="display:grid;place-items:center;margin:0;min-height:100vh"><img src="${dataUrl}" style="width:320px;height:320px" onload="window.print()"></body></html>`);
+    w.document.close();
+  }
+  return <div className="qrPanel">
+    {dataUrl && <img src={dataUrl} alt={`QR code for serial ${serial}`}/>} 
+    <div><b>QR code ready</b><p>Links to the public drum record. Brady drums are excluded.</p>
+      <button type="button" onClick={download}><Download size={15}/> Save QR</button>
+      <button type="button" onClick={print}><Printer size={15}/> Print QR</button>
+    </div>
+  </div>;
+}
+
+function PublicDrumPage({serial}){
+  const [drum,setDrum]=useState(null); const [photos,setPhotos]=useState([]); const [loading,setLoading]=useState(true);
+  useEffect(()=>{(async()=>{
+    const {data}=await supabase.from("drums").select("id,nowak_serial,timber,size,build_type,drum_type,finish,completion_date,created_at").eq("nowak_serial",serial).eq("build_client","Nowak").maybeSingle();
+    setDrum(data||null);
+    if(data){ const result=await supabase.from("drum_photos").select("id,public_url,media_type,milestone,created_at").eq("drum_id",data.id).order("created_at",{ascending:true}); setPhotos(result.data||[]); }
+    setLoading(false);
+  })()},[serial]);
+  if(loading) return <main className="publicDrumPage"><p>Loading drum record…</p></main>;
+  if(!drum) return <main className="publicDrumPage"><img src={nowakLogo}/><h1>Drum record not found</h1><p>This serial number is not available as a public Nowak drum record.</p></main>;
+  return <main className="publicDrumPage"><img src={nowakLogo}/><h1>Nowak Drum Company</h1><h2>Serial {drum.nowak_serial}</h2><p className="publicDrumSummary">{drum.size} {drum.timber} {drum.build_type} {drum.drum_type}</p><p>{drum.finish} finish · Handmade in Western Australia</p><p>This serial identifies an original instrument handmade by Nowak Drum Company.</p>
+    {photos.length>0 && <section><h3>Build and completion photos</h3><div className="publicPhotoGrid">{photos.map(photo=>photo.media_type==="video"?<video key={photo.id} src={photo.public_url} controls/>:<img key={photo.id} src={photo.public_url} alt="Nowak drum build"/>)}</div></section>}
+  </main>;
 }
 
 function App(){
@@ -1706,13 +1764,13 @@ function App(){
 
     try{
       const checked=parseChecked(d.notes);
-      const flow=workflowState(d.build_type || "Stave",checked,d.finish,d.build_client);
+      const flow=workflowState(d.build_type || "Stave",checked,d.finish,d.build_client,d.drum_type,d.size);
       const nextItem=flow.steps[flow.completedCount];
       if(!nextItem) return false;
 
       const next=new Set(checked);
       next.add(nextItem);
-      const nextFlow=workflowState(d.build_type || "Stave",next,d.finish,d.build_client);
+      const nextFlow=workflowState(d.build_type || "Stave",next,d.finish,d.build_client,d.drum_type,d.size);
       let history=Array.isArray(d.stage_history) ? [...d.stage_history] : [];
       history=history.filter(entry=>entry.item!==nextItem);
       history.push({item:nextItem,completed:true,completed_at:new Date().toISOString()});
@@ -1863,7 +1921,7 @@ function App(){
     const construction = !isPly ? drumTypeComment(form.drum_type, form.diameter) : null;
 
     const insertData = {
-      serial:form.serial || suggestedProductionNumber,
+      serial:form.pending ? "" : (form.serial || nextProductionNumber(drums)),
       timber:form.timber || "",
       build_type:form.build_type,
       drum_type:form.drum_type || "Snare",
@@ -2289,7 +2347,7 @@ function App(){
     }
 
     const checked=parseChecked(drum.notes);
-    const flow=workflowState(drum.build_type || "Stave",checked,drum.finish,drum.build_client);
+    const flow=workflowState(drum.build_type || "Stave",checked,drum.finish,drum.build_client,drum.drum_type,drum.size);
     const currentTask=flow.steps[flow.completedCount] || "";
 
     if(currentTask && item.task_item && currentTask!==item.task_item){
@@ -2479,7 +2537,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.5.4 — retail, Brady wholesale and kit pricing added to Costing.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.5.5 — Pending drums, tom workflows, scaled timings and QR drum records.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -2595,7 +2653,7 @@ function App(){
               {needsAttention.map(({drum,reasons})=><article className="attentionJobCard" key={drum.id}>
                 <div className="attentionJobHeader">
                   <div>
-                    <b>#{drum.serial} {drum.timber}</b>
+                    <b>{drum.serial ? `#${drum.serial}` : "Pending"} {drum.timber}</b>
                     <span>{drum.size} · {drum.build_type} · {allocatedCustomerName(drum) || displaySalesBadge(drum)}</span>
                   </div>
                   <button onClick={()=>setJobCard(drum)}>Open Job Card</button>
@@ -2674,13 +2732,13 @@ function App(){
               <h3>{groupName}</h3>
               <div className="todayDrumGrid">
                 {groupItems.map(d=>{
-                  const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client);
+                  const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client,d.drum_type,d.size);
                   const plannedDates=plannedDatesByDrum[d.id] || [];
                   const scheduled=plannedDates.length>0;
                   const firstPlan=activePlanByDrum[d.id]?.[0];
                   return <article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduled?" scheduledTomorrowCard":"")} key={d.id}>
                     <div className="cardHeading">
-                      <b>#{d.serial} {d.timber}</b>
+                      <b>{d.serial ? `#${d.serial}` : "Pending"} {d.timber}</b>
                       {allocatedCustomerName(d) && <span className="customerNameBadge">{allocatedCustomerName(d)}</span>}
                     </div>
                     {d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number || "No CB #"}</span>}
@@ -3162,9 +3220,9 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
   return <section className="productionGroups">
     {groups.map(({project,items})=>{
       const overall=items.length
-        ? Math.round(items.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).percent,0)/items.length)
+        ? Math.round(items.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client,d.drum_type,d.size).percent,0)/items.length)
         : 0;
-      const complete=items.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).percent===100).length;
+      const complete=items.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client,d.drum_type,d.size).percent===100).length;
 
       return <section className="kitProductionGroup" key={project.id}>
         <header className="kitGroupHeader">
@@ -3208,13 +3266,13 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
 
 function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto, scheduleDrum, plannedDates=[], scheduledTask=""}){
   const checked=parseChecked(drum.notes);
-  const flow=workflowState(drum.build_type || "Stave",checked,drum.finish,drum.build_client);
+  const flow=workflowState(drum.build_type || "Stave",checked,drum.finish,drum.build_client,drum.drum_type,drum.size);
   const cure=cureStatusForDrum(drum);
 
   const scheduled=plannedDates.length>0;
   return <article className={"card " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduled?" scheduledTomorrowCard":"")}>
     <div className="cardHeading">
-      <b>#{drum.serial} {drum.timber}</b>
+      <b>{drum.serial ? `#${drum.serial}` : "Pending"} {drum.timber}</b>
       {allocatedCustomerName(drum) && <span className="customerNameBadge">{allocatedCustomerName(drum)}</span>}
     </div>
     {drum.build_client==="Brady" && <span className="cbBadge">CB {drum.cb_number || "No CB #"}</span>}
@@ -3260,6 +3318,7 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
 
   const [form,setForm]=useState({
     serial:suggestedProductionNumber,
+    pending:false,
     build_client:preset.build_client || "Unallocated",
     cb_number:"",
     build_type:"Stave",
@@ -3292,6 +3351,10 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
   function setField(key,value){
     setForm(current=>{
       const next={...current,[key]:value};
+
+      if(key==="pending"){
+        next.serial=value ? "" : suggestedProductionNumber;
+      }
 
       if(key==="build_client"){
         if(value==="Brady"){
@@ -3381,7 +3444,7 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
       <button className="close" onClick={onClose}>×</button>
 
       <h2>Add Drum</h2>
-      <p>This wizard creates a complete production record. Every shell receives the next production number, whether it is Unallocated, Nowak or Brady.</p>
+      <p>Create a numbered production drum or save it as Pending and assign the production number later.</p>
 
       <section className="wizardSection">
         <h3>1. Ownership</h3>
@@ -3397,9 +3460,10 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
           )}
         </div>
 
+        <label className="pendingToggle"><input type="checkbox" checked={form.pending} onChange={e=>setField("pending",e.target.checked)}/> Save as Pending — no production number yet</label>
         <div className="twoInputGrid">
           <label>Production number
-            <input value={form.serial} onChange={e=>setField("serial",e.target.value)} />
+            <input disabled={form.pending} placeholder={form.pending?"Pending":suggestedProductionNumber} value={form.serial} onChange={e=>setField("serial",e.target.value)} />
           </label>
 
           {form.build_client==="Brady" &&
@@ -3627,7 +3691,7 @@ function VeneerCalculator({drums, updateDrum, openJobCard}){
   return <section>
     <div className="panel"><h2>Ply Veneer Cut Calculator</h2><p>12&quot;, 13&quot; and 14&quot; cut lists are adjusted automatically from the selected shell size, then fine-tuned by actual thickness.</p></div>
     <section className="panel"><h2>Manual Calculator</h2><label>Shell size</label><select value={manualSize} onChange={e=>setManualSize(e.target.value)}><option>14 x 6.5</option><option>14 x 5.5</option><option>13 x 7</option><option>12 x 7</option></select><p className="calcNote">{sizeAdjustmentLabel(manualSize)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><VeneerResult lengths={manualLengths} thicknesses={manual}/></section>
-    <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>#{d.serial} {d.timber}</b><span>{d.size} · {d.production_status}</span><p className="calcNote">{sizeAdjustmentLabel(d.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(t, d.size)}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
+    <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>{d.serial ? `#${d.serial}` : "Pending"} {d.timber}</b><span>{d.size} · {d.production_status}</span><p className="calcNote">{sizeAdjustmentLabel(d.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(t, d.size)}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
   </section>
 }
 
@@ -3973,7 +4037,7 @@ function DrumArchive({drums,openJobCard,restoreArchivedDrum,embedded=false}){
           const details=archiveDetailsFromNotes(d.notes);
           return <article className={"card archiveCard "+(d.build_client==="Brady"?"bradyCard":"")} key={d.id}>
             <div className="cardHeading">
-              <b>#{d.serial} {d.timber}</b>
+              <b>{d.serial ? `#${d.serial}` : "Pending"} {d.timber}</b>
               <span className="archiveBadge"><Archive size={13}/> Archived</span>
             </div>
             {d.build_client==="Brady" && <span className="cbBadge">CB {d.cb_number||"No CB #"}</span>}
@@ -4312,6 +4376,22 @@ function Costing({templates, labourRate, setLabourRate}){
     </div>
     <p className="pricingNote">Brady pricing reflects the current agreement and Brady assisting with the builds. Freight, unusual specifications, premium timber and special finishing can be quoted separately.</p>
 
+    <h3>Production Time Allowances</h3>
+    <p className="pricingNote">Snare timings are the minimum baseline. Tom and bass-drum times use the agreed diameter multiplier. Cure waiting time remains unchanged.</p>
+    <div className="timeAllowanceGrid">
+      {["Stave","Ply"].map(type=>{
+        const rows=manufacturingChecklist(type,"High Gloss","Nowak","Snare").filter(item=>!marketingChecklist.includes(item) && !fulfilmentChecklist.includes(item));
+        const total=rows.reduce((sum,item)=>sum+Number(workflowEstimates[type][item]||0),0);
+        return <article className="card" key={type}><h4>{type} — 14 × 6.5 snare baseline</h4>
+          <div className="timeRows">{rows.map(item=><div key={item}><span>{checklistDisplayLabel(item,type)}</span><b>{Math.round(Number(workflowEstimates[type][item]||0)*60)} min</b></div>)}</div>
+          <p><b>Total High Gloss production allowance: {total.toFixed(2)} hr</b></p>
+        </article>;
+      })}
+    </div>
+    <div className="priceGuideTable"><div className="priceGuideHeader"><b>Drum</b><b>Multiplier</b><b>Example: 1 hr task</b></div>
+      {[['10” tom',1.25],['12” tom',1.50],['14” floor tom',1.85],['16” floor tom',2.30],['18” floor tom',2.90],['20” bass drum',3.20],['22” bass drum',3.60],['24” bass drum',4.00]].map(([label,m])=><div className="priceGuideRow" key={label}><span>{label}</span><strong>{m.toFixed(2)}×</strong><strong>{m.toFixed(2)} hr</strong></div>)}
+    </div>
+
     <h3>Costing templates</h3>
     <div className="templateGrid">{templates.map(t=>{const total=templateCost(t,labourRate), profit=Number(t.retail_price||0)-total; return <article className="card" key={t.id}><b>{t.name}</b><span>Hardware: {money(t.hardware_cost)}</span><span>Timber: {money(t.timber_cost)}</span><span>Consumables: {money(t.consumables)}</span><span>Labour: {t.labour_hours} hrs × {money(labourRate)}</span><hr/><span>Total cost: {money(total)}</span><span>Retail: {money(t.retail_price)}</span><b>Estimated profit: {money(profit)}</b></article>})}</div>
   </section>
@@ -4358,7 +4438,7 @@ function Orders({drums, openJobCard}){
     const customer=d.build_client==="Brady"
       ? `Brady / CB ${d.cb_number || "No CB number"}`
       : allocatedCustomerName(d) || "Customer not entered";
-    const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client);
+    const flow=workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client,d.drum_type,d.size);
     const total=Number(d.total_price||d.custom_price||d.retail_price||0);
 
     return <article className={"customerOrderCard "+(d.build_client==="Brady"?"bradyCard":"")} key={d.id}>
@@ -5361,7 +5441,7 @@ function DrumRegister({drums,openJobCard}){
               </button>
               {open && <section className="registerExpanded">
                 <div><span>Owner</span><b>{ownershipLabel(d)}</b></div>
-                <div><span>Detailed status</span><b>{drumLifecycleStatus(d)||workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).status}</b></div>
+                <div><span>Detailed status</span><b>{drumLifecycleStatus(d)||workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client,d.drum_type,d.size).status}</b></div>
                 <div><span>Construction</span><b>{d.build_type||"—"} · {d.drum_type||"Snare"}</b></div>
                 <div><span>Phone</span><b>{d.customer_phone||"Not entered"}</b></div>
                 <button onClick={()=>openJobCard(d)}>Open Job Card</button>
@@ -5758,8 +5838,8 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
         const linked=activeDrums
           .filter(d=>d.project_id===project.id)
           .sort((a,b)=>extractNumber(a.serial)-extractNumber(b.serial));
-        const complete=linked.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).percent===100).length;
-        const overall=linked.length ? Math.round(linked.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client).percent,0)/linked.length) : 0;
+        const complete=linked.filter(d=>workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client,d.drum_type,d.size).percent===100).length;
+        const overall=linked.length ? Math.round(linked.reduce((sum,d)=>sum+workflowState(d.build_type||"Stave",parseChecked(d.notes),d.finish,d.build_client,d.drum_type,d.size).percent,0)/linked.length) : 0;
 
         return <article className="panel projectCard" key={project.id}>
           <h2>{project.name}</h2>
@@ -6309,7 +6389,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [photoPrompt,setPhotoPrompt]=useState(null);
   const suggestedNowakSerial=calculateEncodedNowakSerial(draft.serial,new Date());
   const serialConflict=encodedSerialConflict(drums,suggestedNowakSerial,drum.id);
-  const flow=workflowState(localBuildType,checked,draft.finish,localOwnership);
+  const flow=workflowState(localBuildType,checked,draft.finish,localOwnership,drum.drum_type,drum.size);
   const totalCost=templateCost(template,labourRate);
   const totalPrice=Number(customPrice||0)+Number(shipping||0);
   const profit=Number(drum.total_price||drum.retail_price||0)-totalCost;
@@ -6371,7 +6451,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       return false;
     }
     setIsSaving(true);
-    const nextFlow=workflowState(localBuildType,checked,draft.finish,localOwnership);
+    const nextFlow=workflowState(localBuildType,checked,draft.finish,localOwnership,drum.drum_type,drum.size);
     setSavedMessage("Saving...");
 
     const {data:currentStatusRow,error:statusError}=await supabase
@@ -6516,7 +6596,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   }
 
   async function saveWorkflow(nextChecked, changedItem=null, completed=null){
-    const nextFlow=workflowState(localBuildType,nextChecked,draft.finish,localOwnership);
+    const nextFlow=workflowState(localBuildType,nextChecked,draft.finish,localOwnership,drum.drum_type,drum.size);
     let history=Array.isArray(drum.stage_history) ? [...drum.stage_history] : [];
 
     if(changedItem){
@@ -6732,7 +6812,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         <CheckCircle2 size={16}/> Progress to Next Stage: {flow.nextStep}
       </button>}
       {flow.nextStep==="Complete" && <p className="okText"><b>Manufacturing workflow complete.</b></p>}
-      <div className="checkGrid">{manufacturingChecklist(localBuildType,draft.finish).map(item=>{
+      <div className="checkGrid">{manufacturingChecklist(localBuildType,draft.finish,localOwnership,drum.drum_type).map(item=>{
         const history=historyForItem(drum.stage_history,item);
         return <label className="checkItem workflowCheckItem" key={item}>
           <input type="checkbox" checked={checked.has(item)} onChange={()=>toggle(item)}/>
@@ -6940,6 +7020,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       {draft.nowak_serial && encodedSerialConflict(drums,draft.nowak_serial,drum.id)
         ? <small className="dangerText">Duplicate serial number — it will not be saved.</small>
         : <small>Use the main Save Changes button to store the serial number.</small>}
+      <DrumQrPanel serial={draft.nowak_serial}/>
     </section>}
 
     {photoPrompt && <MilestonePhotoModal
@@ -6973,4 +7054,5 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
 function marketingText(d){ return socialPost(d, communicationMilestones[5], "facebook"); }
 
-createRoot(document.getElementById("root")).render(<App />);
+const publicSerial=new URLSearchParams(window.location.search).get("drumSerial");
+createRoot(document.getElementById("root")).render(publicSerial ? <PublicDrumPage serial={publicSerial}/> : <App />);

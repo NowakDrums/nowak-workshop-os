@@ -1,6 +1,6 @@
 {
   "name": "nowak-workshop-os-webapp",
-  "version": "7.5.4",
+  "version": "7.5.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,7 +14,8 @@
     "react": "latest",
     "react-dom": "latest",
     "@supabase/supabase-js": "latest",
-    "lucide-react": "latest"
+    "lucide-react": "latest",
+    "qrcode": "latest"
   },
   "devDependencies": {}
 }
