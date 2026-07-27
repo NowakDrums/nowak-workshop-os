@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.5.6
+# Nowak Workshop OS v7.5.7
 
 Changes:
 - Pending drums can be created without using a production number.
@@ -14,7 +14,7 @@ Changes:
 No Supabase migration is required for this release. Existing drum and photo records are used.
 
 
-## v7.5.6
+## v7.5.7
 - Added 4 1/2-inch and 7 1/2-inch drum depths.
 - Existing iPhone library uploads no longer trigger the save-to-phone share sheet.
 - In-app camera photos retain the Save to iPhone option.

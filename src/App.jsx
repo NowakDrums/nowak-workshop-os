@@ -2537,7 +2537,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.5.6 — Cleaner iPhone media, expanded depths and production value reporting.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.5.7 — Cleaner stage galleries and sortable archived drums.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4045,7 +4045,23 @@ function WorkshopSummary({drums,sales,labourRate}){
 
 function DrumArchive({drums,openJobCard,restoreArchivedDrum,embedded=false}){
   const [search,setSearch]=useState("");
+  const [sortOrder,setSortOrder]=useState("production-desc");
   const filtered=embedded ? drums : drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
+
+  function productionNumberValue(d){
+    const raw=String(d.serial || "").trim();
+    const numeric=Number(raw.replace(/[^0-9.-]/g,""));
+    return Number.isFinite(numeric) ? numeric : -Infinity;
+  }
+
+  function sortedArchivedDrums(){
+    return [...filtered].sort((a,b)=>{
+      const aNumber=productionNumberValue(a);
+      const bNumber=productionNumberValue(b);
+      if(sortOrder==="production-asc") return aNumber-bNumber;
+      return bNumber-aNumber;
+    });
+  }
 
   function archiveDate(d){
     const value=archiveDetailsFromNotes(d.notes).date;
@@ -4063,10 +4079,19 @@ function DrumArchive({drums,openJobCard,restoreArchivedDrum,embedded=false}){
       </div>
       <b className="archiveCount">{drums.length}</b>
     </section>
-    {!embedded && <div className="searchBar"><Search size={16}/><input placeholder="Search production number, CB number, customer, timber, size or serial..." value={search} onChange={e=>setSearch(e.target.value)}/></div>}
+    <div className="archiveControls">
+      {!embedded && <div className="searchBar"><Search size={16}/><input placeholder="Search production number, CB number, customer, timber, size or serial..." value={search} onChange={e=>setSearch(e.target.value)}/></div>}
+      <label className="archiveSortControl">
+        <span>Production number order</span>
+        <select value={sortOrder} onChange={e=>setSortOrder(e.target.value)}>
+          <option value="production-desc">Newest to oldest</option>
+          <option value="production-asc">Oldest to newest</option>
+        </select>
+      </label>
+    </div>
     {filtered.length===0
       ? <section className="panel"><p>No archived drums match this search.</p></section>
-      : <section className="archiveGrid">{filtered.sort((a,b)=>String(archiveDetailsFromNotes(b.notes).date).localeCompare(String(archiveDetailsFromNotes(a.notes).date))).map(d=>{
+      : <section className="archiveGrid">{sortedArchivedDrums().map(d=>{
           const details=archiveDetailsFromNotes(d.notes);
           return <article className={"card archiveCard "+(d.build_client==="Brady"?"bradyCard":"")} key={d.id}>
             <div className="cardHeading">
@@ -6162,11 +6187,11 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
       <div className="stageCommsHeader">
         <div>
           <span className="launchPackEyebrow">STORED CONTENT</span>
-          <h2>Stage Communications</h2>
+          <h2>Photos &amp; Videos by Stage</h2>
         </div>
         <button onClick={load}>{loading?"Loading...":"Refresh"}</button>
       </div>
-      <p>No stored milestone photos yet. Add photos to a stage and its email/social options will appear here.</p>
+      <p>No milestone photos or videos have been stored yet. Add media from the relevant production stage.</p>
     </section>
   }
 
@@ -6174,8 +6199,8 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
     <div className="stageCommsHeader">
       <div>
         <span className="launchPackEyebrow">STORED CONTENT</span>
-        <h2>Stage Communications</h2>
-        <p>Reopen any photographed stage to email the customer or create social content.</p>
+        <h2>Photos &amp; Videos by Stage</h2>
+        <p>Each stage keeps its own media together, without duplicating everything in a separate gallery.</p>
       </div>
       <button onClick={load}>{loading?"Loading...":"Refresh"}</button>
     </div>
@@ -6194,7 +6219,7 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
           <button className="stageCommsSummary" onClick={()=>setExpanded(open?"":key)}>
             <span>
               <b>{stageLabel(key)}</b>
-              <small>{items.length} stored photo{items.length===1?"":"s"}</small>
+              <small>{items.length} media file{items.length===1?"":"s"}</small>
             </span>
             <span>{open?"Hide":"Open"}</span>
           </button>
@@ -6207,8 +6232,8 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
             </div>
 
             <div className="stageCommsActions">
-              <button onClick={()=>downloadPhotos(items,stageLabel(key))}>Download Photos</button>
-              <button onClick={()=>onAddPhoto?.(drum,key)}>Add More Photos</button>
+              <button onClick={()=>downloadPhotos(items,stageLabel(key))}>Download Media</button>
+              <button onClick={()=>onAddPhoto?.(drum,key)}>Add Photo or Video</button>
               {canSocial && <button onClick={()=>copy(message.social,"Facebook post")}>Copy Facebook</button>}
               {canSocial && <button onClick={()=>copy(message.instagram,"Instagram caption")}>Copy Instagram</button>}
               {canEmail && <a className={"buttonLike "+(!drum.customer_email?"disabledLink":"")} href={drum.customer_email?mailto:undefined}>
@@ -6996,26 +7021,6 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       sales_status:draft.order_type==="Custom" ? "Custom Order" : "Stock"
     }} setMessage={setMessage}/>}
 
-    <section className="panel inner anytimePhotoPanel">
-      <h2>Photos at Any Stage</h2>
-      <p>Take or upload an additional build photo at any time. It will be stored against this Job Card.</p>
-      <button type="button" className="primary" onClick={()=>setPhotoPrompt({milestoneKey:"general",item:null})}><Camera size={16}/> Take or Upload a Photo</button>
-    </section>
-    <DrumPhotoLibrary
-      drum={{
-        ...drum,
-        ...draft,
-        build_client:localOwnership,
-        build_type:localBuildType,
-        sales_status:localOwnership==="Nowak"
-          ? (draft.order_type==="Custom" ? "Custom Order" : "Stock")
-          : localOwnership==="Brady"
-            ? "Brady Production"
-            : "Unallocated"
-      }}
-      setMessage={setMessage}
-      onAddPhoto={(stageDrum,milestoneKey)=>setPhotoPrompt({drum:stageDrum,milestoneKey})}
-    />
     <StageCommunications
       drum={{
         ...drum,
