@@ -1,4 +1,12 @@
-# Nowak Workshop OS v7.5.7
+# Nowak Workshop OS v7.5.8
+
+## v7.5.8
+- Combined snare pricing and costing templates into one clearer section.
+- Standardised Nowak High Gloss surcharge to $100 for both stave and ply snares.
+- Improved Tom and Kit Pricing contrast and labels.
+- Retained other costing templates in a collapsible section.
+- No Supabase migration required.
+
 
 Changes:
 - Pending drums can be created without using a production number.

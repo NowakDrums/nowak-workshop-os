@@ -1730,3 +1730,34 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .archiveSortControl span{font-size:.82rem;color:var(--muted,#bdb6a9)}
 .archiveSortControl select{width:100%}
 @media (max-width:700px){.archiveSortControl{width:100%;min-width:0}.archiveControls .searchBar{flex-basis:100%}}
+
+/* v7.5.8 pricing and costing clarity */
+.costingPage h3{margin-top:28px}
+.combinedPricingGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.combinedPricingCard{background:#211e18;border:1px solid #4a3a25;border-radius:16px;padding:16px}
+.combinedPricingCard h4{color:#d3aa5d;font-size:1.2rem;margin:0 0 12px}
+.pricingColumns{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pricingColumns>div{background:#13110e;border:1px solid #403420;border-radius:12px;padding:12px}
+.pricingColumns small{display:block;color:#d3aa5d;font-weight:900;letter-spacing:.04em;margin-bottom:8px}
+.pricingColumns span{display:flex;justify-content:space-between;gap:12px;color:#f4efe4;padding:5px 0}
+.pricingColumns strong{color:#d3aa5d;white-space:nowrap}
+.costBreakdown{margin-top:14px;background:#171511;border:1px solid #382f22;border-radius:12px;padding:12px}
+.costBreakdown>b{display:block;color:#f4efe4;margin-bottom:6px}
+.costBreakdown>div{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #30291f}
+.costBreakdown>div:last-child{border-bottom:0}
+.costBreakdown strong{color:#d3aa5d;white-space:nowrap}
+.costBreakdown .costTotal{margin-top:4px;padding-top:9px;border-top:2px solid #5a472d;font-weight:900}
+.mutedLine{margin:12px 0 0;color:#9f9483}
+.otherTemplates{margin:14px 0 24px;background:#171511;border:1px solid #382f22;border-radius:12px;padding:12px}
+.otherTemplates summary{cursor:pointer;color:#d3aa5d;font-weight:900}
+.otherTemplates .templateGrid{margin-top:12px}
+.darkPriceGuide{background:#171511!important;border-color:#4a3a25!important}
+.darkPriceGuide .priceGuideHeader{background:#2b251b!important}
+.darkPriceGuide .priceGuideHeader b{color:#d3aa5d!important}
+.darkPriceGuide .priceGuideRow{border-color:#403420!important;background:#171511!important}
+.darkPriceGuide .priceGuideRow span{color:#f4efe4!important}
+.darkPriceGuide .priceGuideRow strong{color:#d3aa5d!important}
+.darkPriceGuide .priceGuideSubtotal{background:#211e18!important}
+.darkPriceGuide .priceGuideTotal{background:#3a2f1d!important;border-top:2px solid #d3aa5d!important}
+.darkPriceGuide .priceGuideTotal span,.darkPriceGuide .priceGuideTotal strong{font-weight:900!important}
+@media(max-width:760px){.combinedPricingGrid,.pricingColumns{grid-template-columns:1fr}.combinedPricingCard{padding:12px}}

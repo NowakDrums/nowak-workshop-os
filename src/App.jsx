@@ -1168,7 +1168,7 @@ function autoPrice({
   // Existing fallback for configurations not listed on the public website guide.
   const isPly = build_type === "Ply";
   let base = isPly ? 1100 : 1300;
-  if(isHighGloss) base += isPly ? 150 : 100;
+  if(isHighGloss) base += 100;
   if(String(size).startsWith("13")) base -= 50;
   if(String(size).startsWith("12")) base -= 100;
   if(["20","22","24"].some(d=>String(size).startsWith(d))) base += 350;
@@ -2537,7 +2537,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.5.7 — Cleaner stage galleries and sortable archived drums.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.5.8 — Clearer pricing and combined costing guides.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4412,22 +4412,53 @@ function Costing({templates, labourRate, setLabourRate}){
     {label:'14" floor tom',diameter:"14"},
     {label:'20" bass drum',diameter:"20"},
   ];
+  const snareGuides=[
+    {key:"stave",title:"Stave snare",nowakNatural:1300,nowakGloss:1400,bradyNatural:600,bradyGloss:650},
+    {key:"ply",title:"Ply snare",nowakNatural:1100,nowakGloss:1200,bradyNatural:400,bradyGloss:450},
+  ];
+  const templateFor=key=>templates.find(t=>String(t.name||"").toLowerCase().includes(key));
+  const matchedTemplateIds=new Set(snareGuides.map(g=>templateFor(g.key)?.id).filter(Boolean));
+  const otherTemplates=templates.filter(t=>!matchedTemplateIds.has(t.id));
 
-  return <section className="panel">
-    <h2>Costing & Price Guide</h2>
+  return <section className="panel costingPage">
+    <h2>Pricing & Costing Guide</h2>
     <label className="inlineLabel">Labour rate <input value={labourRate} onChange={e=>setLabourRate(Number(e.target.value))}/></label>
 
-    <h3>Current snare pricing</h3>
-    <div className="templateGrid">
-      <article className="card"><b>Nowak retail — Stave snare</b><span>Satin / Natural: {money(1300)}</span><span>High Gloss: {money(1400)}</span><small>Timber tier and custom specifications may increase the final price.</small></article>
-      <article className="card"><b>Nowak retail — Ply snare</b><span>Satin / Natural: {money(1100)}</span><span>High Gloss: {money(1250)}</span></article>
-      <article className="card"><b>Brady wholesale — Stave snare shell</b><span>Satin: {money(600)}</span><span>High Gloss: {money(650)}</span></article>
-      <article className="card"><b>Brady wholesale — Ply snare shell</b><span>Satin: {money(400)}</span><span>High Gloss: {money(450)}</span></article>
+    <h3>Snare pricing & costing</h3>
+    <p className="pricingNote">Natural and Satin use the base price. High Gloss adds <b>$100</b> to both Nowak stave and ply snares. Brady shell-only prices remain based on the current agreement.</p>
+    <div className="combinedPricingGrid">
+      {snareGuides.map(guide=>{
+        const t=templateFor(guide.key);
+        const total=t?templateCost(t,labourRate):null;
+        const naturalProfit=total==null?null:guide.nowakNatural-total;
+        const glossProfit=total==null?null:guide.nowakGloss-total;
+        return <article className="combinedPricingCard" key={guide.key}>
+          <h4>{guide.title}</h4>
+          <div className="pricingColumns">
+            <div><small>NOWAK RETAIL</small><span>Natural / Satin <strong>{money(guide.nowakNatural)}</strong></span><span>High Gloss <strong>{money(guide.nowakGloss)}</strong></span></div>
+            <div><small>BRADY SHELL ONLY</small><span>Natural / Satin <strong>{money(guide.bradyNatural)}</strong></span><span>High Gloss <strong>{money(guide.bradyGloss)}</strong></span></div>
+          </div>
+          {t ? <div className="costBreakdown">
+            <b>Current costing template</b>
+            <div><span>Hardware</span><strong>{money(t.hardware_cost)}</strong></div>
+            <div><span>Timber</span><strong>{money(t.timber_cost)}</strong></div>
+            <div><span>Consumables</span><strong>{money(t.consumables)}</strong></div>
+            <div><span>Labour ({t.labour_hours} hrs)</span><strong>{money(Number(t.labour_hours||0)*Number(labourRate||0))}</strong></div>
+            <div className="costTotal"><span>Estimated total cost</span><strong>{money(total)}</strong></div>
+            <div><span>Margin — Natural / Satin</span><strong>{money(naturalProfit)}</strong></div>
+            <div><span>Margin — High Gloss</span><strong>{money(glossProfit)}</strong></div>
+          </div> : <p className="mutedLine">No matching costing template is currently stored.</p>}
+        </article>;
+      })}
     </div>
 
+    {otherTemplates.length>0 && <details className="otherTemplates"><summary>Other costing templates ({otherTemplates.length})</summary>
+      <div className="templateGrid">{otherTemplates.map(t=>{const total=templateCost(t,labourRate), profit=Number(t.retail_price||0)-total; return <article className="card" key={t.id}><b>{t.name}</b><span>Hardware: {money(t.hardware_cost)}</span><span>Timber: {money(t.timber_cost)}</span><span>Consumables: {money(t.consumables)}</span><span>Labour: {t.labour_hours} hrs × {money(labourRate)}</span><hr/><span>Total cost: {money(total)}</span><span>Retail: {money(t.retail_price)}</span><b>Estimated margin: {money(profit)}</b></article>})}</div>
+    </details>}
+
     <h3>Tom and kit pricing</h3>
-    <div className="priceGuideTable">
-      <div className="priceGuideHeader"><b>Drum</b><b>Nowak retail</b><b>Brady wholesale shell</b></div>
+    <div className="priceGuideTable darkPriceGuide">
+      <div className="priceGuideHeader"><b>Drum</b><b>Nowak retail</b><b>Brady shell only</b></div>
       {tomRows.map(row=><div className="priceGuideRow" key={row.diameter}><span>{row.label}</span><strong>{money(nowakTomRetailPrices[row.diameter])}</strong><strong>{money(bradyTomWholesalePrices[row.diameter])}</strong></div>)}
       <div className="priceGuideRow priceGuideSubtotal"><span>Individual total</span><strong>{money(nowakKitTotal)}</strong><strong>{money(bradyKitTotal)}</strong></div>
       <div className="priceGuideRow priceGuideTotal"><span>Agreed four-piece kit price</span><strong>{money(nowakKitRetailPrice)}</strong><strong>{money(bradyKitWholesalePrice)}</strong></div>
@@ -4446,12 +4477,9 @@ function Costing({templates, labourRate, setLabourRate}){
         </article>;
       })}
     </div>
-    <div className="priceGuideTable"><div className="priceGuideHeader"><b>Drum</b><b>Multiplier</b><b>Example: 1 hr task</b></div>
-      {[['10” tom',1.25],['12” tom',1.50],['14” floor tom',1.85],['16” floor tom',2.30],['18” floor tom',2.90],['20” bass drum',3.20],['22” bass drum',3.60],['24” bass drum',4.00]].map(([label,m])=><div className="priceGuideRow" key={label}><span>{label}</span><strong>{m.toFixed(2)}×</strong><strong>{m.toFixed(2)} hr</strong></div>)}
+    <div className="priceGuideTable darkPriceGuide"><div className="priceGuideHeader"><b>Drum</b><b>Multiplier</b><b>Example: 1 hr task</b></div>
+      {[["10” tom",1.25],["12” tom",1.50],["14” floor tom",1.85],["16” floor tom",2.30],["18” floor tom",2.90],["20” bass drum",3.20],["22” bass drum",3.60],["24” bass drum",4.00]].map(([label,m])=><div className="priceGuideRow" key={label}><span>{label}</span><strong>{m.toFixed(2)}×</strong><strong>{m.toFixed(2)} hr</strong></div>)}
     </div>
-
-    <h3>Costing templates</h3>
-    <div className="templateGrid">{templates.map(t=>{const total=templateCost(t,labourRate), profit=Number(t.retail_price||0)-total; return <article className="card" key={t.id}><b>{t.name}</b><span>Hardware: {money(t.hardware_cost)}</span><span>Timber: {money(t.timber_cost)}</span><span>Consumables: {money(t.consumables)}</span><span>Labour: {t.labour_hours} hrs × {money(labourRate)}</span><hr/><span>Total cost: {money(total)}</span><span>Retail: {money(t.retail_price)}</span><b>Estimated profit: {money(profit)}</b></article>})}</div>
   </section>
 }
 
