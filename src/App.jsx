@@ -413,7 +413,7 @@ function formatMixMl(value){
 }
 
 const drumDiameters = ["8","10","12","13","14","16","18","20","22","24"];
-const drumDepths = ["5","5 1/2","6","6 1/2","7","8","10","12","14","16","18"];
+const drumDepths = ["4 1/2","5","5 1/2","6","6 1/2","7","7 1/2","8","10","12","14","16","18"];
 const drumTypeOptions = ["Snare","Tom","Floor Tom","Bass Drum"];
 const timberOptions = [
   "Jarrah","Jarrah Staircase","Jarrah Fiddleback",
@@ -454,7 +454,7 @@ const projectMediaCategories = [
 
 const photoMilestones = {
   general:{
-    label:"Additional Build Photo",
+    label:"Build Photo",
     prompt:"Take or upload any useful workshop photo for this drum. Add or edit the caption before storing it.",
     social:"Another look behind the scenes at this build in the Nowak workshop. Every stage contributes to the final sound, feel and character of the finished drum.",
   },
@@ -479,7 +479,7 @@ const photoMilestones = {
     social:"The first sealer coat has been applied and the timber is really coming alive. The colour, grain and figure deepen dramatically at this stage, giving the first proper glimpse of how the completed drum will look.",
   },
   shellcomplete:{
-    label:"Brady shell complete",
+    label:"Shell complete",
     prompt:"Take or upload several completed-shell photos: outside, inside, bearing edges, snare beds and finish.",
     social:"This shell is now complete. The machining, sanding, edges, snare beds and finish have all been completed, and the shell is ready for the next stage of its journey.",
   },
@@ -761,7 +761,7 @@ function splitSize(size){
   const parts = text.split("x").map(p=>p.trim());
   const diameter = (parts[0] || "14").replace(/"/g,"");
   let depth = (parts[1] || "6.5").replace(/"/g,"");
-  const depthMap = {"5.5":"5 1/2","6.5":"6 1/2"};
+  const depthMap = {"4.5":"4 1/2","5.5":"5 1/2","6.5":"6 1/2","7.5":"7 1/2"};
   return { diameter, depth: depthMap[depth] || depth };
 }
 
@@ -2537,7 +2537,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.5.5 — Pending drums, tom workflows, scaled timings and QR drum records.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.5.6 — Cleaner iPhone media, expanded depths and production value reporting.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3767,6 +3767,31 @@ function parseActualTimeEntries(drum){
   return rows;
 }
 
+function targetProductionValue(drum){
+  const savedPrice=Number(
+    drum.build_client==="Brady"
+      ? (drum.wholesale_price || drum.custom_price || drum.retail_price || 0)
+      : (drum.custom_price || drum.retail_price || drum.wholesale_price || 0)
+  );
+  if(savedPrice>0) return savedPrice;
+
+  const diameter=drumDiameterFromSize(drum.size);
+  if(drum.build_client==="Brady" && bradyTomWholesalePrices[diameter]) return bradyTomWholesalePrices[diameter];
+  if(drum.build_client!=="Brady" && nowakTomRetailPrices[diameter]) return nowakTomRetailPrices[diameter];
+  return 0;
+}
+
+function totalWorkflowHours(drum){
+  return workflowState(
+    drum.build_type || "Stave",
+    new Set(),
+    drum.finish,
+    drum.build_client,
+    drum.drum_type,
+    drum.size
+  ).estimatedTotal;
+}
+
 function estimatedStageEvents(drum){
   const estimates=workflowEstimates[drum.build_type || "Stave"] || workflowEstimates.Stave;
   const history=Array.isArray(drum.stage_history) ? drum.stage_history : [];
@@ -3776,7 +3801,7 @@ function estimatedStageEvents(drum){
   history.forEach(entry=>{
     if(!entry?.completed || !entry?.completed_at || !entry?.item || seen.has(entry.item)) return;
     seen.add(entry.item);
-    const hours=Number(estimates[entry.item] || 0);
+    const hours=Number(estimates[entry.item] || 0) * drumTimingMultiplier(drum.drum_type,drum.size);
     rows.push({
       date:localDateKey(entry.completed_at),
       hours,
@@ -3786,6 +3811,9 @@ function estimatedStageEvents(drum){
       timber:drum.timber,
       buildType:drum.build_type || "Stave",
       completedDrum:entry.item==="Assembled",
+      productionValue: totalWorkflowHours(drum)>0
+        ? targetProductionValue(drum) * (hours / totalWorkflowHours(drum))
+        : 0,
     });
   });
 
@@ -3820,6 +3848,7 @@ function WorkshopSummary({drums,sales,labourRate}){
   const actualHours=periodActual.reduce((sum,row)=>sum+row.hours,0);
   const labourValue=estimatedHours*Number(labourRate||0);
   const actualLabourValue=actualHours*Number(labourRate||0);
+  const productionValue=periodStages.reduce((sum,row)=>sum+Number(row.productionValue || 0),0);
   const salesRevenue=periodSales.reduce((sum,sale)=>sum+Number(sale.total_revenue ?? sale.sale_price ?? 0),0);
   const salesProfit=periodSales.reduce((sum,sale)=>sum+Number(sale.profit || 0),0);
   const drumsCompleted=new Set(periodStages.filter(row=>row.completedDrum).map(row=>row.drumId)).size;
@@ -3854,6 +3883,7 @@ function WorkshopSummary({drums,sales,labourRate}){
         completed:new Set(),
         revenue:0,
         profit:0,
+        productionValue:0,
       };
     }
     return dailyMap[date];
@@ -3862,6 +3892,7 @@ function WorkshopSummary({drums,sales,labourRate}){
   stageEvents.forEach(row=>{
     const day=addDay(row.date);
     day.estimated+=row.hours;
+    day.productionValue+=Number(row.productionValue || 0);
     day.drums.add(row.drumId);
     if(row.completedDrum) day.completed.add(row.drumId);
   });
@@ -3886,12 +3917,13 @@ function WorkshopSummary({drums,sales,labourRate}){
     .sort((a,b)=>b.date.localeCompare(a.date));
 
   function exportCsv(){
-    const header=["Date","Estimated Hours Completed","Actual Hours Logged","Labour Value","Drums Progressed","Drums Completed","Sales Revenue","Estimated Profit"];
+    const header=["Date","Estimated Hours Completed","Actual Hours Logged","Labour Value","Production Value Generated","Drums Progressed","Drums Completed","Sales Revenue","Estimated Profit"];
     const rows=dailyRows.map(row=>[
       row.date,
       row.estimated.toFixed(2),
       row.actual.toFixed(2),
       (row.estimated*Number(labourRate||0)).toFixed(2),
+      row.productionValue.toFixed(2),
       row.drums.size,
       row.completed.size,
       row.revenue.toFixed(2),
@@ -3928,6 +3960,7 @@ function WorkshopSummary({drums,sales,labourRate}){
       <div><b>{estimatedHours.toFixed(2)}</b><span>Estimated hours completed</span></div>
       <div><b>{actualHours.toFixed(2)}</b><span>Actual hours logged</span></div>
       <div><b>{money(labourValue)}</b><span>Estimated labour value</span></div>
+      <div className="productionValueStat"><b>{money(productionValue)}</b><span>Production value generated</span></div>
       <div><b>{money(actualLabourValue)}</b><span>Actual logged labour value</span></div>
       <div><b>{drumsProgressed}</b><span>Drums progressed</span></div>
       <div><b>{drumsCompleted}</b><span>Drums assembled</span></div>
@@ -4863,6 +4896,7 @@ function LaunchMediaModal({drum,stage,onClose,onUploaded,setMessage}){
   const cameraInputRef=useRef(null);
   const libraryInputRef=useRef(null);
   const [files,setFiles]=useState([]);
+  const [source,setSource]=useState("");
   const [status,setStatus]=useState("");
 
   async function upload(){
@@ -4871,8 +4905,10 @@ function LaunchMediaModal({drum,stage,onClose,onUploaded,setMessage}){
       return;
     }
 
-    const shareResult=await offerSaveToDevice(files,`${drum.timber||"Nowak drum"} — ${stage.label}`);
-    setStatus(shareResult.supported
+    const shareResult=source==="camera"
+      ? await offerSaveToDevice(files,`${drum.timber||"Nowak drum"} — ${stage.label}`)
+      : {supported:false,shared:false};
+    setStatus(source==="camera" && shareResult.supported
       ? "Saving to the app..."
       : "Uploading...");
     try{
@@ -4930,14 +4966,14 @@ function LaunchMediaModal({drum,stage,onClose,onUploaded,setMessage}){
         <button onClick={()=>libraryInputRef.current?.click()}><Plus size={16}/> Choose Existing</button>
       </div>
 
-      <input className="hiddenFileInput" ref={cameraInputRef} type="file" accept={stage.accept} capture="environment" onChange={e=>setFiles(Array.from(e.target.files || []))}/>
-      <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept={stage.accept} multiple onChange={e=>setFiles(Array.from(e.target.files || []))}/>
+      <input className="hiddenFileInput" ref={cameraInputRef} type="file" accept={stage.accept} capture="environment" onChange={e=>{setSource("camera");setFiles(Array.from(e.target.files || []));}}/>
+      <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept={stage.accept} multiple onChange={e=>{setSource("library");setFiles(Array.from(e.target.files || []));}}/>
 
       {files.length>0 && <p className="okText">{files.length} file{files.length===1?"":"s"} selected.</p>}
       <button className="primary uploadPhotosButton" disabled={status==="Uploading..." || status==="Saving to the app..."} onClick={upload}>
-        <Camera size={16}/> {(status==="Uploading..." || status==="Saving to the app...") ? "Uploading..." : "Upload & Save to iPhone"}
+        <Camera size={16}/> {(status==="Uploading..." || status==="Saving to the app...") ? "Uploading..." : source==="camera" ? "Upload & Save to iPhone" : "Upload"}
       </button>
-      <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> or <b>Save Video</b> in the share sheet. The app upload continues even if the share sheet is closed.</small>
+      {source==="camera" && <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> or <b>Save Video</b> in the share sheet. The app upload continues even if the share sheet is closed.</small>}
       {status && <p className={status.includes("failed")?"dangerText":"okText"}>{status}</p>}
     </div>
   </div>
@@ -5571,6 +5607,7 @@ function ProjectMediaModal({project,onClose,onUploaded}){
   const [category,setCategory]=useState("project_progress");
   const [caption,setCaption]=useState("");
   const [files,setFiles]=useState([]);
+  const [source,setSource]=useState("");
   const [status,setStatus]=useState("");
   const [uploading,setUploading]=useState(false);
 
@@ -5581,8 +5618,10 @@ function ProjectMediaModal({project,onClose,onUploaded}){
     }
 
     setUploading(true);
-    const shareResult=await offerSaveToDevice(files,`${project.name} project media`);
-    setStatus(shareResult.supported
+    const shareResult=source==="camera"
+      ? await offerSaveToDevice(files,`${project.name} project media`)
+      : {supported:false,shared:false};
+    setStatus(source==="camera" && shareResult.supported
       ? "Saving project media to the app..."
       : "Uploading project media...");
     const saved=[];
@@ -5663,7 +5702,7 @@ function ProjectMediaModal({project,onClose,onUploaded}){
         accept="image/*,video/*"
         capture="environment"
         multiple
-        onChange={e=>setFiles(Array.from(e.target.files||[]))}
+        onChange={e=>{setSource("camera");setFiles(Array.from(e.target.files||[]));}}
       />
       <input
         ref={libraryInputRef}
@@ -5671,7 +5710,7 @@ function ProjectMediaModal({project,onClose,onUploaded}){
         type="file"
         accept="image/*,video/*"
         multiple
-        onChange={e=>setFiles(Array.from(e.target.files||[]))}
+        onChange={e=>{setSource("library");setFiles(Array.from(e.target.files||[]));}}
       />
 
       {files.length>0 && <div className="selectedMediaSummary">
@@ -5684,9 +5723,9 @@ function ProjectMediaModal({project,onClose,onUploaded}){
       <div className="modalActions">
         <button onClick={onClose}>Close</button>
         <button className="primary" disabled={uploading || !files.length} onClick={upload}>
-          {uploading?"Uploading...":"Upload & Save to iPhone"}
+          {uploading?"Uploading...":source==="camera"?"Upload & Save to iPhone":"Upload"}
         </button>
-        <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> or <b>Save Video</b> in the share sheet. The media will also be uploaded to this project.</small>
+        {source==="camera" && <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> or <b>Save Video</b> in the share sheet. The media will also be uploaded to this project.</small>}
       </div>
     </div>
   </div>;
@@ -6014,7 +6053,10 @@ function DrumPhotoLibrary({drum,setMessage,onAddPhoto}){
       <div className="photoLibraryGrid">
         {photos.map(photo=>{
           const isVideo=photo.media_type==="video" || /\.(mp4|mov|m4v|webm)$/i.test(photo.storage_path || photo.public_url || "");
-          const label=photoMilestones[photo.milestone]?.label || launchPackStages.find(stage=>stage.key===photo.milestone)?.label || photo.milestone;
+          const baseLabel=photoMilestones[photo.milestone]?.label || launchPackStages.find(stage=>stage.key===photo.milestone)?.label || photo.milestone;
+          const label=photo.milestone==="shellcomplete"
+            ? drum.build_client==="Brady" ? "Brady shell complete" : "Nowak shell complete"
+            : baseLabel;
           const actions=communicationActionsForDrum(drum,photo.milestone);
           return <div className="storedMediaCard" key={photo.id}>
             <a href={photo.public_url} target="_blank" rel="noreferrer">
@@ -6024,16 +6066,19 @@ function DrumPhotoLibrary({drum,setMessage,onAddPhoto}){
               {isVideo && <span className="videoMediaBadge">VIDEO</span>}
             </a>
             <span>{label}</span>
-            <div className="storedMediaActions">
-              <a className="buttonLike" href={photo.public_url} target="_blank" rel="noreferrer">Open Media</a>
-              <button onClick={()=>downloadStoredMedia([photo],drum,label,setMessage)}>Download</button>
-              {actions.canEmail && <a className={"buttonLike "+(!drum.customer_email?"disabledLink":"")} href={drum.customer_email?actions.mailto:undefined}>
-                <Mail size={14}/> Customer Email
-              </a>}
-              {actions.canSocial && <button onClick={()=>{navigator.clipboard?.writeText(actions.message.social);setMessage?.("Facebook caption copied.");}}>Copy Facebook Caption</button>}
-              {actions.canSocial && <button onClick={()=>{navigator.clipboard?.writeText(actions.message.instagram);setMessage?.("Instagram caption copied.");}}>Copy Instagram Caption</button>}
-              {onAddPhoto && <button onClick={()=>onAddPhoto(drum,photo.milestone)}>Add More Media</button>}
-              <button className="mediaDeleteButton" onClick={()=>deleteStoredMedia(photo)}>Delete</button>
+            <div className="storedMediaPrimaryActions">
+              <a className="buttonLike" href={photo.public_url} target="_blank" rel="noreferrer">Open</a>
+              <details className="storedMediaMore">
+                <summary>More</summary>
+                <div className="storedMediaMoreMenu">
+                  <button onClick={()=>downloadStoredMedia([photo],drum,label,setMessage)}>Download</button>
+                  {actions.canEmail && <a className={"buttonLike "+(!drum.customer_email?"disabledLink":"")} href={drum.customer_email?actions.mailto:undefined}><Mail size={14}/> Customer email</a>}
+                  {actions.canSocial && <button onClick={()=>{navigator.clipboard?.writeText(actions.message.social);setMessage?.("Facebook caption copied.");}}>Copy Facebook caption</button>}
+                  {actions.canSocial && <button onClick={()=>{navigator.clipboard?.writeText(actions.message.instagram);setMessage?.("Instagram caption copied.");}}>Copy Instagram caption</button>}
+                  {onAddPhoto && <button onClick={()=>onAddPhoto(drum,photo.milestone)}>Add more media</button>}
+                  <button className="mediaDeleteButton" onClick={()=>deleteStoredMedia(photo)}>Delete</button>
+                </div>
+              </details>
             </div>
             {actions.isBrady && <small className="internalOnlyNotice">Internal documentation only.</small>}
           </div>
@@ -6206,6 +6251,7 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
   };
   const message=milestoneMessage({...drum},milestoneKey);
   const [files,setFiles]=useState([]);
+  const [source,setSource]=useState("");
   const [socialText,setSocialText]=useState(message.social);
   const [emailSubject,setEmailSubject]=useState(message.emailSubject);
   const [emailBody,setEmailBody]=useState(message.emailBody);
@@ -6223,8 +6269,10 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       return;
     }
 
-    const shareResult=await offerSaveToDevice(files,`${drum.timber||"Nowak drum"} — ${milestone.label}`);
-    setStatus(shareResult.supported
+    const shareResult=source==="camera"
+      ? await offerSaveToDevice(files,`${drum.timber||"Nowak drum"} — ${milestone.label}`)
+      : {supported:false,shared:false};
+    setStatus(source==="camera" && shareResult.supported
       ? "Saving photos to the app..."
       : "Uploading photos...");
     const saved=[];
@@ -6300,12 +6348,12 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
         <button className="primary" type="button" onClick={()=>cameraInputRef.current?.click()}><Camera size={16}/> Take Photo</button>
         <button type="button" onClick={()=>libraryInputRef.current?.click()}><Plus size={16}/> Choose Existing Photos</button>
       </div>
-      <input className="hiddenFileInput" ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={e=>setFiles(Array.from(e.target.files || []))}/>
-      <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept="image/*" multiple onChange={e=>setFiles(Array.from(e.target.files || []))}/>
+      <input className="hiddenFileInput" ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={e=>{setSource("camera");setFiles(Array.from(e.target.files || []));}}/>
+      <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept="image/*" multiple onChange={e=>{setSource("library");setFiles(Array.from(e.target.files || []));}}/>
       {files.length>0 && <p className="okText">{files.length} photo{files.length===1?"":"s"} selected and ready to upload.</p>}
 
-      <button type="button" className="primary uploadPhotosButton" disabled={status==="Uploading photos..." || status==="Saving photos to the app..."} onClick={uploadPhotos}><Camera size={16}/> {(status==="Uploading photos..." || status==="Saving photos to the app...") ? "Uploading..." : "Upload & Save to iPhone"}</button>
-      <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> in the share sheet. The photo will also be uploaded to this drum.</small>
+      <button type="button" className="primary uploadPhotosButton" disabled={status==="Uploading photos..." || status==="Saving photos to the app..."} onClick={uploadPhotos}><Camera size={16}/> {(status==="Uploading photos..." || status==="Saving photos to the app...") ? "Uploading..." : source==="camera" ? "Upload & Save to iPhone" : "Upload"}</button>
+      {source==="camera" && <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> in the share sheet. The photo will also be uploaded to this drum.</small>}
       {status && <p className={(status.toLowerCase().includes("failed") || status.toLowerCase().includes("error")) ? "dangerText" : "okText"}>{status}</p>}
 
       {drum.build_client!=="Brady" && <>
