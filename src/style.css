@@ -1789,3 +1789,9 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .stocktakeFooter{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;padding:14px;background:rgba(20,20,18,.96);border-top:1px solid rgba(255,255,255,.12);z-index:5}
 .stockChanged{display:block;margin-top:4px;color:#f3c94f;font-weight:700}
 .inventoryModule input[type="number"]{min-width:76px}
+
+/* v7.6.6 inventory controls */
+.compactInput{width:72px;min-width:64px;padding:8px!important}
+.moneyInput{width:92px;min-width:82px;padding:8px!important}
+.stockActions{display:flex;gap:6px;margin-bottom:4px}.stockActions button{min-width:34px;padding:6px 10px;font-weight:800}
+.inventoryTabs{flex-wrap:wrap}.inventoryBlock tfoot th{border-top:2px solid var(--border);padding-top:14px}
