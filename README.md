@@ -1,4 +1,26 @@
-# Nowak Workshop OS v7.5.8
+# Nowak Workshop OS v7.6.0
+
+## v7.6.0
+- Reissued the complete snare hardware inventory update with a repaired, repeat-safe Supabase migration.
+- The migration automatically finds and merges duplicate hardware codes such as `AIR01` before creating the unique index.
+- Existing duplicate stock quantities are combined rather than discarded.
+- The migration can be run after the failed v7.5.9 attempt and is safe to run again.
+- Includes the full v7.5.9 inventory, stocktake, allocation, shortage-warning and build-capacity features.
+- Supabase migration required: `supabase/v7_6_0_inventory_complete.sql`.
+- Do not run the older v7.5.9 migration again.
+
+
+
+## v7.5.9
+- Added a snare-only hardware inventory and stocktake module.
+- Added job-level hardware allocation for custom orders.
+- Allocated hardware is excluded from available stock but remains on hand until assembly.
+- Completing the Assembled stage automatically consumes allocated hardware.
+- Added immediate shortage warnings and a What Can We Build capacity dashboard by snare diameter, depth and construction.
+- Added 10-inch snare hardware support (6 lugs and 12 tension rods).
+- Seeded lug lengths, 45mm tension rods, 2.3mm hoops, Remo heads, snare wires, Trick throw-offs and 20/30mm vents with the requested suppliers.
+- Removed screws, washers and claws from this first inventory BOM.
+- Supabase migration required: `supabase/v7_5_9_inventory_allocation.sql`.
 
 ## v7.5.8
 - Combined snare pricing and costing templates into one clearer section.

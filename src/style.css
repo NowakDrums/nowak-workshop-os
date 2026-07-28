@@ -1761,3 +1761,14 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .darkPriceGuide .priceGuideTotal{background:#3a2f1d!important;border-top:2px solid #d3aa5d!important}
 .darkPriceGuide .priceGuideTotal span,.darkPriceGuide .priceGuideTotal strong{font-weight:900!important}
 @media(max-width:760px){.combinedPricingGrid,.pricingColumns{grid-template-columns:1fr}.combinedPricingCard{padding:12px}}
+
+/* v7.5.9 inventory allocation */
+.inventoryModule .sectionHeader{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.inventorySummaryGrid,.capacityGrid,.allocationGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:14px 0}
+.inventorySummaryGrid .card strong{font-size:1.7rem;color:var(--gold,#d7a73d)}
+.inventoryBlock{margin-top:22px;padding-top:16px;border-top:1px solid rgba(255,255,255,.12)}
+.inventoryBlock h3{margin-bottom:6px}
+.allocationGrid .card,.capacityGrid .card{display:flex;flex-direction:column;gap:7px}
+.miniButton{display:block;margin-top:6px;padding:5px 8px;font-size:.75rem}
+.warningText{color:#e8bc64}
+@media(max-width:700px){.inventoryModule table{min-width:760px}.inventorySummaryGrid{grid-template-columns:repeat(2,1fr)}}

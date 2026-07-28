@@ -414,6 +414,48 @@ function formatMixMl(value){
 
 const drumDiameters = ["8","10","12","13","14","16","18","20","22","24"];
 const drumDepths = ["4 1/2","5","5 1/2","6","6 1/2","7","7 1/2","8","10","12","14","16","18"];
+
+const snareInventoryDiameters=["10","12","13","14"];
+const snareInventoryDepths=["4 1/2","5","5 1/2","6","6 1/2","7","7 1/2","8"];
+
+function normaliseDepthValue(value){
+  return String(value||"").replace(/½/g," 1/2").replace(/\.5/g," 1/2").trim();
+}
+function snareLugLength(depth){
+  const d=normaliseDepthValue(depth);
+  if(["4 1/2","5"].includes(d)) return "38mm";
+  if(["5 1/2","6"].includes(d)) return "70mm";
+  if(["6 1/2","7","7 1/2"].includes(d)) return "88mm";
+  if(d==="8") return "114mm";
+  return "";
+}
+function parseSnareSize(size){
+  const text=String(size||"").replace(/"/g,"").replace(/×/g,"x");
+  const match=text.match(/(10|12|13|14)\s*x\s*([0-9]+(?:\s*1\/2|\.5)?)/i);
+  return match ? {diameter:match[1],depth:normaliseDepthValue(match[2])} : null;
+}
+function snareHardwareRequirements(drum){
+  if(String(drum?.drum_type||"Snare").toLowerCase()!=="snare") return [];
+  const spec=parseSnareSize(drum?.size);
+  if(!spec) return [];
+  const diameter=spec.diameter;
+  const lugCount=diameter==="10" ? 6 : diameter==="14" ? 10 : 8;
+  const rodCount=lugCount*2;
+  const lugLength=snareLugLength(spec.depth);
+  const ventSize=drum?.build_type==="Ply" ? "20mm" : "30mm";
+  return [
+    {code:`LUG-${lugLength.replace("mm","")}`,qty:lugCount,label:`${lugLength} lug`},
+    {code:"TROD-45",qty:rodCount,label:"45mm tension rod"},
+    {code:`HOOP-${diameter}-${lugCount}-BAT`,qty:1,label:`${diameter}" ${lugCount}-lug 2.3mm batter hoop`},
+    {code:`HOOP-${diameter}-${lugCount}-SNR`,qty:1,label:`${diameter}" ${lugCount}-lug 2.3mm snare-side hoop`},
+    {code:`HEAD-${diameter}-BAT`,qty:1,label:`${diameter}" Remo batter head`},
+    {code:`HEAD-${diameter}-SNR`,qty:1,label:`${diameter}" Remo snare-side head`},
+    {code:`WIRE-${diameter}`,qty:1,label:`${diameter}" snare wires`},
+    {code:"THROW-TRICK",qty:1,label:"Trick throw-off"},
+    {code:`VENT-${ventSize.replace("mm","")}`,qty:1,label:`${ventSize} air vent`},
+  ].filter(item=>!item.code.endsWith("-"));
+}
+
 const drumTypeOptions = ["Snare","Tom","Floor Tom","Bass Drum"];
 const timberOptions = [
   "Jarrah","Jarrah Staircase","Jarrah Fiddleback",
@@ -1469,6 +1511,7 @@ function App(){
   const [view,setView]=useState("dashboard");
   const [drums,setDrums]=useState([]);
   const [hardware,setHardware]=useState([]);
+  const [hardwareAllocations,setHardwareAllocations]=useState([]);
   const [templates,setTemplates]=useState([]);
   const [sales,setSales]=useState([]);
   const [projects,setProjects]=useState([]);
@@ -1497,9 +1540,10 @@ function App(){
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
     setLoading(true); setMessage("");
-    const [d,h,t,s,p,r,w,wt,fp]=await Promise.all([
+    const [d,h,a,t,s,p,r,w,wt,fp]=await Promise.all([
       supabase.from("drums").select("*").order("created_at",{ascending:false}),
       supabase.from("hardware_parts").select("*").order("category",{ascending:true}),
+      supabase.from("hardware_allocations").select("*").order("created_at",{ascending:true}),
       supabase.from("cost_templates").select("*").order("name",{ascending:true}),
       supabase.from("sales").select("*").order("sold_at",{ascending:false}),
       supabase.from("projects").select("*").order("created_at",{ascending:false}),
@@ -1519,6 +1563,7 @@ function App(){
 
     setDrums(loadedDrums);
     setHardware(h.data||[]);
+    setHardwareAllocations(a.data||[]);
     setTemplates(t.data||[]);
     setSales(s.data||[]);
     setProjects(p.data||[]);
@@ -1530,6 +1575,8 @@ function App(){
     const coreErrors=[d.error,h.error,t.error,s.error].filter(Boolean);
     if(coreErrors.length){
       setMessage(coreErrors.map(e=>e.message).join(" | "));
+    }else if(a.error){
+      setMessage("Inventory allocation needs the v7.6.0 Supabase migration.");
     }else if(p.error){
       setMessage("Kits / Projects needs the v5.0 Supabase setup: " + p.error.message);
     }else if(r.error){
@@ -1562,8 +1609,10 @@ function App(){
       });
     return g;
   },[filtered]);
+  const allocatedByPart=hardwareAllocations.filter(a=>a.status==="Allocated").reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
+  const availableHardware=hardware.map(p=>({...p,qty_allocated:Number(allocatedByPart[p.id]||0),qty_available:Number(p.qty_on_hand||0)-Number(allocatedByPart[p.id]||0)}));
   const inventoryValue=hardware.reduce((s,p)=>s+Number(p.qty_on_hand||0)*Number(p.landed_cost_aud||0),0);
-  const lowStock=hardware.filter(p=>Number(p.qty_on_hand||0)<=Number(p.reorder_level||0)).length;
+  const lowStock=availableHardware.filter(p=>Number(p.qty_available||0)<=Number(p.reorder_level||0)).length;
   const retail=active.reduce((s,d)=>s+Number(d.total_price||d.retail_price||0),0);
   const cost=active.reduce((s,d)=>s+templateCost(templateMap[d.template_name],labourRate),0);
   const brady=active.filter(d=>d.build_client==="Brady").length;
@@ -1757,6 +1806,49 @@ function App(){
     if(error) setMessage(error.message); else await loadAll();
   }
 
+  async function allocateHardwareForDrum(drum){
+    const requirements=snareHardwareRequirements(drum);
+    if(!requirements.length){ setMessage("Hardware allocation is currently available for 10, 12, 13 and 14-inch snare drums only."); return false; }
+    const existing=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Allocated");
+    if(existing.length){ setMessage("Hardware is already allocated to this drum."); return true; }
+    const byCode=Object.fromEntries(availableHardware.map(part=>[part.code,part]));
+    const shortages=requirements.filter(req=>!byCode[req.code] || Number(byCode[req.code].qty_available||0)<req.qty);
+    if(shortages.length){
+      setMessage("Hardware shortage: "+shortages.map(req=>`${req.label} — need ${req.qty}, available ${Number(byCode[req.code]?.qty_available||0)}`).join("; "));
+      return false;
+    }
+    const rows=requirements.map(req=>({drum_id:drum.id,hardware_part_id:byCode[req.code].id,quantity:req.qty,status:"Allocated"}));
+    const {error}=await supabase.from("hardware_allocations").insert(rows);
+    if(error){ setMessage("Could not allocate hardware: "+error.message); return false; }
+    await loadAll(); setMessage(`Hardware allocated for production #${drum.serial||"Pending"}. Physically set these parts aside.`); return true;
+  }
+
+  async function releaseHardwareForDrum(drum){
+    const {error}=await supabase.from("hardware_allocations").update({status:"Released",released_at:new Date().toISOString()}).eq("drum_id",drum.id).eq("status","Allocated");
+    if(error){setMessage(error.message);return false;} await loadAll(); setMessage("Hardware allocation released back to available stock."); return true;
+  }
+
+  async function consumeHardwareForDrum(drum){
+    let allocations=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Allocated");
+    if(!allocations.length){
+      const allocated=await allocateHardwareForDrum(drum);
+      if(!allocated) return false;
+      const result=await supabase.from("hardware_allocations").select("*").eq("drum_id",drum.id).eq("status","Allocated");
+      allocations=result.data||[];
+    }
+    for(const allocation of allocations){
+      const part=hardware.find(p=>p.id===allocation.hardware_part_id);
+      if(!part || Number(part.qty_on_hand||0)<Number(allocation.quantity||0)){setMessage(`Cannot assemble: insufficient ${part?.part_name||"hardware"}.`);return false;}
+    }
+    for(const allocation of allocations){
+      const part=hardware.find(p=>p.id===allocation.hardware_part_id);
+      const {error}=await supabase.from("hardware_parts").update({qty_on_hand:Number(part.qty_on_hand||0)-Number(allocation.quantity||0)}).eq("id",part.id);
+      if(error){setMessage("Stock reduction failed: "+error.message);return false;}
+    }
+    const {error}=await supabase.from("hardware_allocations").update({status:"Consumed",consumed_at:new Date().toISOString()}).eq("drum_id",drum.id).eq("status","Allocated");
+    if(error){setMessage(error.message);return false;} return true;
+  }
+
   async function progressDrumFromCard(d){
     if(!d?.id || progressingDrumId===d.id) return false;
     setProgressingDrumId(d.id);
@@ -1767,6 +1859,11 @@ function App(){
       const flow=workflowState(d.build_type || "Stave",checked,d.finish,d.build_client,d.drum_type,d.size);
       const nextItem=flow.steps[flow.completedCount];
       if(!nextItem) return false;
+
+      if(nextItem==="Assembled" && String(d.drum_type||"Snare").toLowerCase()==="snare"){
+        const consumed=await consumeHardwareForDrum(d);
+        if(!consumed) return false;
+      }
 
       const next=new Set(checked);
       next.add(nextItem);
@@ -1965,6 +2062,13 @@ function App(){
       setShowAddWizard(false);
       setView(isPly ? "veneer" : "today");
       setJobCard(data);
+      if(form.order_type==="Custom" && String(form.drum_type||"Snare").toLowerCase()==="snare"){
+        const requirements=snareHardwareRequirements(data);
+        const byCode=Object.fromEntries(availableHardware.map(part=>[part.code,part]));
+        const shortages=requirements.filter(req=>Number(byCode[req.code]?.qty_available||0)<req.qty);
+        if(shortages.length) setMessage("Custom order created — hardware shortage: "+shortages.map(req=>`${req.label} (need ${req.qty}, available ${Number(byCode[req.code]?.qty_available||0)})`).join("; "));
+        else setMessage("Custom order created. All required hardware is currently available; allocate it from Inventory when you are ready to set it aside.");
+      }
     }
   }
 
@@ -2852,7 +2956,7 @@ function App(){
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard}/>}
     {view==="repairs" && <RepairsPage repairs={repairs} openRepair={setRepairJob} addRepair={()=>setShowAddRepair(true)}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
-    {view==="inventory" && <Inventory hardware={hardware} updateHardware={updateHardware} lowStock={lowStock} inventoryValue={inventoryValue}/>}
+    {view==="inventory" && <Inventory hardware={availableHardware} allocations={hardwareAllocations} drums={drums} updateHardware={updateHardware} allocateHardware={allocateHardwareForDrum} releaseHardware={releaseHardwareForDrum} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
     {view==="summary" && <WorkshopSummary drums={drums} sales={sales} labourRate={labourRate}/>}
     {view==="comms" && <CommsMarketingCentre
@@ -4401,7 +4505,32 @@ function RepairJobModal({repair,onClose,updateRepair,deleteRepair,setMessage}){
   </div></div>
 }
 
-function Inventory({hardware, updateHardware, lowStock, inventoryValue}){ return <section className="panel"><h2>Hardware Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p><div className="tableWrap"><table><thead><tr><th>Part</th><th>Code</th><th>Finish</th><th>Size</th><th>Qty</th><th>Reorder</th><th>Landed AUD</th><th>Status</th></tr></thead><tbody>{hardware.map(p=><tr key={p.id}><td>{p.part_name}<br/><small>{p.category}</small></td><td>{p.code}</td><td>{p.finish}</td><td>{p.size}</td><td><input value={p.qty_on_hand??0} onChange={e=>updateHardware(p.id,{qty_on_hand:Number(e.target.value)})}/></td><td>{p.reorder_level}</td><td>{money(p.landed_cost_aud)}</td><td>{Number(p.qty_on_hand||0)<=Number(p.reorder_level||0)?<span className="dangerText">Order</span>:<span className="okText">OK</span>}</td></tr>)}</tbody></table></div></section> }
+function Inventory({hardware, allocations=[], drums=[], updateHardware, allocateHardware, releaseHardware, lowStock, inventoryValue}){
+  const [stocktakeMode,setStocktakeMode]=useState(false);
+  const [counts,setCounts]=useState({});
+  const [capacityDepth,setCapacityDepth]=useState("6 1/2");
+  const activeCustom=drums.filter(d=>d.sales_status==="Custom Order" && !isArchivedStatus(d) && !isSoldStatus(d) && !isShippedStatus(d) && String(d.drum_type||"Snare").toLowerCase()==="snare");
+  const allocationByDrum=allocations.filter(a=>a.status==="Allocated").reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map;},{});
+  const byCode=Object.fromEntries(hardware.map(p=>[p.code,p]));
+  const capacityFor=(diameter,buildType)=>{
+    const lugCount=diameter==="10"?6:diameter==="14"?10:8;
+    const mock={size:`${diameter} x ${capacityDepth}`,drum_type:"Snare",build_type:buildType};
+    const reqs=snareHardwareRequirements(mock);
+    const capacities=reqs.map(req=>Math.floor(Math.max(0,Number(byCode[req.code]?.qty_available||0))/req.qty));
+    return capacities.length?Math.min(...capacities):0;
+  };
+  const groups=["Lugs","Tension Rods","Hoops","Drum Heads","Snare Wires","Throw-Offs","Air Vents"];
+  return <section className="panel inventoryModule"><div className="sectionHeader"><div><h2>Snare Hardware Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div><button onClick={()=>setStocktakeMode(v=>!v)}>{stocktakeMode?"Finish Stocktake":"Start Stocktake"}</button></div>
+
+    <div className="inventorySummaryGrid"><article className="card"><b>On hand</b><strong>{hardware.reduce((sum,p)=>sum+Number(p.qty_on_hand||0),0)}</strong></article><article className="card"><b>Allocated to jobs</b><strong>{hardware.reduce((sum,p)=>sum+Number(p.qty_allocated||0),0)}</strong></article><article className="card"><b>Available</b><strong>{hardware.reduce((sum,p)=>sum+Math.max(0,Number(p.qty_available||0)),0)}</strong></article><article className="card"><b>Custom orders needing allocation</b><strong>{activeCustom.filter(d=>!allocationByDrum[d.id]?.length).length}</strong></article></div>
+
+    <section className="inventoryBlock"><h3>Custom Order Hardware Allocation</h3><p>Allocate parts when the order is accepted, then physically place them aside. Stock is reduced automatically when you complete the <b>Assembled</b> stage.</p>{activeCustom.length===0?<p>No active custom snare orders.</p>:<div className="allocationGrid">{activeCustom.map(d=>{const allocated=allocationByDrum[d.id]?.length>0;const reqs=snareHardwareRequirements(d);const shortages=reqs.filter(req=>Number(byCode[req.code]?.qty_available||0)<req.qty);return <article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.customer||"Customer not entered"} · {d.build_type}</span><span className={allocated?"okText":shortages.length?"dangerText":"warningText"}>{allocated?"Hardware allocated":shortages.length?`${shortages.length} shortage${shortages.length===1?"":"s"}`:"Ready to allocate"}</span>{shortages.length>0&&!allocated&&<small>{shortages.map(x=>x.label).join(", ")}</small>}<div className="buttonRow">{allocated?<button onClick={()=>releaseHardware(d)}>Release allocation</button>:<button className="primary" onClick={()=>allocateHardware(d)}>Allocate hardware</button>}</div></article>})}</div>}</section>
+
+    <section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build?</h3><p>Capacity uses available stock after allocations. Choose a depth to apply the correct lug length.</p></div><label>Depth <select value={capacityDepth} onChange={e=>setCapacityDepth(e.target.value)}>{snareInventoryDepths.map(d=><option key={d}>{d}</option>)}</select></label></div><div className="capacityGrid">{snareInventoryDiameters.map(d=><article className="card" key={d}><b>{d}" snare · {capacityDepth}" deep</b><span>Stave (30mm vent): <strong>{capacityFor(d,"Stave")}</strong></span><span>Ply (20mm vent): <strong>{capacityFor(d,"Ply")}</strong></span><small>{d==="10"?"6 lugs · 12 tension rods":d==="14"?"10 lugs · 20 tension rods":"8 lugs · 16 tension rods"}</small></article>)}</div></section>
+
+    {groups.map(group=>{const parts=hardware.filter(p=>p.category===group);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Reorder</th><th>Status</th></tr></thead><tbody>{parts.map(p=><tr key={p.id}><td>{p.part_name}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input type="number" min="0" value={counts[p.id]??p.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[p.id]:Number(e.target.value)}))}/>:p.qty_on_hand}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td>{p.reorder_level}</td><td>{Number(p.qty_available||0)<=Number(p.reorder_level||0)?<span className="dangerText">Order</span>:<span className="okText">OK</span>}{stocktakeMode&&counts[p.id]!==undefined&&Number(counts[p.id])!==Number(p.qty_on_hand)&&<button className="miniButton" onClick={()=>updateHardware(p.id,{qty_on_hand:Number(counts[p.id])})}>Save count</button>}</td></tr>)}</tbody></table></div></section>})}
+  </section>;
+}
 
 function Costing({templates, labourRate, setLabourRate}){
   const nowakKitTotal=Object.values(nowakTomRetailPrices).reduce((sum,value)=>sum+value,0);
