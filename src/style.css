@@ -1784,3 +1784,8 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .hardwareUsedModal{width:min(620px,100%);max-height:88vh;overflow:auto;background:#171511;border:1px solid #56452b;border-radius:18px;padding:18px;box-shadow:0 20px 70px rgba(0,0,0,.55)}
 .hardwareChecklist{display:flex;flex-direction:column;gap:8px;margin:14px 0}.hardwareCheckRow{display:flex!important;align-items:center;gap:12px;padding:12px;background:#211e18;border:1px solid #393126;border-radius:12px;cursor:pointer}.hardwareCheckRow input{width:22px;height:22px;flex:0 0 auto}.hardwareCheckRow span{display:flex;flex-direction:column;gap:3px}.hardwareCheckRow small{color:#aaa091}
 @media(max-width:700px){.hardwareUsedBar{align-items:stretch;flex-direction:column}.hardwareUsedBar button{width:100%}.inventoryTabs button{flex:1}}
+
+/* v7.6.3 stocktake improvements */
+.stocktakeFooter{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;padding:14px;background:rgba(20,20,18,.96);border-top:1px solid rgba(255,255,255,.12);z-index:5}
+.stockChanged{display:block;margin-top:4px;color:#f3c94f;font-weight:700}
+.inventoryModule input[type="number"]{min-width:76px}

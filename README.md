@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.6.2
+# Nowak Workshop OS v7.6.4
 
 ## v7.6.2
 - Reissued the complete snare hardware inventory update with a repaired, repeat-safe Supabase migration.
@@ -61,3 +61,18 @@ No Supabase migration is required for this release. Existing drum and photo reco
 
 ## v7.6.2 inventory visibility repair
 Run `supabase/v7_6_2_inventory_stock_visibility.sql` after deployment. It restores the hardware parts RLS policy and safely reseeds the standard stock catalogue.
+
+
+## v7.6.3 inventory catalogue cleanup
+- Stocktake now has Save Stocktake buttons and saves all entered shelf counts together.
+- Hardware catalogue naming and order cleaned up.
+- Agile Tube Lugs use ATL01 while an internal SKU key keeps each lug length separate.
+- Hoops, heads, wires and air vents are displayed and sorted consistently.
+- Existing stock quantities and drum allocations are preserved and duplicate catalogue rows are merged by internal SKU.
+
+
+## v7.6.4 migration repair
+
+- Replaces the failed catalogue UPSERT with an idempotent update/insert process.
+- Safe to run after a partially failed v7.6.3 migration.
+- Preserves stock quantities and existing hardware allocations.
