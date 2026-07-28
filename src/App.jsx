@@ -1849,7 +1849,7 @@ function App(){
     return await syncHardwareUsed(drum,requirements);
   }
 
-  async function syncHardwareUsed(drum,selectedRequirements){
+  async function syncHardwareUsed(drum,selectedRequirements,allowNegative=false){
     const selectedCodes=new Set(selectedRequirements.map(req=>req.code));
     const byCode=Object.fromEntries(hardware.map(part=>[hardwareLookupKey(part),part]));
     const consumed=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Consumed");
@@ -1873,7 +1873,7 @@ function App(){
       const existingQty=consumed.filter(a=>a.hardware_part_id===part.id).reduce((sum,a)=>sum+Number(a.quantity||0),0);
       if(existingQty>=req.qty) continue;
       const addQty=req.qty-existingQty;
-      if(Number(workingQty[part.id]||0)<addQty){setMessage(`Not enough ${req.label}. Need ${addQty}, on hand ${Number(workingQty[part.id]||0)}.`);return false;}
+      if(Number(workingQty[part.id]||0)<addQty && !allowNegative){setMessage(`Not enough ${req.label}. Need ${addQty}, on hand ${Number(workingQty[part.id]||0)}.`);return false;}
       workingQty[part.id]=Number(workingQty[part.id]||0)-addQty;
       const {error:stockError}=await supabase.from("hardware_parts").update({qty_on_hand:workingQty[part.id]}).eq("id",part.id);
       if(stockError){setMessage("Could not deduct hardware: "+stockError.message);return false;}
@@ -2688,7 +2688,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.6.6 — Editable stock, build options and smart reorder planning.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.6.7 — Combined build capacity and flexible assembly shortages.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4556,8 +4556,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const [activeTab,setActiveTab]=useState("stock");
   const [stocktakeMode,setStocktakeMode]=useState(false);
   const [counts,setCounts]=useState({});
-  const [capacityDepth,setCapacityDepth]=useState("6 1/2");
-  const defaultPlan=[
+    const defaultPlan=[
     {id:"14-6.5",diameter:"14",depth:"6 1/2",qty:6,buildType:"Stave"},
     {id:"14-5.5",diameter:"14",depth:"5 1/2",qty:4,buildType:"Stave"},
     {id:"13-7",diameter:"13",depth:"7",qty:4,buildType:"Stave"},
@@ -4591,7 +4590,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const byCode=Object.fromEntries(hardware.map(p=>[hardwareLookupKey(p),p]));
   const requirementsFor=(diameter,depth,buildType="Stave")=>snareHardwareRequirements({size:`${diameter} x ${depth}`,drum_type:"Snare",build_type:buildType});
   const capacityFor=(diameter,depth,buildType)=>{const reqs=requirementsFor(diameter,depth,buildType);const capacities=reqs.map(req=>Math.floor(Math.max(0,Number(byCode[req.code]?.qty_available||0))/req.qty));return capacities.length?Math.min(...capacities):0};
-  const buildableOptions=[];snareInventoryDiameters.forEach(d=>snareInventoryDepths.forEach(depth=>["Stave","Ply"].forEach(type=>{const qty=capacityFor(d,depth,type);if(qty>0)buildableOptions.push({d,depth,type,qty})})));
+  const buildableOptions=[];snareInventoryDiameters.forEach(d=>snareInventoryDepths.forEach(depth=>["Stave","Ply"].forEach(type=>{if((d==="12"||d==="13")&&depth==="8")return;const qty=capacityFor(d,depth,type);if(qty>0)buildableOptions.push({d,depth,type,qty})})));
   const groups=["Lugs","Air Vents","Tension Rods","Hoops","Snare Wires","Throw-Offs","Drum Heads"];
   const consumed=allocations.filter(a=>a.status==="Consumed"),consumedByDrum=consumed.reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map},{}),partById=Object.fromEntries(hardware.map(p=>[p.id,p]));
 
@@ -4600,6 +4599,19 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const orderRows=Object.entries(plannedRequirements).map(([code,required])=>{const part=byCode[code];const available=Math.max(0,Number(part?.qty_available||0));const toOrder=Math.max(0,required-available);return {code,part,required,available,toOrder,cost:Number(part?.landed_cost_aud||0),total:toOrder*Number(part?.landed_cost_aud||0)}}).filter(row=>row.toOrder>0);
   const orderEstimate=orderRows.reduce((sum,row)=>sum+row.total,0);
   const planTotal=reorderPlan.reduce((sum,row)=>sum+Number(row.qty||0),0);
+  const mixRemaining=Object.fromEntries(hardware.map(part=>[hardwareLookupKey(part),Math.max(0,Number(part.qty_available||0))]));
+  const simultaneousMix=reorderPlan.map(row=>({...row,buildable:0}));
+  let mixProgress=true;
+  while(mixProgress){
+    mixProgress=false;
+    simultaneousMix.forEach(row=>{
+      if(row.buildable>=Number(row.qty||0)) return;
+      const reqs=requirementsFor(row.diameter,row.depth,row.buildType);
+      const canBuild=reqs.every(req=>Number(mixRemaining[req.code]||0)>=req.qty);
+      if(canBuild){reqs.forEach(req=>{mixRemaining[req.code]-=req.qty});row.buildable+=1;mixProgress=true;}
+    });
+  }
+  const simultaneousTotal=simultaneousMix.reduce((sum,row)=>sum+row.buildable,0);
 
   return <section className="panel inventoryModule">
     <div className="sectionHeader"><div><h2>Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={()=>{setCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stocktake</button></div>:<button onClick={()=>setStocktakeMode(true)}>Start Stocktake</button>)}</div>
@@ -4607,12 +4619,12 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
 
     {activeTab==="stock"&&<><div className="inventorySummaryGrid"><article className="card"><b>On hand</b><strong>{hardware.reduce((s,p)=>s+Number(p.qty_on_hand||0),0)}</strong></article><article className="card"><b>Allocated</b><strong>{hardware.reduce((s,p)=>s+Number(p.qty_allocated||0),0)}</strong></article><article className="card"><b>Available</b><strong>{hardware.reduce((s,p)=>s+Math.max(0,Number(p.qty_available||0)),0)}</strong></article><article className="card"><b>Stock value</b><strong>{money(inventoryValue)}</strong></article></div>
       {stocktakeMode&&<div className="stocktakeNotice"><b>Stocktake mode</b><span>Enter the quantity physically on the shelf. Fitted hardware is not included.</span></div>}
-      {groups.map(group=>{const parts=hardware.filter(p=>p.category===group).sort(sortParts);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Unit cost</th><th>Minimum</th><th>Actions</th></tr></thead><tbody>{parts.map(p=><tr key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" value={counts[p.id]??p.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[p.id]:Number(e.target.value)}))}/>:<b>{p.qty_on_hand}</b>}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td><input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/></td><td><input className="compactInput" type="number" min="0" defaultValue={Number(p.reorder_level||0)} onBlur={e=>Number(e.target.value)!==Number(p.reorder_level||0)&&updateHardware(p.id,{reorder_level:Number(e.target.value||0)})}/></td><td><div className="stockActions"><button title="Add stock" onClick={()=>adjustStock(p,1)}>+</button><button title="Remove stock" onClick={()=>adjustStock(p,-1)}>−</button></div>{Number(p.qty_available||0)<=Number(p.reorder_level||0)?<small className="dangerText">Low</small>:<small className="okText">OK</small>}</td></tr>)}</tbody></table></div></section>})}
+      {groups.map(group=>{const parts=hardware.filter(p=>p.category===group).sort(sortParts);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Unit cost</th><th>Minimum</th></tr></thead><tbody>{parts.map(p=><tr key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" value={counts[p.id]??p.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[p.id]:Number(e.target.value)}))}/>:<b>{p.qty_on_hand}</b>}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td><input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/></td><td><input className="compactInput" type="number" min="0" defaultValue={Number(p.reorder_level||0)} onBlur={e=>Number(e.target.value)!==Number(p.reorder_level||0)&&updateHardware(p.id,{reorder_level:Number(e.target.value||0)})}/></td></tr>)}</tbody></table></div></section>})}
       {stocktakeMode&&<div className="stocktakeFooter"><button onClick={()=>{setCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stocktake</button></div>}</>}
 
     {activeTab==="allocations"&&<><section className="inventoryBlock"><h3>Custom Order Hardware Allocation</h3><p>Allocate parts when an order is accepted and physically place them aside. Assembling a drum deducts its selected hardware automatically.</p>{activeCustom.length===0?<p>No active custom snare orders.</p>:<div className="allocationGrid">{activeCustom.map(d=>{const allocated=allocationByDrum[d.id]?.length>0,reqs=snareHardwareRequirements(d),shortages=reqs.filter(req=>Number(byCode[req.code]?.qty_available||0)<req.qty);return <article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.customer||"Customer not entered"} · {d.build_type}</span><span className={allocated?"okText":shortages.length?"dangerText":"warningText"}>{allocated?"Hardware allocated":shortages.length?`${shortages.length} shortages`:"Ready to allocate"}</span>{shortages.length>0&&!allocated&&<small>{shortages.map(x=>x.label).join(", ")}</small>}<div className="buttonRow">{allocated?<button onClick={()=>releaseHardware(d)}>Release allocation</button>:<button className="primary" onClick={()=>allocateHardware(d)}>Allocate hardware</button>}</div></article>})}</div>}</section><section className="inventoryBlock"><h3>Hardware Fitted to Drums</h3><p>Open a Job Card and use <b>Adjust Hardware Used</b> to change this list.</p><div className="allocationGrid">{drums.filter(d=>consumedByDrum[d.id]?.length).map(d=><article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.timber} · {d.build_type}</span><small>{consumedByDrum[d.id].map(a=>`${a.quantity} × ${partById[a.hardware_part_id]?.part_name||"Hardware"}`).join(", ")}</small></article>)}</div>{!drums.some(d=>consumedByDrum[d.id]?.length)&&<p>No fitted hardware has been recorded yet.</p>}</section></>}
 
-    {activeTab==="capacity"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Right Now?</h3><p>Only complete snare options supported by available stock are shown. Allocated hardware is excluded.</p></div></div>{buildableOptions.length?<div className="capacityGrid">{buildableOptions.sort((a,b)=>b.qty-a.qty||Number(b.d)-Number(a.d)).map(x=><article className="card" key={`${x.d}-${x.depth}-${x.type}`}><b>{x.d}" × {x.depth}" {x.type}</b><strong>{x.qty} complete drum{x.qty===1?"":"s"}</strong></article>)}</div>:<div className="stocktakeNotice"><b>No complete snare combinations currently available.</b><span>Enter your stocktake quantities and this page will update automatically.</span></div>}</section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Compare a Depth</h3><p>Shows capacity for each diameter using the selected lug length.</p></div><label>Depth <select value={capacityDepth} onChange={e=>setCapacityDepth(e.target.value)}>{snareInventoryDepths.map(d=><option key={d}>{d}</option>)}</select></label></div><div className="capacityGrid">{snareInventoryDiameters.map(d=><article className="card" key={d}><b>{d}" × {capacityDepth}"</b><span>Stave: <strong>{capacityFor(d,capacityDepth,"Stave")}</strong></span><span>Ply: <strong>{capacityFor(d,capacityDepth,"Ply")}</strong></span></article>)}</div></section></>}
+    {activeTab==="capacity"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Right Now?</h3><p>Each card shows the maximum if you built only that option. Rare 12 × 8 and 13 × 8 sizes are excluded.</p></div></div>{buildableOptions.length?<div className="capacityGrid">{buildableOptions.sort((a,b)=>b.qty-a.qty||Number(b.d)-Number(a.d)).map(x=><article className="card" key={`${x.d}-${x.depth}-${x.type}`}><b>{x.d}" × {x.depth}" {x.type}</b><strong>{x.qty} complete drum{x.qty===1?"":"s"}</strong></article>)}</div>:<div className="stocktakeNotice"><b>No complete snare combinations currently available.</b><span>Enter your stocktake quantities and this page will update automatically.</span></div>}</section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Together?</h3><p>This checks the editable Reorder Planner mix against the same shared stock, so hardware is not counted twice.</p></div><strong>{simultaneousTotal} drums together</strong></div><div className="capacityGrid">{simultaneousMix.map(row=><article className="card" key={row.id}><b>{row.diameter}" × {row.depth}" {row.buildType}</b><strong>{row.buildable} of {row.qty}</strong><span>{row.buildable>=Number(row.qty||0)?"Target covered":"Limited by shared hardware"}</span></article>)}</div></section></>}
 
     {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Diameter</th><th>Depth</th><th>Build</th></tr></thead><tbody>{reorderPlan.map((row,index)=><tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{snareInventoryDiameters.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{snareInventoryDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td></tr>)}</tbody></table></div><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Order</h3><p>Required hardware minus current available stock. Items you already have enough of are not ordered.</p></div><div><b>{money(orderEstimate)}</b><br/><small>estimated order value</small></div></div>{orderRows.length?<div className="tableWrap"><table><thead><tr><th>Part</th><th>Required</th><th>Available</th><th>Order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{orderRows.sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)).map(row=><tr key={row.code}><td>{row.part?.part_name||row.code}<br/><small>{row.part?.size||"Catalogue item missing"}</small></td><td>{row.required}</td><td>{row.available}</td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="5">Approximate hardware order</th><th>{money(orderEstimate)}</th></tr></tfoot></table></div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix.</span></div>}<p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section></>}
   </section>;
@@ -6707,6 +6719,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [hardwareSelection,setHardwareSelection]=useState({});
   const [trickFinish,setTrickFinish]=useState("Chrome");
   const [savingHardware,setSavingHardware]=useState(false);
+  const [pendingAssembly,setPendingAssembly]=useState(false);
+  const [assemblyShortages,setAssemblyShortages]=useState([]);
   const suggestedNowakSerial=calculateEncodedNowakSerial(draft.serial,new Date());
   const serialConflict=encodedSerialConflict(drums,suggestedNowakSerial,drum.id);
   const flow=workflowState(localBuildType,checked,draft.finish,localOwnership,drum.drum_type,drum.size);
@@ -6719,7 +6733,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const consumedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Consumed");
   const consumedByPart=consumedForDrum.reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
 
-  function openHardwareUsed(){
+  function openHardwareUsed(shortages=[],forAssembly=false){
     const goldPart=partByCode["THROW-TRICK-GOLD"];
     const goldIsFitted=goldPart ? Number(consumedByPart[goldPart.id]||0)>0 : false;
     setTrickFinish(goldIsFitted ? "Gold" : "Chrome");
@@ -6729,6 +6743,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       initial[req.code]=part ? Number(consumedByPart[part.id]||0)>0 : true;
     });
     setHardwareSelection(initial);
+    setAssemblyShortages(shortages);
+    setPendingAssembly(forAssembly);
     setShowHardwareUsed(true);
   }
 
@@ -6739,9 +6755,16 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       .map(req=>req.code==="THROW-TRICK-CHROME" && trickFinish==="Gold"
         ? {...req,code:"THROW-TRICK-GOLD",label:"Trick throw-off — Gold"}
         : req);
-    const ok=await syncHardwareUsed(drum,selected);
+    const ok=await syncHardwareUsed(drum,selected,pendingAssembly);
     setSavingHardware(false);
-    if(ok){setShowHardwareUsed(false);setSavedMessage("Hardware used updated");setTimeout(()=>setSavedMessage(""),2500);}
+    if(ok){
+      setShowHardwareUsed(false);
+      if(pendingAssembly){
+        const next=new Set(checked);next.add("Assembled");setChecked(next);await saveWorkflow(next,"Assembled",true);
+        setSavedMessage(assemblyShortages.length?"Saved as assembled — hardware shortage highlighted in inventory":"Saved as assembled");
+      }else setSavedMessage("Hardware used updated");
+      setPendingAssembly(false);setAssemblyShortages([]);setTimeout(()=>setSavedMessage(""),3000);
+    }
   }
 
   function changeVeneer(index,value){
@@ -7021,8 +7044,14 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     const next=new Set(checked);
     const isCompleting=!next.has(item);
     if(item==="Assembled" && isCompleting && String(drum.drum_type||"Snare").toLowerCase()==="snare"){
+      const shortages=standardHardware.filter(req=>{const part=partByCode[req.code];return !part||Number(part.qty_on_hand||0)<req.qty;});
+      if(shortages.length){
+        setSavedMessage("Hardware shortage — review fitted parts before saving as assembled");
+        openHardwareUsed(shortages,true);
+        return;
+      }
       const consumed=await consumeHardwareForDrum(drum);
-      if(!consumed){setSavedMessage("Assembly not saved — check hardware stock");return;}
+      if(!consumed){openHardwareUsed([],true);return;}
     }
     if(isCompleting) next.add(item); else next.delete(item);
     setChecked(next);
@@ -7070,13 +7099,13 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
     {String(drum.drum_type||"Snare").toLowerCase()==="snare" && <section className="hardwareUsedBar">
       <div><b>Hardware used</b><span>{checked.has("Assembled") ? "Standard hardware was deducted automatically when assembled." : "Standard hardware will be deducted automatically when assembled."}</span></div>
-      <button onClick={openHardwareUsed}>Adjust Hardware Used</button>
+      <button onClick={()=>openHardwareUsed()}>Adjust Hardware Used</button>
     </section>}
 
     {showHardwareUsed && <div className="hardwareUsedOverlay" onClick={()=>setShowHardwareUsed(false)}><div className="hardwareUsedModal" onClick={e=>e.stopPropagation()}>
-      <div className="sectionHeader"><div><h2>Adjust Hardware Used</h2><p>Select only the parts currently fitted to this drum.</p></div><button onClick={()=>setShowHardwareUsed(false)}>Close</button></div>
-      <div className="hardwareChecklist">{standardHardware.map(req=>{const isTrick=req.code==="THROW-TRICK-CHROME";const lookupCode=isTrick&&trickFinish==="Gold"?"THROW-TRICK-GOLD":req.code;const part=partByCode[lookupCode];return <div key={req.code} className="hardwareCheckRow"><input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/><span><b>{req.qty} × {isTrick?`Trick throw-off — ${trickFinish}`:req.label}</b><small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small>{isTrick&&hardwareSelection[req.code]!==false&&<select value={trickFinish} onChange={e=>setTrickFinish(e.target.value)}><option>Chrome</option><option>Gold</option></select>}</span></div>})}</div>
-      <div className="modalActions"><button onClick={()=>setShowHardwareUsed(false)}>Cancel</button><button className="primary" disabled={savingHardware} onClick={saveHardwareUsed}>{savingHardware?"Saving...":"Save Hardware Used"}</button></div>
+      <div className="sectionHeader"><div><h2>Adjust Hardware Used</h2><p>{pendingAssembly?"There is not enough recorded stock for the full standard hardware set. Deselect anything not fitted, or save as assembled anyway to record a stock shortage.":"Select only the parts currently fitted to this drum."}</p></div><button onClick={()=>setShowHardwareUsed(false)}>Close</button></div>{assemblyShortages.length>0&&<div className="stocktakeNotice dangerText"><b>Hardware shortage</b><span>{assemblyShortages.map(req=>req.label).join(", ")}</span></div>}
+      <div className="hardwareChecklist">{standardHardware.map(req=>{const isTrick=req.code==="THROW-TRICK-CHROME";const lookupCode=isTrick&&trickFinish==="Gold"?"THROW-TRICK-GOLD":req.code;const part=partByCode[lookupCode];return <div key={req.code} className={`hardwareCheckRow ${assemblyShortages.some(x=>x.code===req.code)?"hardwareShortageRow":""}`}><input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/><span><b>{req.qty} × {isTrick?`Trick throw-off — ${trickFinish}`:req.label}</b><small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small>{isTrick&&hardwareSelection[req.code]!==false&&<select value={trickFinish} onChange={e=>setTrickFinish(e.target.value)}><option>Chrome</option><option>Gold</option></select>}</span></div>})}</div>
+      <div className="modalActions"><button onClick={()=>setShowHardwareUsed(false)}>Cancel</button><button className="primary" disabled={savingHardware} onClick={saveHardwareUsed}>{savingHardware?"Saving...":pendingAssembly?"Save as Assembled":"Save Hardware Used"}</button></div>
     </div></div>}
 
     <section className="jobGrid">

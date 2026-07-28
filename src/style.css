@@ -1795,3 +1795,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .moneyInput{width:92px;min-width:82px;padding:8px!important}
 .stockActions{display:flex;gap:6px;margin-bottom:4px}.stockActions button{min-width:34px;padding:6px 10px;font-weight:800}
 .inventoryTabs{flex-wrap:wrap}.inventoryBlock tfoot th{border-top:2px solid var(--border);padding-top:14px}
+
+/* v7.6.7 assembly shortage review */
+.hardwareShortageRow{border-color:rgba(255,110,110,.75)!important;background:rgba(160,35,35,.12)!important}
+.hardwareShortageRow small{color:#ff9d9d}
