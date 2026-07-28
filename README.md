@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.6.4
+# Nowak Workshop OS v7.6.5
 
 ## v7.6.2
 - Reissued the complete snare hardware inventory update with a repaired, repeat-safe Supabase migration.
@@ -76,3 +76,12 @@ Run `supabase/v7_6_2_inventory_stock_visibility.sql` after deployment. It restor
 - Replaces the failed catalogue UPSERT with an idempotent update/insert process.
 - Safe to run after a partially failed v7.6.3 migration.
 - Preserves stock quantities and existing hardware allocations.
+
+
+## v7.6.5 inventory ordering and Trick finishes
+
+- Adds separate Chrome and Gold Trick throw-off stock lines.
+- Standard snare BOM uses the Chrome Trick throw-off by default.
+- Inventory order is now Lugs, Air Vents, Tension Rods, Hoops, Snare Wires, Throw-Offs, Drum Heads.
+- Drum heads (skins) are kept at the bottom of the stock page.
+- Existing Trick stock is retained as Chrome during migration.

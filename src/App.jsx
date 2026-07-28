@@ -455,7 +455,7 @@ function snareHardwareRequirements(drum){
     {code:`HEAD-${diameter}-BAT`,qty:1,label:`${diameter}" Remo batter head`},
     {code:`HEAD-${diameter}-SNR`,qty:1,label:`${diameter}" Remo snare-side head`},
     {code:`WIRE-${diameter}`,qty:1,label:`${diameter}" snare wires`},
-    {code:"THROW-TRICK",qty:1,label:"Trick throw-off"},
+    {code:"THROW-TRICK-CHROME",qty:1,label:"Trick throw-off — Chrome"},
     {code:`VENT-${ventSize.replace("mm","")}`,qty:1,label:`${ventSize} air vent`},
   ].filter(item=>!item.code.endsWith("-"));
 }
@@ -4558,7 +4558,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const [counts,setCounts]=useState({});
   const [capacityDepth,setCapacityDepth]=useState("6 1/2");
   const sizeNumber=value=>Number(String(value||"").match(/\d+(?:\.\d+)?/)?.[0]||0);
-  const categorySort={"Lugs":1,"Tension Rods":2,"Hoops":3,"Drum Heads":4,"Snare Wires":5,"Throw-Offs":6,"Air Vents":7};
+  const categorySort={"Lugs":1,"Air Vents":2,"Tension Rods":3,"Hoops":4,"Snare Wires":5,"Throw-Offs":6,"Drum Heads":7};
   const sortParts=(a,b)=>{
     if(a.category!==b.category) return (categorySort[a.category]||99)-(categorySort[b.category]||99);
     if(a.category==="Lugs"){
@@ -4599,7 +4599,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const capacities=reqs.map(req=>Math.floor(Math.max(0,Number(byCode[req.code]?.qty_available||0))/req.qty));
     return capacities.length?Math.min(...capacities):0;
   };
-  const groups=["Lugs","Tension Rods","Hoops","Drum Heads","Snare Wires","Throw-Offs","Air Vents"];
+  const groups=["Lugs","Air Vents","Tension Rods","Hoops","Snare Wires","Throw-Offs","Drum Heads"];
   const consumed=allocations.filter(a=>a.status==="Consumed");
   const consumedByDrum=consumed.reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map;},{});
   const partById=Object.fromEntries(hardware.map(p=>[p.id,p]));
@@ -6715,6 +6715,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [photoPrompt,setPhotoPrompt]=useState(null);
   const [showHardwareUsed,setShowHardwareUsed]=useState(false);
   const [hardwareSelection,setHardwareSelection]=useState({});
+  const [trickFinish,setTrickFinish]=useState("Chrome");
   const [savingHardware,setSavingHardware]=useState(false);
   const suggestedNowakSerial=calculateEncodedNowakSerial(draft.serial,new Date());
   const serialConflict=encodedSerialConflict(drums,suggestedNowakSerial,drum.id);
@@ -6729,6 +6730,9 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const consumedByPart=consumedForDrum.reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
 
   function openHardwareUsed(){
+    const goldPart=partByCode["THROW-TRICK-GOLD"];
+    const goldIsFitted=goldPart ? Number(consumedByPart[goldPart.id]||0)>0 : false;
+    setTrickFinish(goldIsFitted ? "Gold" : "Chrome");
     const initial={};
     standardHardware.forEach(req=>{
       const part=partByCode[req.code];
@@ -6740,7 +6744,11 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
   async function saveHardwareUsed(){
     setSavingHardware(true);
-    const selected=standardHardware.filter(req=>hardwareSelection[req.code]!==false);
+    const selected=standardHardware
+      .filter(req=>hardwareSelection[req.code]!==false)
+      .map(req=>req.code==="THROW-TRICK-CHROME" && trickFinish==="Gold"
+        ? {...req,code:"THROW-TRICK-GOLD",label:"Trick throw-off — Gold"}
+        : req);
     const ok=await syncHardwareUsed(drum,selected);
     setSavingHardware(false);
     if(ok){setShowHardwareUsed(false);setSavedMessage("Hardware used updated");setTimeout(()=>setSavedMessage(""),2500);}
@@ -7077,7 +7085,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
     {showHardwareUsed && <div className="hardwareUsedOverlay" onClick={()=>setShowHardwareUsed(false)}><div className="hardwareUsedModal" onClick={e=>e.stopPropagation()}>
       <div className="sectionHeader"><div><h2>Adjust Hardware Used</h2><p>Select only the parts currently fitted to this drum.</p></div><button onClick={()=>setShowHardwareUsed(false)}>Close</button></div>
-      <div className="hardwareChecklist">{standardHardware.map(req=>{const part=partByCode[req.code];return <label key={req.code} className="hardwareCheckRow"><input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/><span><b>{req.qty} × {req.label}</b><small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small></span></label>})}</div>
+      <div className="hardwareChecklist">{standardHardware.map(req=>{const isTrick=req.code==="THROW-TRICK-CHROME";const lookupCode=isTrick&&trickFinish==="Gold"?"THROW-TRICK-GOLD":req.code;const part=partByCode[lookupCode];return <div key={req.code} className="hardwareCheckRow"><input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/><span><b>{req.qty} × {isTrick?`Trick throw-off — ${trickFinish}`:req.label}</b><small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small>{isTrick&&hardwareSelection[req.code]!==false&&<select value={trickFinish} onChange={e=>setTrickFinish(e.target.value)}><option>Chrome</option><option>Gold</option></select>}</span></div>})}</div>
       <div className="modalActions"><button onClick={()=>setShowHardwareUsed(false)}>Cancel</button><button className="primary" disabled={savingHardware} onClick={saveHardwareUsed}>{savingHardware?"Saving...":"Save Hardware Used"}</button></div>
     </div></div>}
 
