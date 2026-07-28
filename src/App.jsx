@@ -1829,24 +1829,56 @@ function App(){
   }
 
   async function consumeHardwareForDrum(drum){
-    let allocations=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Allocated");
-    if(!allocations.length){
-      const allocated=await allocateHardwareForDrum(drum);
-      if(!allocated) return false;
-      const result=await supabase.from("hardware_allocations").select("*").eq("drum_id",drum.id).eq("status","Allocated");
-      allocations=result.data||[];
-    }
-    for(const allocation of allocations){
+    const requirements=snareHardwareRequirements(drum);
+    if(!requirements.length){setMessage("Standard hardware is available for 10, 12, 13 and 14-inch snare drums only.");return false;}
+    return await syncHardwareUsed(drum,requirements);
+  }
+
+  async function syncHardwareUsed(drum,selectedRequirements){
+    const selectedCodes=new Set(selectedRequirements.map(req=>req.code));
+    const byCode=Object.fromEntries(hardware.map(part=>[part.code,part]));
+    const consumed=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Consumed");
+    const allocated=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Allocated");
+    const workingQty=Object.fromEntries(hardware.map(part=>[part.id,Number(part.qty_on_hand||0)]));
+
+    for(const allocation of consumed){
       const part=hardware.find(p=>p.id===allocation.hardware_part_id);
-      if(!part || Number(part.qty_on_hand||0)<Number(allocation.quantity||0)){setMessage(`Cannot assemble: insufficient ${part?.part_name||"hardware"}.`);return false;}
+      if(part && !selectedCodes.has(part.code)){
+        workingQty[part.id]=Number(workingQty[part.id]||0)+Number(allocation.quantity||0);
+        const {error:stockError}=await supabase.from("hardware_parts").update({qty_on_hand:workingQty[part.id]}).eq("id",part.id);
+        if(stockError){setMessage("Could not return hardware to stock: "+stockError.message);return false;}
+        const {error:releaseError}=await supabase.from("hardware_allocations").update({status:"Released",released_at:new Date().toISOString()}).eq("id",allocation.id);
+        if(releaseError){setMessage(releaseError.message);return false;}
+      }
     }
-    for(const allocation of allocations){
-      const part=hardware.find(p=>p.id===allocation.hardware_part_id);
-      const {error}=await supabase.from("hardware_parts").update({qty_on_hand:Number(part.qty_on_hand||0)-Number(allocation.quantity||0)}).eq("id",part.id);
-      if(error){setMessage("Stock reduction failed: "+error.message);return false;}
+
+    for(const req of selectedRequirements){
+      const part=byCode[req.code];
+      if(!part){setMessage(`Inventory part not found: ${req.label}`);return false;}
+      const existingQty=consumed.filter(a=>a.hardware_part_id===part.id).reduce((sum,a)=>sum+Number(a.quantity||0),0);
+      if(existingQty>=req.qty) continue;
+      const addQty=req.qty-existingQty;
+      if(Number(workingQty[part.id]||0)<addQty){setMessage(`Not enough ${req.label}. Need ${addQty}, on hand ${Number(workingQty[part.id]||0)}.`);return false;}
+      workingQty[part.id]=Number(workingQty[part.id]||0)-addQty;
+      const {error:stockError}=await supabase.from("hardware_parts").update({qty_on_hand:workingQty[part.id]}).eq("id",part.id);
+      if(stockError){setMessage("Could not deduct hardware: "+stockError.message);return false;}
+
+      const activeAllocation=allocated.find(a=>a.hardware_part_id===part.id);
+      if(activeAllocation && Number(activeAllocation.quantity||0)===addQty){
+        const {error:updateError}=await supabase.from("hardware_allocations").update({status:"Consumed",consumed_at:new Date().toISOString()}).eq("id",activeAllocation.id);
+        if(updateError){setMessage(updateError.message);return false;}
+      }else{
+        if(activeAllocation){
+          const {error:releaseError}=await supabase.from("hardware_allocations").update({status:"Released",released_at:new Date().toISOString()}).eq("id",activeAllocation.id);
+          if(releaseError){setMessage(releaseError.message);return false;}
+        }
+        const {error:insertError}=await supabase.from("hardware_allocations").insert({drum_id:drum.id,hardware_part_id:part.id,quantity:addQty,status:"Consumed",consumed_at:new Date().toISOString()});
+        if(insertError){setMessage(insertError.message);return false;}
+      }
     }
-    const {error}=await supabase.from("hardware_allocations").update({status:"Consumed",consumed_at:new Date().toISOString()}).eq("drum_id",drum.id).eq("status","Allocated");
-    if(error){setMessage(error.message);return false;} return true;
+    await loadAll();
+    setMessage("Hardware used updated and stock reconciled.");
+    return true;
   }
 
   async function progressDrumFromCard(d){
@@ -2990,7 +3022,7 @@ function App(){
     />}
     {showAddRepair && <AddRepairModal repairs={repairs} onClose={()=>setShowAddRepair(false)} onCreate={createRepair}/>}
     {repairJob && <RepairJobModal repair={repairJob} onClose={()=>setRepairJob(null)} updateRepair={updateRepair} deleteRepair={deleteRepair} setMessage={setMessage}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}} hardware={hardware} hardwareAllocations={hardwareAllocations} consumeHardwareForDrum={consumeHardwareForDrum} syncHardwareUsed={syncHardwareUsed}/>}
   </main>
 }
 
@@ -4506,6 +4538,7 @@ function RepairJobModal({repair,onClose,updateRepair,deleteRepair,setMessage}){
 }
 
 function Inventory({hardware, allocations=[], drums=[], updateHardware, allocateHardware, releaseHardware, lowStock, inventoryValue}){
+  const [activeTab,setActiveTab]=useState("stock");
   const [stocktakeMode,setStocktakeMode]=useState(false);
   const [counts,setCounts]=useState({});
   const [capacityDepth,setCapacityDepth]=useState("6 1/2");
@@ -4513,22 +4546,36 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, allocate
   const allocationByDrum=allocations.filter(a=>a.status==="Allocated").reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map;},{});
   const byCode=Object.fromEntries(hardware.map(p=>[p.code,p]));
   const capacityFor=(diameter,buildType)=>{
-    const lugCount=diameter==="10"?6:diameter==="14"?10:8;
     const mock={size:`${diameter} x ${capacityDepth}`,drum_type:"Snare",build_type:buildType};
     const reqs=snareHardwareRequirements(mock);
     const capacities=reqs.map(req=>Math.floor(Math.max(0,Number(byCode[req.code]?.qty_available||0))/req.qty));
     return capacities.length?Math.min(...capacities):0;
   };
   const groups=["Lugs","Tension Rods","Hoops","Drum Heads","Snare Wires","Throw-Offs","Air Vents"];
-  return <section className="panel inventoryModule"><div className="sectionHeader"><div><h2>Snare Hardware Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div><button onClick={()=>setStocktakeMode(v=>!v)}>{stocktakeMode?"Finish Stocktake":"Start Stocktake"}</button></div>
+  const consumed=allocations.filter(a=>a.status==="Consumed");
+  const consumedByDrum=consumed.reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map;},{});
+  const partById=Object.fromEntries(hardware.map(p=>[p.id,p]));
 
-    <div className="inventorySummaryGrid"><article className="card"><b>On hand</b><strong>{hardware.reduce((sum,p)=>sum+Number(p.qty_on_hand||0),0)}</strong></article><article className="card"><b>Allocated to jobs</b><strong>{hardware.reduce((sum,p)=>sum+Number(p.qty_allocated||0),0)}</strong></article><article className="card"><b>Available</b><strong>{hardware.reduce((sum,p)=>sum+Math.max(0,Number(p.qty_available||0)),0)}</strong></article><article className="card"><b>Custom orders needing allocation</b><strong>{activeCustom.filter(d=>!allocationByDrum[d.id]?.length).length}</strong></article></div>
+  return <section className="panel inventoryModule">
+    <div className="sectionHeader"><div><h2>Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&<button onClick={()=>setStocktakeMode(v=>!v)}>{stocktakeMode?"Finish Stocktake":"Start Stocktake"}</button>}</div>
+    <nav className="inventoryTabs">
+      <button className={activeTab==="stock"?"active":""} onClick={()=>setActiveTab("stock")}>Stock</button>
+      <button className={activeTab==="allocations"?"active":""} onClick={()=>setActiveTab("allocations")}>Drum Hardware</button>
+      <button className={activeTab==="capacity"?"active":""} onClick={()=>setActiveTab("capacity")}>Build Capacity</button>
+    </nav>
 
-    <section className="inventoryBlock"><h3>Custom Order Hardware Allocation</h3><p>Allocate parts when the order is accepted, then physically place them aside. Stock is reduced automatically when you complete the <b>Assembled</b> stage.</p>{activeCustom.length===0?<p>No active custom snare orders.</p>:<div className="allocationGrid">{activeCustom.map(d=>{const allocated=allocationByDrum[d.id]?.length>0;const reqs=snareHardwareRequirements(d);const shortages=reqs.filter(req=>Number(byCode[req.code]?.qty_available||0)<req.qty);return <article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.customer||"Customer not entered"} · {d.build_type}</span><span className={allocated?"okText":shortages.length?"dangerText":"warningText"}>{allocated?"Hardware allocated":shortages.length?`${shortages.length} shortage${shortages.length===1?"":"s"}`:"Ready to allocate"}</span>{shortages.length>0&&!allocated&&<small>{shortages.map(x=>x.label).join(", ")}</small>}<div className="buttonRow">{allocated?<button onClick={()=>releaseHardware(d)}>Release allocation</button>:<button className="primary" onClick={()=>allocateHardware(d)}>Allocate hardware</button>}</div></article>})}</div>}</section>
+    {activeTab==="stock" && <>
+      <div className="inventorySummaryGrid"><article className="card"><b>On hand</b><strong>{hardware.reduce((sum,p)=>sum+Number(p.qty_on_hand||0),0)}</strong></article><article className="card"><b>Allocated to jobs</b><strong>{hardware.reduce((sum,p)=>sum+Number(p.qty_allocated||0),0)}</strong></article><article className="card"><b>Available</b><strong>{hardware.reduce((sum,p)=>sum+Math.max(0,Number(p.qty_available||0)),0)}</strong></article><article className="card"><b>Low stock</b><strong>{lowStock}</strong></article></div>
+      {stocktakeMode&&<div className="stocktakeNotice"><b>Stocktake mode</b><span>Enter the quantity physically on the shelf. Fitted hardware is tracked against each drum and should not be counted here.</span></div>}
+      {groups.map(group=>{const parts=hardware.filter(p=>p.category===group);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Reorder</th><th>Status</th></tr></thead><tbody>{parts.map(p=><tr key={p.id}><td>{p.part_name}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input type="number" min="0" value={counts[p.id]??p.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[p.id]:Number(e.target.value)}))}/>:p.qty_on_hand}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td>{p.reorder_level}</td><td>{Number(p.qty_available||0)<=Number(p.reorder_level||0)?<span className="dangerText">Order</span>:<span className="okText">OK</span>}{stocktakeMode&&counts[p.id]!==undefined&&Number(counts[p.id])!==Number(p.qty_on_hand)&&<button className="miniButton" onClick={()=>updateHardware(p.id,{qty_on_hand:Number(counts[p.id])})}>Save count</button>}</td></tr>)}</tbody></table></div></section>})}
+    </>}
 
-    <section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build?</h3><p>Capacity uses available stock after allocations. Choose a depth to apply the correct lug length.</p></div><label>Depth <select value={capacityDepth} onChange={e=>setCapacityDepth(e.target.value)}>{snareInventoryDepths.map(d=><option key={d}>{d}</option>)}</select></label></div><div className="capacityGrid">{snareInventoryDiameters.map(d=><article className="card" key={d}><b>{d}" snare · {capacityDepth}" deep</b><span>Stave (30mm vent): <strong>{capacityFor(d,"Stave")}</strong></span><span>Ply (20mm vent): <strong>{capacityFor(d,"Ply")}</strong></span><small>{d==="10"?"6 lugs · 12 tension rods":d==="14"?"10 lugs · 20 tension rods":"8 lugs · 16 tension rods"}</small></article>)}</div></section>
+    {activeTab==="allocations" && <>
+      <section className="inventoryBlock"><h3>Custom Order Hardware Allocation</h3><p>Allocate parts when an order is accepted and physically place them aside. When the drum is marked <b>Assembled</b>, its standard hardware is deducted automatically.</p>{activeCustom.length===0?<p>No active custom snare orders.</p>:<div className="allocationGrid">{activeCustom.map(d=>{const allocated=allocationByDrum[d.id]?.length>0;const reqs=snareHardwareRequirements(d);const shortages=reqs.filter(req=>Number(byCode[req.code]?.qty_available||0)<req.qty);return <article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.customer||"Customer not entered"} · {d.build_type}</span><span className={allocated?"okText":shortages.length?"dangerText":"warningText"}>{allocated?"Hardware allocated":shortages.length?`${shortages.length} shortage${shortages.length===1?"":"s"}`:"Ready to allocate"}</span>{shortages.length>0&&!allocated&&<small>{shortages.map(x=>x.label).join(", ")}</small>}<div className="buttonRow">{allocated?<button onClick={()=>releaseHardware(d)}>Release allocation</button>:<button className="primary" onClick={()=>allocateHardware(d)}>Allocate hardware</button>}</div></article>})}</div>}</section>
+      <section className="inventoryBlock"><h3>Hardware Fitted to Drums</h3><p>Open a Job Card and use <b>Adjust Hardware Used</b> to change this list.</p><div className="allocationGrid">{drums.filter(d=>consumedByDrum[d.id]?.length).map(d=><article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.timber} · {d.build_type}</span><small>{consumedByDrum[d.id].map(a=>`${a.quantity} × ${partById[a.hardware_part_id]?.part_name||"Hardware"}`).join(", ")}</small></article>)}</div>{!drums.some(d=>consumedByDrum[d.id]?.length)&&<p>No fitted hardware has been recorded yet.</p>}</section>
+    </>}
 
-    {groups.map(group=>{const parts=hardware.filter(p=>p.category===group);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Reorder</th><th>Status</th></tr></thead><tbody>{parts.map(p=><tr key={p.id}><td>{p.part_name}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input type="number" min="0" value={counts[p.id]??p.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[p.id]:Number(e.target.value)}))}/>:p.qty_on_hand}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td>{p.reorder_level}</td><td>{Number(p.qty_available||0)<=Number(p.reorder_level||0)?<span className="dangerText">Order</span>:<span className="okText">OK</span>}{stocktakeMode&&counts[p.id]!==undefined&&Number(counts[p.id])!==Number(p.qty_on_hand)&&<button className="miniButton" onClick={()=>updateHardware(p.id,{qty_on_hand:Number(counts[p.id])})}>Save count</button>}</td></tr>)}</tbody></table></div></section>})}
+    {activeTab==="capacity" && <section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build?</h3><p>Capacity uses available shelf stock after allocations. Choose a depth to apply the correct lug length.</p></div><label>Depth <select value={capacityDepth} onChange={e=>setCapacityDepth(e.target.value)}>{snareInventoryDepths.map(d=><option key={d}>{d}</option>)}</select></label></div><div className="capacityGrid">{snareInventoryDiameters.map(d=><article className="card" key={d}><b>{d}" snare · {capacityDepth}" deep</b><span>Stave (30mm vent): <strong>{capacityFor(d,"Stave")}</strong></span><span>Ply (20mm vent): <strong>{capacityFor(d,"Ply")}</strong></span><small>{d==="10"?"6 lugs · 12 tension rods":d==="14"?"10 lugs · 20 tension rods":"8 lugs · 16 tension rods"}</small></article>)}</div></section>}
   </section>;
 }
 
@@ -6577,7 +6624,7 @@ ${emailBody}`,"Customer email")}>Copy Email</button>
 }
 
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject, hardware=[], hardwareAllocations=[], consumeHardwareForDrum, syncHardwareUsed}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
@@ -6617,12 +6664,38 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [isSaving,setIsSaving]=useState(false);
   const [projectMessage,setProjectMessage]=useState("");
   const [photoPrompt,setPhotoPrompt]=useState(null);
+  const [showHardwareUsed,setShowHardwareUsed]=useState(false);
+  const [hardwareSelection,setHardwareSelection]=useState({});
+  const [savingHardware,setSavingHardware]=useState(false);
   const suggestedNowakSerial=calculateEncodedNowakSerial(draft.serial,new Date());
   const serialConflict=encodedSerialConflict(drums,suggestedNowakSerial,drum.id);
   const flow=workflowState(localBuildType,checked,draft.finish,localOwnership,drum.drum_type,drum.size);
   const totalCost=templateCost(template,labourRate);
   const totalPrice=Number(customPrice||0)+Number(shipping||0);
   const profit=Number(drum.total_price||drum.retail_price||0)-totalCost;
+
+  const standardHardware=snareHardwareRequirements({...drum,...draft,build_type:localBuildType});
+  const partByCode=Object.fromEntries(hardware.map(part=>[part.code,part]));
+  const consumedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Consumed");
+  const consumedByPart=consumedForDrum.reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
+
+  function openHardwareUsed(){
+    const initial={};
+    standardHardware.forEach(req=>{
+      const part=partByCode[req.code];
+      initial[req.code]=part ? Number(consumedByPart[part.id]||0)>0 : true;
+    });
+    setHardwareSelection(initial);
+    setShowHardwareUsed(true);
+  }
+
+  async function saveHardwareUsed(){
+    setSavingHardware(true);
+    const selected=standardHardware.filter(req=>hardwareSelection[req.code]!==false);
+    const ok=await syncHardwareUsed(drum,selected);
+    setSavingHardware(false);
+    if(ok){setShowHardwareUsed(false);setSavedMessage("Hardware used updated");setTimeout(()=>setSavedMessage(""),2500);}
+  }
 
   function changeVeneer(index,value){
     const next=[...veneer];
@@ -6788,6 +6861,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   }
 
   async function markManufacturingComplete(){
+    if(String(drum.drum_type||"Snare").toLowerCase()==="snare" && !checked.has("Assembled")){
+      const consumed=await consumeHardwareForDrum(drum);
+      if(!consumed){setSavedMessage("Could not complete — check hardware stock");return;}
+    }
     const steps=applicableChecklist(localBuildType,draft.finish);
     const assembledIndex=steps.indexOf("Assembled");
     if(assembledIndex<0) return;
@@ -6896,6 +6973,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   async function toggle(item){
     const next=new Set(checked);
     const isCompleting=!next.has(item);
+    if(item==="Assembled" && isCompleting && String(drum.drum_type||"Snare").toLowerCase()==="snare"){
+      const consumed=await consumeHardwareForDrum(drum);
+      if(!consumed){setSavedMessage("Assembly not saved — check hardware stock");return;}
+    }
     if(isCompleting) next.add(item); else next.delete(item);
     setChecked(next);
     await saveWorkflow(next,item,isCompleting);
@@ -6939,6 +7020,17 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       <div><b>{flow.estimatedRemaining.toFixed(2)}</b><span>Estimated production hours remaining</span></div>
       <div><b>{Number(drum.hours_logged||0).toFixed(2)}</b><span>Actual hours logged</span></div>
     </section>
+
+    {String(drum.drum_type||"Snare").toLowerCase()==="snare" && <section className="hardwareUsedBar">
+      <div><b>Hardware used</b><span>{checked.has("Assembled") ? "Standard hardware was deducted automatically when assembled." : "Standard hardware will be deducted automatically when assembled."}</span></div>
+      <button onClick={openHardwareUsed}>Adjust Hardware Used</button>
+    </section>}
+
+    {showHardwareUsed && <div className="hardwareUsedOverlay" onClick={()=>setShowHardwareUsed(false)}><div className="hardwareUsedModal" onClick={e=>e.stopPropagation()}>
+      <div className="sectionHeader"><div><h2>Adjust Hardware Used</h2><p>Select only the parts currently fitted to this drum.</p></div><button onClick={()=>setShowHardwareUsed(false)}>Close</button></div>
+      <div className="hardwareChecklist">{standardHardware.map(req=>{const part=partByCode[req.code];return <label key={req.code} className="hardwareCheckRow"><input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/><span><b>{req.qty} × {req.label}</b><small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small></span></label>})}</div>
+      <div className="modalActions"><button onClick={()=>setShowHardwareUsed(false)}>Cancel</button><button className="primary" disabled={savingHardware} onClick={saveHardwareUsed}>{savingHardware?"Saving...":"Save Hardware Used"}</button></div>
+    </div></div>}
 
     <section className="jobGrid">
       <div className="panel inner"><h2>Build / Customer Details</h2>

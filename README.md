@@ -1,6 +1,6 @@
-# Nowak Workshop OS v7.6.0
+# Nowak Workshop OS v7.6.1
 
-## v7.6.0
+## v7.6.1
 - Reissued the complete snare hardware inventory update with a repaired, repeat-safe Supabase migration.
 - The migration automatically finds and merges duplicate hardware codes such as `AIR01` before creating the unique index.
 - Existing duplicate stock quantities are combined rather than discarded.
@@ -50,3 +50,10 @@ No Supabase migration is required for this release. Existing drum and photo reco
 - In-app camera photos retain the Save to iPhone option.
 - Simplified stored media cards and corrected Nowak/Brady shell labels.
 - Added production value generated to Workshop Summary and CSV export.
+
+
+## v7.6.1
+- Restored Inventory with Stock, Drum Hardware and Build Capacity tabs.
+- Marking a snare Assembled automatically deducts its standard hardware.
+- Job Cards now include Adjust Hardware Used so fitted parts can be selected or deselected and stock is reconciled.
+- No additional Supabase migration is required after v7.6.0 has been run.

@@ -1772,3 +1772,15 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .miniButton{display:block;margin-top:6px;padding:5px 8px;font-size:.75rem}
 .warningText{color:#e8bc64}
 @media(max-width:700px){.inventoryModule table{min-width:760px}.inventorySummaryGrid{grid-template-columns:repeat(2,1fr)}}
+
+/* v7.6.1 inventory tabs and per-drum hardware adjustment */
+.inventoryTabs{display:flex;gap:8px;overflow-x:auto;margin:16px 0 8px;padding-bottom:4px}
+.inventoryTabs button{white-space:nowrap}
+.inventoryTabs button.active{background:var(--gold,#d7a73d);color:#171511;border-color:var(--gold,#d7a73d);font-weight:900}
+.stocktakeNotice{display:flex;flex-direction:column;gap:4px;margin:12px 0;padding:12px;border:1px solid #7d642f;background:#2b2518;border-radius:12px}
+.hardwareUsedBar{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:14px 0;padding:14px;border:1px solid rgba(215,167,61,.45);background:#211d15;border-radius:14px}
+.hardwareUsedBar div{display:flex;flex-direction:column;gap:4px}.hardwareUsedBar span{color:#bcb3a5;font-size:.9rem}
+.hardwareUsedOverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px}
+.hardwareUsedModal{width:min(620px,100%);max-height:88vh;overflow:auto;background:#171511;border:1px solid #56452b;border-radius:18px;padding:18px;box-shadow:0 20px 70px rgba(0,0,0,.55)}
+.hardwareChecklist{display:flex;flex-direction:column;gap:8px;margin:14px 0}.hardwareCheckRow{display:flex!important;align-items:center;gap:12px;padding:12px;background:#211e18;border:1px solid #393126;border-radius:12px;cursor:pointer}.hardwareCheckRow input{width:22px;height:22px;flex:0 0 auto}.hardwareCheckRow span{display:flex;flex-direction:column;gap:3px}.hardwareCheckRow small{color:#aaa091}
+@media(max-width:700px){.hardwareUsedBar{align-items:stretch;flex-direction:column}.hardwareUsedBar button{width:100%}.inventoryTabs button{flex:1}}
