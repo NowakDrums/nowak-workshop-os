@@ -1799,3 +1799,11 @@ button:disabled{opacity:.55;cursor:not-allowed}
 /* v7.6.7 assembly shortage review */
 .hardwareShortageRow{border-color:rgba(255,110,110,.75)!important;background:rgba(160,35,35,.12)!important}
 .hardwareShortageRow small{color:#ff9d9d}
+.attentionBar{display:flex;justify-content:space-between;align-items:center;border-color:#d8ad3e;background:linear-gradient(90deg,rgba(216,173,62,.14),rgba(216,173,62,.03));margin-bottom:12px}.attentionBar>div{display:flex;align-items:center;gap:8px}.alertModal{text-align:center;max-width:480px}.alertModal svg{color:#e7bd45}.integrationGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}.integrationCard{display:flex;flex-direction:column;gap:10px;align-items:flex-start}.statusPill{padding:5px 10px;border-radius:99px;background:#532b2b;color:#ffc1c1;font-weight:800}.statusPill.connected{background:#173e2b;color:#9df0be}.buttonLink{display:inline-flex;text-decoration:none;align-items:center;justify-content:center;padding:10px 14px;border-radius:10px}.setupCode{display:flex;flex-wrap:wrap;gap:8px}.setupCode code{padding:7px 9px;border:1px solid var(--line);border-radius:8px}.externalOrderGrid{display:grid;gap:12px}.externalOrderCard{display:grid;gap:12px}.externalOrderTop{display:flex;justify-content:space-between;gap:12px}.externalLineItems{display:grid;gap:8px}.externalLineItem{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px;border:1px solid var(--line);border-radius:10px}.externalLineItem div{display:flex;flex-direction:column}.externalLineItem span{opacity:.7;font-size:.9rem}@media(max-width:700px){.attentionBar,.externalOrderTop,.externalLineItem{align-items:flex-start;flex-direction:column}.externalLineItem button{width:100%}}
+
+/* v7.7.1 supplier order email */
+.supplierOrderPanel .buttonRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.supplierEmailPreview{border:1px solid #5d4b31;border-radius:12px;background:#13100c;padding:14px}
+.supplierEmailPreview p{margin:3px 0}
+.supplierEmailPreview pre{white-space:pre-wrap;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;line-height:1.45;color:#eee4d3;border-top:1px solid #493b29;padding-top:12px;margin:12px 0 0}
+@media(max-width:700px){.supplierOrderPanel .buttonRow>*{width:100%;justify-content:center}}

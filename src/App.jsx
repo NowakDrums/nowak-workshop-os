@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
-  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore, ClipboardList, Repeat2, Lightbulb, Pencil, Images, Printer, Download
+  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore, ClipboardList, Repeat2, Lightbulb, Pencil, Images, Printer, Download, Bell, ShoppingBag, Link2, AlertTriangle, ExternalLink
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import QRCode from "qrcode";
@@ -1540,11 +1540,15 @@ function App(){
   const [constructionFilter,setConstructionFilter]=useState("All");
   const [globalPhotoPrompt,setGlobalPhotoPrompt]=useState(null);
   const [progressingDrumId,setProgressingDrumId]=useState(null);
+  const [externalOrders,setExternalOrders]=useState([]);
+  const [notifications,setNotifications]=useState([]);
+  const [integrationStatus,setIntegrationStatus]=useState({connections:[]});
+  const [alertPopup,setAlertPopup]=useState(null);
 
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
     setLoading(true); setMessage("");
-    const [d,h,a,t,s,p,r,w,wt,fp]=await Promise.all([
+    const [d,h,a,t,s,p,r,w,wt,fp,eo,n]=await Promise.all([
       supabase.from("drums").select("*").order("created_at",{ascending:false}),
       supabase.from("hardware_parts").select("*").order("category",{ascending:true}),
       supabase.from("hardware_allocations").select("*").order("created_at",{ascending:true}),
@@ -1554,7 +1558,9 @@ function App(){
       supabase.from("repair_jobs").select("*").order("created_at",{ascending:false}),
       supabase.from("work_plan_items").select("*").order("planned_date",{ascending:true}).order("created_at",{ascending:true}),
       supabase.from("workshop_tasks").select("*").order("next_due_date",{ascending:true}).order("created_at",{ascending:true}),
-      supabase.from("future_projects").select("*").order("created_at",{ascending:false})
+      supabase.from("future_projects").select("*").order("created_at",{ascending:false}),
+      supabase.from("external_orders").select("*").order("ordered_at",{ascending:false}),
+      supabase.from("app_notifications").select("*").eq("is_read",false).order("created_at",{ascending:false})
     ]);
     const loadedDrums=(d.data||[]).map(item=>{
       if(item.lifecycle_status) return item;
@@ -1575,6 +1581,12 @@ function App(){
     setWorkPlan(w.data||[]);
     setWorkshopTasks(wt.data||[]);
     setFutureProjects(fp.data||[]);
+    setExternalOrders(eo.data||[]);
+    setNotifications(n.data||[]);
+    if((n.data||[]).length && !sessionStorage.getItem("nowak-alert-popup-shown")){
+      setAlertPopup((n.data||[])[0]);
+      sessionStorage.setItem("nowak-alert-popup-shown","1");
+    }
 
     const coreErrors=[d.error,h.error,t.error,s.error].filter(Boolean);
     if(coreErrors.length){
@@ -1591,6 +1603,8 @@ function App(){
       setMessage("Workshop Tasks needs the v6.7.0 Supabase migration.");
     }else if(fp.error){
       setMessage("Future Projects needs the v6.8.0 Supabase migration.");
+    }else if(eo.error || n.error){
+      setMessage("Integrations and alerts need the v7.7.0 Supabase migration.");
     }else{
       setMessage("");
     }
@@ -1598,6 +1612,22 @@ function App(){
   }
 
   useEffect(()=>{ loadAll(); },[]);
+
+  useEffect(()=>{
+    const timer=setInterval(async()=>{
+      if(!isConfigured) return;
+      const [{data:orders},{data:notes}]=await Promise.all([
+        supabase.from("external_orders").select("*").order("ordered_at",{ascending:false}),
+        supabase.from("app_notifications").select("*").eq("is_read",false).order("created_at",{ascending:false})
+      ]);
+      if(orders) setExternalOrders(orders);
+      if(notes){
+        setNotifications(notes);
+        if(notes.length && !alertPopup) setAlertPopup(notes[0]);
+      }
+    },60000);
+    return ()=>clearInterval(timer);
+  },[alertPopup]);
 
   const operationalDrums=drums.filter(d=>!isSoldStatus(d) && !isShippedStatus(d) && !isArchivedStatus(d));
   const filtered=drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
@@ -1630,6 +1660,13 @@ function App(){
   });
   const outstandingFinalWork=filtered.filter(d=>!isArchivedStatus(d) && !isSoldStatus(d) && !isShippedStatus(d) && outstandingWorkFromNotes(d.notes));
   const activeRepairs=repairs.filter(r=>r.status!=="Collected & Paid");
+  const dueSoonItems=useMemo(()=>{
+    const today=new Date(); today.setHours(0,0,0,0); const limit=new Date(today); limit.setDate(limit.getDate()+7);
+    const items=[];
+    operationalDrums.forEach(d=>{if(d.due_date){const dt=new Date(d.due_date+"T00:00:00");if(dt<=limit) items.push({type:"Drum",title:`#${d.serial||"—"} ${d.timber||"Drum"}`,due:d.due_date,overdue:dt<today});}});
+    activeRepairs.forEach(r=>{if(r.due_date){const dt=new Date(r.due_date+"T00:00:00");if(dt<=limit) items.push({type:"Repair",title:r.customer_name||r.item_description||"Repair",due:r.due_date,overdue:dt<today});}});
+    return items.sort((a,b)=>String(a.due).localeCompare(String(b.due)));
+  },[operationalDrums,activeRepairs]);
   const readyRepairs=repairs.filter(r=>r.status==="Ready for Collection");
   const repairIncome=repairs
     .filter(r=>r.status==="Collected & Paid")
@@ -2675,6 +2712,32 @@ function App(){
     return Boolean(saved);
   }
 
+  async function markNotificationRead(note){
+    await supabase.from("app_notifications").update({is_read:true}).eq("id",note.id);
+    setNotifications(current=>current.filter(n=>n.id!==note.id));
+    setAlertPopup(null);
+  }
+
+  async function updateExternalOrderStatus(order,status){
+    const {error}=await supabase.from("external_orders").update({import_status:status,updated_at:new Date().toISOString()}).eq("id",order.id);
+    if(error){setMessage(error.message);return;}
+    setExternalOrders(current=>current.map(o=>o.id===order.id?{...o,import_status:status}:o));
+  }
+
+  function createDrumFromShopify(order,item){
+    const text=`${item.title||""} ${item.variant_title||""}`;
+    const size=text.match(/(10|12|13|14)\s*[x×]\s*(4(?:\.5|½)?|5(?:\.5|½)?|6(?:\.5|½)?|7(?:\.5|½)?|8)/i);
+    const timber=(item.title||"").split(/[-–—|]/)[0].trim();
+    setAddWizardPreset({
+      build_client:"Nowak", customer:order.customer_name||"", customer_email:order.customer_email||"", customer_phone:order.customer_phone||"",
+      shipping_address:[order.shipping_address?.address1,order.shipping_address?.address2,order.shipping_address?.city,order.shipping_address?.province,order.shipping_address?.zip,order.shipping_address?.country].filter(Boolean).join(", "),
+      timber, size:size?`${size[1]} x ${size[2].replace("½",".5")}`:"", sales_status:"Custom Order",
+      notes:`Shopify ${order.order_name||order.order_number} · ${item.title}${item.variant_title?` · ${item.variant_title}`:""}${item.sku?` · SKU ${item.sku}`:""}`,
+      total_price:Number(item.price||0)*Number(item.quantity||1)
+    });
+    setShowAddWizard(true);
+  }
+
   function copyText(text,label){ navigator.clipboard?.writeText(text); alert(label + " copied"); }
 
   function openProductionView({status="All",construction="All",searchValue=""}={}){
@@ -2688,7 +2751,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.6.7 — Combined build capacity and flexible assembly shortages.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.7.1 — supplier order emails, Shopify orders, Xero connection and workshop alerts.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3000,7 +3063,7 @@ function App(){
       deleteProject={deleteFutureProject}
     />}
 
-    {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard}/>}
+    {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard} externalOrders={externalOrders} createDrumFromShopify={createDrumFromShopify} updateExternalOrderStatus={updateExternalOrderStatus}/>}
     {view==="repairs" && <RepairsPage repairs={repairs} openRepair={setRepairJob} addRepair={()=>setShowAddRepair(true)}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
     {view==="inventory" && <Inventory hardware={availableHardware} allocations={hardwareAllocations} drums={drums} updateHardware={updateHardware} saveStocktake={saveHardwareStocktake} allocateHardware={allocateHardwareForDrum} releaseHardware={releaseHardwareForDrum} lowStock={lowStock} inventoryValue={inventoryValue}/>}
@@ -3013,7 +3076,14 @@ function App(){
       setMessage={setMessage}
       onAddPhoto={(drum,milestoneKey="general")=>setGlobalPhotoPrompt({drum,milestoneKey})}
     />} 
-    {view==="settings" && <SettingsPage/>}
+    {view==="settings" && <SettingsPage integrationStatus={integrationStatus} setIntegrationStatus={setIntegrationStatus} setMessage={setMessage}/>}
+
+    {alertPopup && <div className="modalBackdrop"><section className="modal alertModal">
+      <button className="close" onClick={()=>setAlertPopup(null)}>×</button>
+      <Bell size={30}/><h2>{alertPopup.title||"Workshop alert"}</h2>
+      <p style={{whiteSpace:"pre-line"}}>{alertPopup.message||""}</p>
+      {alertPopup.id ? <button className="primary" onClick={()=>markNotificationRead(alertPopup)}>Mark as read</button> : <button className="primary" onClick={()=>setAlertPopup(null)}>Close</button>}
+    </section></div>}
 
     {globalPhotoPrompt && <MilestonePhotoModal
       drum={globalPhotoPrompt.drum}
@@ -4556,6 +4626,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const [activeTab,setActiveTab]=useState("stock");
   const [stocktakeMode,setStocktakeMode]=useState(false);
   const [counts,setCounts]=useState({});
+  const [supplierOrderMessage,setSupplierOrderMessage]=useState("");
     const defaultPlan=[
     {id:"14-6.5",diameter:"14",depth:"6 1/2",qty:6,buildType:"Stave"},
     {id:"14-5.5",diameter:"14",depth:"5 1/2",qty:4,buildType:"Stave"},
@@ -4613,6 +4684,58 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   }
   const simultaneousTotal=simultaneousMix.reduce((sum,row)=>sum+row.buildable,0);
 
+  const leaHungRows=orderRows
+    .filter(row=>/lea\s*hung/i.test(String(row.part?.supplier||"")))
+    .sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)||String(a.part?.part_name||"").localeCompare(String(b.part?.part_name||"")));
+  const supplierColour=part=>{
+    const finish=String(part?.finish||"").trim();
+    if(!finish) return "Chrome Plated";
+    if(/gold|brass/i.test(finish)) return "Brass Plated";
+    if(/chrome/i.test(finish)) return "Chrome Plated";
+    return finish;
+  };
+  const supplierName=part=>{
+    if(part?.category==="Hoops") return "Steel Hoop";
+    if(part?.category==="Tension Rods") return "Tension Rods (stainless steel)";
+    if(part?.category==="Air Vents") return "Air Vent";
+    return part?.part_name||"Hardware";
+  };
+  const supplierCode=part=>String(part?.code||"").trim();
+  const supplierSize=part=>String(part?.size||"").replace(/\s*x\s*/gi," × ").trim();
+  const pad=(value,width)=>String(value??"").slice(0,width).padEnd(width," ");
+  const leaHungTable=()=>{
+    const header=`${pad("Name",30)}${pad("Colour",18)}${pad("Code",14)}${pad("Size",14)}Order Quantity`;
+    const divider="-".repeat(90);
+    const rows=leaHungRows.map(row=>`${pad(supplierName(row.part),30)}${pad(supplierColour(row.part),18)}${pad(supplierCode(row.part),14)}${pad(supplierSize(row.part),14)}${row.toOrder}`);
+    return [header,divider,...rows].join("\n");
+  };
+  const leaHungEmailBody=()=>`Hi,\n\nI hope you are going well.\n\nI’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?\n\nShipping Address: 29 Meldrum Loop, Bedfordale, Western Australia, 6112\n\n${leaHungTable()}\n\nMany thanks\n\nKelly Nowak\nNowak Drum Company Australia`;
+  const leaHungMailto=leaHungRows.length?`mailto:${encodeURIComponent("contact@leahung.com")}?subject=${encodeURIComponent("Hardware Order")}&body=${encodeURIComponent(leaHungEmailBody())}`:"";
+  const copyLeaHungEmail=async()=>{
+    await navigator.clipboard?.writeText(`To: contact@leahung.com\nSubject: Hardware Order\n\n${leaHungEmailBody()}`);
+    setSupplierOrderMessage("Lea Hung order email copied.");
+    window.setTimeout(()=>setSupplierOrderMessage(""),2500);
+  };
+  const markLeaHungOrderSent=async()=>{
+    if(!leaHungRows.length) return;
+    const payload={
+      supplier:"Lea Hung",
+      supplier_email:"contact@leahung.com",
+      subject:"Hardware Order",
+      order_items:leaHungRows.map(row=>({hardware_part_id:row.part?.id||null,name:supplierName(row.part),colour:supplierColour(row.part),code:supplierCode(row.part),size:supplierSize(row.part),quantity:row.toOrder,unit_cost:row.cost,estimated_total:row.total})),
+      estimated_value:leaHungRows.reduce((sum,row)=>sum+row.total,0),
+      status:"Sent",
+      sent_at:new Date().toISOString(),
+    };
+    const {error}=await supabase.from("supplier_orders").insert(payload);
+    if(error){
+      setSupplierOrderMessage(error.message?.includes("supplier_orders")?"Run the v7.7.1 supplier orders migration first.":error.message);
+      return;
+    }
+    setSupplierOrderMessage("Lea Hung order marked as sent.");
+    window.setTimeout(()=>setSupplierOrderMessage(""),3000);
+  };
+
   return <section className="panel inventoryModule">
     <div className="sectionHeader"><div><h2>Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={()=>{setCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stocktake</button></div>:<button onClick={()=>setStocktakeMode(true)}>Start Stocktake</button>)}</div>
     <nav className="inventoryTabs"><button className={activeTab==="stock"?"active":""} onClick={()=>setActiveTab("stock")}>Stock</button><button className={activeTab==="allocations"?"active":""} onClick={()=>setActiveTab("allocations")}>Drum Hardware</button><button className={activeTab==="capacity"?"active":""} onClick={()=>setActiveTab("capacity")}>Build Capacity</button><button className={activeTab==="reorder"?"active":""} onClick={()=>setActiveTab("reorder")}>Reorder Planner</button></nav>
@@ -4626,7 +4749,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
 
     {activeTab==="capacity"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Right Now?</h3><p>Each card shows the maximum if you built only that option. Rare 12 × 8 and 13 × 8 sizes are excluded.</p></div></div>{buildableOptions.length?<div className="capacityGrid">{buildableOptions.sort((a,b)=>b.qty-a.qty||Number(b.d)-Number(a.d)).map(x=><article className="card" key={`${x.d}-${x.depth}-${x.type}`}><b>{x.d}" × {x.depth}" {x.type}</b><strong>{x.qty} complete drum{x.qty===1?"":"s"}</strong></article>)}</div>:<div className="stocktakeNotice"><b>No complete snare combinations currently available.</b><span>Enter your stocktake quantities and this page will update automatically.</span></div>}</section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Together?</h3><p>This checks the editable Reorder Planner mix against the same shared stock, so hardware is not counted twice.</p></div><strong>{simultaneousTotal} drums together</strong></div><div className="capacityGrid">{simultaneousMix.map(row=><article className="card" key={row.id}><b>{row.diameter}" × {row.depth}" {row.buildType}</b><strong>{row.buildable} of {row.qty}</strong><span>{row.buildable>=Number(row.qty||0)?"Target covered":"Limited by shared hardware"}</span></article>)}</div></section></>}
 
-    {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Diameter</th><th>Depth</th><th>Build</th></tr></thead><tbody>{reorderPlan.map((row,index)=><tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{snareInventoryDiameters.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{snareInventoryDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td></tr>)}</tbody></table></div><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Order</h3><p>Required hardware minus current available stock. Items you already have enough of are not ordered.</p></div><div><b>{money(orderEstimate)}</b><br/><small>estimated order value</small></div></div>{orderRows.length?<div className="tableWrap"><table><thead><tr><th>Part</th><th>Required</th><th>Available</th><th>Order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{orderRows.sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)).map(row=><tr key={row.code}><td>{row.part?.part_name||row.code}<br/><small>{row.part?.size||"Catalogue item missing"}</small></td><td>{row.required}</td><td>{row.available}</td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="5">Approximate hardware order</th><th>{money(orderEstimate)}</th></tr></tfoot></table></div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix.</span></div>}<p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section></>}
+    {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Diameter</th><th>Depth</th><th>Build</th></tr></thead><tbody>{reorderPlan.map((row,index)=><tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{snareInventoryDiameters.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{snareInventoryDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td></tr>)}</tbody></table></div><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Order</h3><p>Required hardware minus current available stock. Items you already have enough of are not ordered.</p></div><div><b>{money(orderEstimate)}</b><br/><small>estimated order value</small></div></div>{orderRows.length?<div className="tableWrap"><table><thead><tr><th>Part</th><th>Required</th><th>Available</th><th>Order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{orderRows.sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)).map(row=><tr key={row.code}><td>{row.part?.part_name||row.code}<br/><small>{row.part?.size||"Catalogue item missing"}</small></td><td>{row.required}</td><td>{row.available}</td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="5">Approximate hardware order</th><th>{money(orderEstimate)}</th></tr></tfoot></table></div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix.</span></div>}<p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section><section className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>Lea Hung Hardware Order Email</h3><p>Creates an email using only the Lea Hung items currently required by the Suggested Purchase Order.</p></div><div><b>{leaHungRows.length} line item{leaHungRows.length===1?"":"s"}</b><br/><small>{money(leaHungRows.reduce((sum,row)=>sum+row.total,0))} estimated</small></div></div>{leaHungRows.length?<><div className="supplierEmailPreview"><p><b>To:</b> contact@leahung.com</p><p><b>Subject:</b> Hardware Order</p><pre>{leaHungEmailBody()}</pre></div><div className="buttonRow"><a className="buttonLike primary" href={leaHungMailto}><Mail size={16}/> Open Email Draft</a><button onClick={copyLeaHungEmail}>Copy Email</button><button onClick={markLeaHungOrderSent}><CircleCheckBig size={16}/> Mark Order as Sent</button></div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</>:<div className="stocktakeNotice"><b>No Lea Hung order required.</b><span>The current available stock covers the selected target mix, or the shortages belong to other suppliers.</span></div>}<p className="mutedLine">The email requests air and sea freight quotations and approximate delivery times. Marking it sent records the order in Workshop OS.</p></section></>}
   </section>;
 }
 
@@ -4710,7 +4833,7 @@ function Costing({templates, labourRate, setLabourRate}){
   </section>
 }
 
-function Orders({drums, openJobCard}){
+function Orders({drums, openJobCard, externalOrders=[], createDrumFromShopify, updateExternalOrderStatus}){
   const customerOrders=drums.filter(d=>{
     if(isArchivedStatus(d)) return false;
     const hasCustomer=Boolean(String(d.customer || "").trim()) && String(d.customer || "").trim().toLowerCase()!=="stock";
@@ -4794,7 +4917,19 @@ function Orders({drums, openJobCard}){
     </section>;
   }
 
+  const awaitingShopify=externalOrders.filter(o=>o.import_status==="Awaiting review");
+
   return <section className="customerOrdersPage">
+    <section className="panel shopifyOrderQueue">
+      <div className="customerOrderSectionHeader"><div><span className="launchPackEyebrow">SHOPIFY</span><h2>New Online Orders</h2><p>Orders and customer details imported automatically. Review each item before creating a production drum.</p></div><b>{awaitingShopify.length}</b></div>
+      {awaitingShopify.length ? <div className="externalOrderGrid">{awaitingShopify.map(order=><article className="card externalOrderCard" key={order.id}>
+        <div className="externalOrderTop"><div><h3>{order.order_name||order.order_number}</h3><p>{new Date(order.ordered_at).toLocaleString('en-AU')} · {order.financial_status||'Payment status unavailable'}</p></div><b>{order.currency||'AUD'} {Number(order.total_amount||0).toFixed(2)}</b></div>
+        <div className="customerOrderMeta"><div><span>Customer</span><b>{order.customer_name||'Not supplied'}</b></div><div><span>Email</span><b>{order.customer_email||'Not supplied'}</b></div><div><span>Phone</span><b>{order.customer_phone||'Not supplied'}</b></div></div>
+        <div className="externalLineItems">{(order.line_items||[]).map(item=><div className="externalLineItem" key={item.id}><div><b>{item.quantity} × {item.title}</b><span>{item.variant_title||item.sku||'No variant details'}</span></div><button onClick={()=>createDrumFromShopify(order,item)}>Create drum</button></div>)}</div>
+        <div className="buttonRow"><button onClick={()=>updateExternalOrderStatus(order,'Reviewed')}>Mark reviewed</button><button className="primary" onClick={()=>updateExternalOrderStatus(order,'Imported')}>Mark imported</button></div>
+      </article>)}</div> : <p className="okText">No Shopify orders are awaiting review.</p>}
+    </section>
+
     <section className="panel customerOrdersIntro">
       <div>
         <span className="launchPackEyebrow">CUSTOMER MANAGEMENT</span>
@@ -6214,16 +6349,26 @@ function ProjectsPage({projects,drums,openJobCard,createProject,updateProject,li
   </section>
 }
 
-function SettingsPage(){
-  return <section className="panel">
-    <h2>Settings / Rules</h2>
-    <p>v2.0 includes the first rule system. These are currently coded defaults and can become editable database settings in the next version.</p>
-    <div className="templateGrid">
-      {Object.entries(priceRules).map(([key,rule])=><article className="card" key={key}><b>{key}</b><span>Wholesale factor: {rule.wholesaleFactor}</span><span>Custom factor: {rule.customFactor}</span></article>)}
+function SettingsPage({integrationStatus,setIntegrationStatus,setMessage}){
+  const [loading,setLoading]=useState(false);
+  async function refreshStatus(){
+    try{const r=await fetch('/api/integrations-status');const data=await r.json();if(!r.ok) throw new Error(data.error);setIntegrationStatus(data);}catch(error){setMessage(error.message);}
+  }
+  useEffect(()=>{refreshStatus();},[]);
+  const connection=provider=>(integrationStatus.connections||[]).find(c=>c.provider===provider)||{};
+  async function shopifyAction(path,label){
+    setLoading(true); try{const r=await fetch(path,{method:'POST'});const data=await r.json();if(!r.ok) throw new Error(data.error);setMessage(`${label} completed${data.imported!=null?`: ${data.imported} orders loaded`:''}.`);await refreshStatus();}catch(error){setMessage(error.message);}finally{setLoading(false);}
+  }
+  return <section>
+    <section className="panel"><h2>Settings / Integrations</h2><p>Connect Shopify for automatic customer and order imports, and Xero for accounting synchronisation.</p></section>
+    <div className="integrationGrid">
+      <section className="panel integrationCard"><ShoppingBag size={28}/><h2>Shopify</h2><span className={'statusPill '+(connection('shopify').status==='Connected'?'connected':'')}>{connection('shopify').status||'Not connected'}</span><p>{connection('shopify').display_name||'Your current Shopify store'}</p><p>New orders arrive through a secure webhook and appear in Customers & Orders for review.</p><div className="buttonRow"><button disabled={loading} onClick={()=>shopifyAction('/api/shopify/sync','Shopify sync')}>Import recent orders</button><button disabled={loading} onClick={()=>shopifyAction('/api/shopify/register-webhook','Webhook registration')}>Enable automatic orders</button></div>{connection('shopify').last_sync_at&&<small>Last sync: {new Date(connection('shopify').last_sync_at).toLocaleString('en-AU')}</small>}</section>
+      <section className="panel integrationCard"><Link2 size={28}/><h2>Xero</h2><span className={'statusPill '+(connection('xero').status==='Connected'?'connected':'')}>{connection('xero').status||'Not connected'}</span><p>{connection('xero').display_name||'Connect your Xero organisation'}</p><p>The first release securely connects Xero and prepares contact, invoice and payment synchronisation.</p><a className="buttonLink primary" href="/api/xero/connect">Connect Xero</a>{connection('xero').last_sync_at&&<small>Connected: {new Date(connection('xero').last_sync_at).toLocaleString('en-AU')}</small>}</section>
     </div>
+    <section className="panel"><h3>Vercel environment variables required</h3><div className="setupCode"><code>APP_URL</code><code>SUPABASE_SERVICE_ROLE_KEY</code><code>SHOPIFY_STORE_DOMAIN</code><code>SHOPIFY_ADMIN_ACCESS_TOKEN</code><code>SHOPIFY_WEBHOOK_SECRET</code><code>XERO_CLIENT_ID</code><code>XERO_CLIENT_SECRET</code><code>XERO_STATE_SECRET</code></div><p className="muted">Secrets are stored in Vercel, not in the browser or database pages.</p></section>
+    <section className="panel"><h3>Pricing rules</h3><div className="templateGrid">{Object.entries(priceRules).map(([key,rule])=><article className="card" key={key}><b>{key}</b><span>Wholesale factor: {rule.wholesaleFactor}</span><span>Custom factor: {rule.customFactor}</span></article>)}</div></section>
   </section>
 }
-
 
 function communicationMilestoneKey(key){
   const map={
