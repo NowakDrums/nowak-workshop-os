@@ -2751,7 +2751,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.7.4 — Create Formatted Email workflow for supplier orders.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.7.5 — purchase orders, supplier email copy and stock receiving.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4627,6 +4627,14 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const [stocktakeMode,setStocktakeMode]=useState(false);
   const [counts,setCounts]=useState({});
   const [supplierOrderMessage,setSupplierOrderMessage]=useState("");
+  const [purchaseOrders,setPurchaseOrders]=useState([]);
+  const [purchaseOrderOpen,setPurchaseOrderOpen]=useState(false);
+  const [selectedPurchaseOrder,setSelectedPurchaseOrder]=useState(null);
+  const loadPurchaseOrders=async()=>{
+    const {data}=await supabase.from("supplier_orders").select("*").order("created_at",{ascending:false});
+    setPurchaseOrders(data||[]);
+  };
+  useEffect(()=>{loadPurchaseOrders()},[]);
     const defaultPlan=[
     {id:"14-6.5",diameter:"14",depth:"6 1/2",qty:6,buildType:"Stave"},
     {id:"14-5.5",diameter:"14",depth:"5 1/2",qty:4,buildType:"Stave"},
@@ -4751,49 +4759,53 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     return `${group.category}\n${rows.join("\n")}`;
   }).join("\n\n");
   const leaHungEmailBody=()=>`Hi,\n\nI hope you are going well.\n\nI’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?\n\nShipping Address: 29 Meldrum Loop, Bedfordale, Western Australia, 6112\n\n${leaHungPlainTable()}\n\nMany thanks\n\nKelly Nowak\nNowak Drum Company Australia`;
-  const leaHungBlankMailto=leaHungRows.length?`mailto:${encodeURIComponent("contact@leahung.com")}?subject=${encodeURIComponent("Hardware Order")}`:"";
-  const leaHungPlainMailto=leaHungRows.length?`${leaHungBlankMailto}&body=${encodeURIComponent(leaHungEmailBody())}`:"";
-  const createFormattedLeaHungEmail=async()=>{
+  const createPoNumber=()=>{const d=new Date(),pad=n=>String(n).padStart(2,"0");return `PO-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`};
+  const poPayload=(status="Draft")=>({
+    po_number:createPoNumber(),supplier:"Lea Hung",supplier_email:"contact@leahung.com",subject:"Hardware Order",
+    order_items:leaHungRows.map(row=>({hardware_part_id:row.part?.id||null,name:supplierName(row.part),colour:supplierColour(row.part),code:supplierCode(row.part),size:supplierSize(row.part),quantity:row.toOrder,unit_cost:row.cost,estimated_total:row.total})),
+    estimated_value:leaHungRows.reduce((sum,row)=>sum+row.total,0),status,sent_at:status==="Sent"?new Date().toISOString():null,
+    notes:"Please quote air and sea freight with approximate delivery times."
+  });
+  const savePurchaseOrder=async(status="Draft")=>{
+    if(!leaHungRows.length)return null;
+    const payload=poPayload(status);
+    const {data,error}=await supabase.from("supplier_orders").insert(payload).select().single();
+    if(error){setSupplierOrderMessage(error.message?.includes("supplier_orders")?"Run the v7.7.5 purchase order migration first.":error.message);return null;}
+    setSelectedPurchaseOrder(data);setPurchaseOrderOpen(true);await loadPurchaseOrders();
+    setSupplierOrderMessage(`${data.po_number} saved as ${status}.`);return data;
+  };
+  const copyFormattedOrder=async(order=null)=>{
+    const html=order?purchaseOrderEmailHtml(order):leaHungEmailHtml();
+    const text=order?purchaseOrderPlainText(order):leaHungEmailBody();
     try{
-      if(navigator.clipboard?.write && typeof ClipboardItem!=="undefined"){
-        await navigator.clipboard.write([new ClipboardItem({
-          "text/html":new Blob([leaHungEmailHtml()],{type:"text/html"}),
-          "text/plain":new Blob([leaHungEmailBody()],{type:"text/plain"}),
-        })]);
-        setSupplierOrderMessage("Formatted order copied. Click in the email message and press ⌘V to paste it.");
-      }else{
-        await navigator.clipboard?.writeText(leaHungEmailBody());
-        setSupplierOrderMessage("Order copied as plain text. Click in the email message and press ⌘V to paste it.");
-      }
-      window.location.href=leaHungBlankMailto;
-    }catch{
-      setSupplierOrderMessage("Clipboard access was blocked. Use Plain-text fallback instead.");
-    }
-    window.setTimeout(()=>setSupplierOrderMessage(""),8000);
+      if(navigator.clipboard?.write&&typeof ClipboardItem!=="undefined") await navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([text],{type:"text/plain"})})]);
+      else await navigator.clipboard.writeText(text);
+      setSupplierOrderMessage("Formatted purchase order copied. Open a new email and paste it into the message.");
+    }catch{setSupplierOrderMessage("Clipboard access was blocked. Select the preview and copy it manually.");}
   };
-  const markLeaHungOrderSent=async()=>{
-    if(!leaHungRows.length) return;
-    const payload={
-      supplier:"Lea Hung",
-      supplier_email:"contact@leahung.com",
-      subject:"Hardware Order",
-      order_items:leaHungRows.map(row=>({hardware_part_id:row.part?.id||null,name:supplierName(row.part),colour:supplierColour(row.part),code:supplierCode(row.part),size:supplierSize(row.part),quantity:row.toOrder,unit_cost:row.cost,estimated_total:row.total})),
-      estimated_value:leaHungRows.reduce((sum,row)=>sum+row.total,0),
-      status:"Sent",
-      sent_at:new Date().toISOString(),
-    };
-    const {error}=await supabase.from("supplier_orders").insert(payload);
-    if(error){
-      setSupplierOrderMessage(error.message?.includes("supplier_orders")?"Run the v7.7.1 supplier orders migration first.":error.message);
-      return;
-    }
-    setSupplierOrderMessage("Lea Hung order marked as sent.");
-    window.setTimeout(()=>setSupplierOrderMessage(""),3000);
+  const purchaseOrderEmailHtml=order=>{
+    const items=order?.order_items||[];
+    const categories=["Lugs","Air Vents","Tension Rods","Hoops","Snare Wires"];
+    const categoryFor=item=>{const part=hardware.find(p=>p.id===item.hardware_part_id);return part?.category||"Hardware"};
+    const rows=categories.map(category=>{const group=items.filter(item=>categoryFor(item)===category);if(!group.length)return "";return `<tr><td colspan="5" style="padding:10px 8px;background:#e8e8e8;font-weight:700;border:1px solid #999;">${escapeHtml(category)}</td></tr>${group.map(item=>`<tr><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(item.name)}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(item.colour)}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(item.code)}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(item.size)}</td><td style="padding:8px;border:1px solid #aaa;text-align:right;font-weight:700;">${item.quantity}</td></tr>`).join("")}`}).join("");
+    return `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111;line-height:1.45;"><h2 style="margin-bottom:4px;">Nowak Drum Company</h2><p style="margin-top:0;"><strong>Purchase Order:</strong> ${escapeHtml(order.po_number||"")}<br/><strong>Date:</strong> ${new Date(order.created_at||Date.now()).toLocaleDateString("en-AU")}<br/><strong>Supplier:</strong> Lea Hung</p><p>Hi,</p><p>I hope you are going well.</p><p>I’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?</p><p><strong>Shipping Address:</strong> 29 Meldrum Loop, Bedfordale, Western Australia, 6112</p><table style="border-collapse:collapse;width:100%;max-width:900px;font-size:14px;"><thead><tr style="background:#d8d8d8;"><th style="padding:8px;border:1px solid #888;text-align:left;">Name</th><th style="padding:8px;border:1px solid #888;text-align:left;">Colour</th><th style="padding:8px;border:1px solid #888;text-align:left;">Code</th><th style="padding:8px;border:1px solid #888;text-align:left;">Size</th><th style="padding:8px;border:1px solid #888;text-align:right;">Order Quantity</th></tr></thead><tbody>${rows}</tbody></table><p>Many thanks</p><p>Kelly Nowak<br/>Nowak Drum Company Australia</p></body></html>`;
   };
+  const purchaseOrderPlainText=order=>`Purchase Order: ${order.po_number}
+Supplier: Lea Hung
+
+${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size} | Qty ${i.quantity}`).join("\n")}`;
+  const printPurchaseOrder=order=>{const w=window.open("","_blank");if(!w)return setSupplierOrderMessage("Please allow pop-ups to print or save the purchase order.");w.document.write(purchaseOrderEmailHtml(order));w.document.close();w.focus();setTimeout(()=>w.print(),250)};
+  const updatePurchaseOrderStatus=async(order,status)=>{const patch={status};if(status==="Sent")patch.sent_at=new Date().toISOString();if(status==="Received")patch.received_at=new Date().toISOString();const {error}=await supabase.from("supplier_orders").update(patch).eq("id",order.id);if(error)return setSupplierOrderMessage(error.message);const updated={...order,...patch};setSelectedPurchaseOrder(updated);await loadPurchaseOrders();setSupplierOrderMessage(`${order.po_number} marked ${status}.`)};
+  const receivePurchaseOrder=async order=>{
+    if(!window.confirm(`Receive ${order.po_number} into stock? This will add all ordered quantities to On Hand.`))return;
+    for(const item of order.order_items||[]){if(!item.hardware_part_id)continue;const part=hardware.find(p=>p.id===item.hardware_part_id);if(part)await updateHardware(part.id,{qty_on_hand:Number(part.qty_on_hand||0)+Number(item.quantity||0)});}
+    await updatePurchaseOrderStatus(order,"Received");
+  };
+
 
   return <section className="panel inventoryModule">
     <div className="sectionHeader"><div><h2>Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={()=>{setCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stocktake</button></div>:<button onClick={()=>setStocktakeMode(true)}>Start Stocktake</button>)}</div>
-    <nav className="inventoryTabs"><button className={activeTab==="stock"?"active":""} onClick={()=>setActiveTab("stock")}>Stock</button><button className={activeTab==="allocations"?"active":""} onClick={()=>setActiveTab("allocations")}>Drum Hardware</button><button className={activeTab==="capacity"?"active":""} onClick={()=>setActiveTab("capacity")}>Build Capacity</button><button className={activeTab==="reorder"?"active":""} onClick={()=>setActiveTab("reorder")}>Reorder Planner</button></nav>
+    <nav className="inventoryTabs"><button className={activeTab==="stock"?"active":""} onClick={()=>setActiveTab("stock")}>Stock</button><button className={activeTab==="allocations"?"active":""} onClick={()=>setActiveTab("allocations")}>Drum Hardware</button><button className={activeTab==="capacity"?"active":""} onClick={()=>setActiveTab("capacity")}>Build Capacity</button><button className={activeTab==="reorder"?"active":""} onClick={()=>setActiveTab("reorder")}>Reorder Planner</button><button className={activeTab==="purchasing"?"active":""} onClick={()=>setActiveTab("purchasing")}>Purchase Orders</button></nav>
 
     {activeTab==="stock"&&<><div className="inventorySummaryGrid"><article className="card"><b>On hand</b><strong>{hardware.reduce((s,p)=>s+Number(p.qty_on_hand||0),0)}</strong></article><article className="card"><b>Allocated</b><strong>{hardware.reduce((s,p)=>s+Number(p.qty_allocated||0),0)}</strong></article><article className="card"><b>Available</b><strong>{hardware.reduce((s,p)=>s+Math.max(0,Number(p.qty_available||0)),0)}</strong></article><article className="card"><b>Stock value</b><strong>{money(inventoryValue)}</strong></article></div>
       {stocktakeMode&&<div className="stocktakeNotice"><b>Stocktake mode</b><span>Enter the quantity physically on the shelf. Fitted hardware is not included.</span></div>}
@@ -4804,7 +4816,12 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
 
     {activeTab==="capacity"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Right Now?</h3><p>Each card shows the maximum if you built only that option. Rare 12 × 8 and 13 × 8 sizes are excluded.</p></div></div>{buildableOptions.length?<div className="capacityGrid">{buildableOptions.sort((a,b)=>b.qty-a.qty||Number(b.d)-Number(a.d)).map(x=><article className="card" key={`${x.d}-${x.depth}-${x.type}`}><b>{x.d}" × {x.depth}" {x.type}</b><strong>{x.qty} complete drum{x.qty===1?"":"s"}</strong></article>)}</div>:<div className="stocktakeNotice"><b>No complete snare combinations currently available.</b><span>Enter your stocktake quantities and this page will update automatically.</span></div>}</section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Together?</h3><p>This checks the editable Reorder Planner mix against the same shared stock, so hardware is not counted twice.</p></div><strong>{simultaneousTotal} drums together</strong></div><div className="capacityGrid">{simultaneousMix.map(row=><article className="card" key={row.id}><b>{row.diameter}" × {row.depth}" {row.buildType}</b><strong>{row.buildable} of {row.qty}</strong><span>{row.buildable>=Number(row.qty||0)?"Target covered":"Limited by shared hardware"}</span></article>)}</div></section></>}
 
-    {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Diameter</th><th>Depth</th><th>Build</th></tr></thead><tbody>{reorderPlan.map((row,index)=><tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{snareInventoryDiameters.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{snareInventoryDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td></tr>)}</tbody></table></div><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Order</h3><p>Required hardware minus current available stock. Items you already have enough of are not ordered.</p></div><div><b>{money(orderEstimate)}</b><br/><small>estimated order value</small></div></div>{orderRows.length?<div className="tableWrap"><table><thead><tr><th>Part</th><th>Required</th><th>Available</th><th>Order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{orderRows.sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)).map(row=><tr key={row.code}><td>{row.part?.part_name||row.code}<br/><small>{row.part?.size||"Catalogue item missing"}</small></td><td>{row.required}</td><td>{row.available}</td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="5">Approximate hardware order</th><th>{money(orderEstimate)}</th></tr></tfoot></table></div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix.</span></div>}<p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section><section className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>Lea Hung Hardware Order Email</h3><p>Creates an email using only the Lea Hung items currently required by the Suggested Purchase Order.</p></div><div><b>{leaHungRows.length} line item{leaHungRows.length===1?"":"s"}</b><br/><small>{money(leaHungRows.reduce((sum,row)=>sum+row.total,0))} estimated</small></div></div>{leaHungRows.length?<><div className="supplierEmailPreview"><p><b>To:</b> contact@leahung.com</p><p><b>Subject:</b> Hardware Order</p><div className="supplierHtmlPreview" dangerouslySetInnerHTML={{__html:leaHungEmailHtml()}}/></div><div className="buttonRow"><button className="primary" onClick={createFormattedLeaHungEmail}><Mail size={16}/> Create Formatted Email</button><a className="buttonLike secondaryAction" href={leaHungPlainMailto}><Copy size={16}/> Plain-text fallback</a><button onClick={markLeaHungOrderSent}><CircleCheckBig size={16}/> Mark Order as Sent</button></div><p className="mutedLine">Create Formatted Email copies the table and opens Apple Mail. Click in the message body and press ⌘V to paste the formatted order.</p>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</>:<div className="stocktakeNotice"><b>No Lea Hung order required.</b><span>The current available stock covers the selected target mix, or the shortages belong to other suppliers.</span></div>}<p className="mutedLine">The email requests air and sea freight quotations and approximate delivery times. Marking it sent records the order in Workshop OS.</p></section></>}
+    {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Diameter</th><th>Depth</th><th>Build</th></tr></thead><tbody>{reorderPlan.map((row,index)=><tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{snareInventoryDiameters.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{snareInventoryDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td></tr>)}</tbody></table></div><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Order</h3><p>Required hardware minus current available stock. Items you already have enough of are not ordered.</p></div><div><b>{money(orderEstimate)}</b><br/><small>estimated order value</small></div></div>{orderRows.length?<div className="tableWrap"><table><thead><tr><th>Part</th><th>Required</th><th>Available</th><th>Order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{orderRows.sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)).map(row=><tr key={row.code}><td>{row.part?.part_name||row.code}<br/><small>{row.part?.size||"Catalogue item missing"}</small></td><td>{row.required}</td><td>{row.available}</td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="5">Approximate hardware order</th><th>{money(orderEstimate)}</th></tr></tfoot></table></div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix.</span></div>}<p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section><section className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>Lea Hung Purchase Order</h3><p>Create a professional purchase order from the current Lea Hung shortages.</p></div><div><b>{leaHungRows.length} line item{leaHungRows.length===1?"":"s"}</b></div></div>{leaHungRows.length?<><div className="supplierEmailPreview"><p><b>Supplier:</b> Lea Hung · contact@leahung.com</p><div className="supplierHtmlPreview" dangerouslySetInnerHTML={{__html:leaHungEmailHtml()}}/></div><div className="buttonRow"><button className="primary" onClick={()=>savePurchaseOrder("Draft")}><Save size={16}/> Generate Purchase Order</button><button onClick={()=>copyFormattedOrder()}><Copy size={16}/> Copy Email</button></div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</>:<div className="stocktakeNotice"><b>No Lea Hung order required.</b><span>The current available stock covers the selected target mix, or the shortages belong to other suppliers.</span></div>}</section></>}
+
+    {activeTab==="purchasing"&&<section className="inventoryBlock"><div className="sectionHeader"><div><h3>Purchase Orders</h3><p>Track supplier orders from draft through to receiving the hardware into stock.</p></div></div>{purchaseOrders.length?<div className="tableWrap"><table><thead><tr><th>PO</th><th>Supplier</th><th>Date</th><th>Status</th><th>Items</th><th></th></tr></thead><tbody>{purchaseOrders.map(order=><tr key={order.id}><td><b>{order.po_number||"Purchase order"}</b></td><td>{order.supplier}</td><td>{new Date(order.created_at).toLocaleDateString("en-AU")}</td><td><span className={`poStatus ${String(order.status||"Draft").toLowerCase()}`}>{order.status||"Draft"}</span></td><td>{(order.order_items||[]).length}</td><td><button onClick={()=>{setSelectedPurchaseOrder(order);setPurchaseOrderOpen(true)}}>Open</button></td></tr>)}</tbody></table></div>:<div className="stocktakeNotice"><b>No purchase orders yet.</b><span>Generate one from the Reorder Planner.</span></div>}</section>}
+
+    {purchaseOrderOpen&&selectedPurchaseOrder&&<div className="modalBackdrop"><div className="modal purchaseOrderModal"><div className="modalHeader"><div><h2>{selectedPurchaseOrder.po_number}</h2><p>Lea Hung · {selectedPurchaseOrder.status}</p></div><button onClick={()=>setPurchaseOrderOpen(false)}>Close</button></div><div className="purchaseOrderPreview" dangerouslySetInnerHTML={{__html:purchaseOrderEmailHtml(selectedPurchaseOrder)}}/><div className="buttonRow"><button onClick={()=>copyFormattedOrder(selectedPurchaseOrder)}><Copy size={16}/> Copy Email</button><button onClick={()=>printPurchaseOrder(selectedPurchaseOrder)}><Printer size={16}/> Print / Save PDF</button>{selectedPurchaseOrder.status==="Draft"&&<button className="primary" onClick={()=>updatePurchaseOrderStatus(selectedPurchaseOrder,"Sent")}><CircleCheckBig size={16}/> Mark Sent</button>}{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>receivePurchaseOrder(selectedPurchaseOrder)}><Package size={16}/> Receive into Stock</button>}</div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</div></div>}
+
   </section>;
 }
 

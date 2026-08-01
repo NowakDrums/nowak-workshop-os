@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.7.4
+# Nowak Workshop OS v7.7.5
 
 ## Fix
 
@@ -31,3 +31,7 @@
 3. Refresh Workshop OS.
 
 The migration does not change quantities or hardware allocations.
+
+
+## v7.7.5 Purchase Orders
+Run `supabase/v7_7_5_purchase_orders.sql`. Generate Lea Hung purchase orders from Inventory > Reorder Planner, copy the formatted email, print/save as PDF, mark sent, and receive items into stock.

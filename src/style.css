@@ -1812,3 +1812,6 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .supplierHtmlPreview{background:#fff;color:#111;padding:16px;border-radius:10px;overflow:auto;max-height:620px}
 .supplierHtmlPreview table{min-width:680px}
 .supplierHtmlPreview p{color:#111}
+
+/* v7.7.5 purchase orders */
+.poStatus{display:inline-flex;padding:4px 9px;border-radius:999px;border:1px solid var(--border);font-weight:700;font-size:.82rem}.poStatus.sent{color:#7dd3fc}.poStatus.received{color:#86efac}.poStatus.draft{color:#facc15}.purchaseOrderModal{width:min(1000px,94vw);max-height:92vh;overflow:auto}.purchaseOrderPreview{background:#fff;color:#111;padding:24px;border-radius:14px;margin:14px 0}.purchaseOrderPreview table{color:#111}.purchaseOrderPreview h2{color:#111}
