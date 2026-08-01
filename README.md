@@ -1,3 +1,11 @@
+# Nowak Workshop OS v7.7.3
+
+## Fix
+
+- Repairs the Reorder Planner blank-page issue caused by a missing Copy icon import.
+- Retains the formatted Lea Hung supplier email and corrected supplier codes from v7.7.2.
+- No new Supabase migration is required if v7.7.2 has already been run.
+
 # Nowak Workshop OS v7.7.2
 
 ## Lea Hung supplier email improvements

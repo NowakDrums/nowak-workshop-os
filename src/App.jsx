@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
-  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore, ClipboardList, Repeat2, Lightbulb, Pencil, Images, Printer, Download, Bell, ShoppingBag, Link2, AlertTriangle, ExternalLink
+  Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore, ClipboardList, Copy, Repeat2, Lightbulb, Pencil, Images, Printer, Download, Bell, ShoppingBag, Link2, AlertTriangle, ExternalLink
 } from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import QRCode from "qrcode";
@@ -2751,7 +2751,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.7.2 — formatted supplier emails, corrected Lea Hung codes and inventory ordering.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.7.3 — Reorder Planner opening fix and formatted supplier emails.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
