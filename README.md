@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.7.5
+# Nowak Workshop OS v7.7.6
 
 ## Fix
 
@@ -35,3 +35,7 @@ The migration does not change quantities or hardware allocations.
 
 ## v7.7.5 Purchase Orders
 Run `supabase/v7_7_5_purchase_orders.sql`. Generate Lea Hung purchase orders from Inventory > Reorder Planner, copy the formatted email, print/save as PDF, mark sent, and receive items into stock.
+
+
+## v7.7.6 Supplier email shortcut
+Purchase Orders now include an Open Email button that opens the default mail app with contact@leahung.com and the subject Hardware Order. Copy the formatted order first, then paste it into the blank message body. No new Supabase migration is required.
