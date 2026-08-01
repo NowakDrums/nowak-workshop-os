@@ -1,20 +1,21 @@
-# Nowak Workshop OS v7.7.3
+# Nowak Workshop OS v7.7.4
 
 ## Fix
 
 - Repairs the Reorder Planner blank-page issue caused by a missing Copy icon import.
-- Retains the formatted Lea Hung supplier email and corrected supplier codes from v7.7.2.
+- Adds a one-click Create Formatted Email workflow for Lea Hung supplier orders.
 - No new Supabase migration is required if v7.7.2 has already been run.
 
 # Nowak Workshop OS v7.7.2
 
-## Lea Hung supplier email improvements
+## Lea Hung supplier email workflow
 
 - The order preview is now a clean grouped HTML table.
 - Categories appear in this order: Lugs, Air Vents, Tension Rods, Hoops, Snare Wires.
 - The email contains no total quantity, price or estimated value.
-- `Copy Formatted Email` copies both HTML and plain-text versions. Open the email draft and paste into the message body for the best layout.
-- `Open Email Draft` remains available as a plain-text fallback.
+- `Create Formatted Email` copies the rich HTML table and opens a new Apple Mail draft addressed to Lea Hung.
+- Click in the message body and press Command-V to paste the formatted table.
+- `Plain-text fallback` remains available if clipboard formatting is blocked.
 - Tension rods are listed as `Tension Rods (stainless steel)`, finish `Stainless Steel`, code `TR01`.
 - Snare wire supplier codes are standardised to:
   - 14 inch: `SE04-1420CI`
