@@ -1815,3 +1815,11 @@ button:disabled{opacity:.55;cursor:not-allowed}
 
 /* v7.7.5 purchase orders */
 .poStatus{display:inline-flex;padding:4px 9px;border-radius:999px;border:1px solid var(--border);font-weight:700;font-size:.82rem}.poStatus.sent{color:#7dd3fc}.poStatus.received{color:#86efac}.poStatus.draft{color:#facc15}.purchaseOrderModal{width:min(1000px,94vw);max-height:92vh;overflow:auto}.purchaseOrderPreview{background:#fff;color:#111;padding:24px;border-radius:14px;margin:14px 0}.purchaseOrderPreview table{color:#111}.purchaseOrderPreview h2{color:#111}
+/* v7.7.7 editable purchase orders and receiving */
+.purchaseOrderEditModal,.purchaseOrderReceiveModal{max-width:1050px;width:min(1050px,94vw);max-height:92vh;overflow:auto}
+.receivingDetailsGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}
+.poCloseRemaining{display:flex!important;gap:10px;align-items:flex-start;padding:12px;border:1px solid #6b5634;border-radius:9px;background:#1b1710}
+.poCloseRemaining input{width:auto;margin-top:3px}.poCloseRemaining span{display:grid;gap:3px}.poCloseRemaining small{color:#ae9e82}
+.poReceiptSummary{margin:12px 0;padding:12px;border:1px solid #4b3e2c;border-radius:9px;background:#15130f}.poReceiptSummary h3{margin-top:0}.poReceiptSummary>div{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid #342c20}.poReceiptSummary>div:first-of-type{border-top:0}
+.poStatus.partially.received,.poStatus.partiallyreceived{background:#4b3817;color:#f0ca76}
+@media(max-width:700px){.receivingDetailsGrid{grid-template-columns:1fr}.purchaseOrderEditModal,.purchaseOrderReceiveModal{width:96vw}}

@@ -1,41 +1,21 @@
-# Nowak Workshop OS v7.7.6
+# Nowak Workshop OS v7.7.7
 
-## Fix
+## Editable Purchase Orders
 
-- Repairs the Reorder Planner blank-page issue caused by a missing Copy icon import.
-- Adds a one-click Create Formatted Email workflow for Lea Hung supplier orders.
-- No new Supabase migration is required if v7.7.2 has already been run.
+Saved purchase orders can now be edited before completion. You can change quantities, remove lines, add another Lea Hung inventory item and update notes. The formatted email and PDF use the revised saved quantities.
 
-# Nowak Workshop OS v7.7.2
+## Accurate Shipment Receiving
 
-## Lea Hung supplier email workflow
+Receive Shipment opens a line-by-line receiving screen showing ordered, previously received, outstanding and received-now quantities. Only quantities actually received are added to stock.
 
-- The order preview is now a clean grouped HTML table.
-- Categories appear in this order: Lugs, Air Vents, Tension Rods, Hoops, Snare Wires.
-- The email contains no total quantity, price or estimated value.
-- `Create Formatted Email` copies the rich HTML table and opens a new Apple Mail draft addressed to Lea Hung.
-- Click in the message body and press Command-V to paste the formatted table.
-- `Plain-text fallback` remains available if clipboard formatting is blocked.
-- Tension rods are listed as `Tension Rods (stainless steel)`, finish `Stainless Steel`, code `TR01`.
-- Snare wire supplier codes are standardised to:
-  - 14 inch: `SE04-1420CI`
-  - 13 inch: `SE04-1320CI`
-  - 12 inch: `SE04-1220CI`
-  - 10 inch: `SE04-1020CI`
-- Codes are pulled from the inventory catalogue, with supplier-safe fallbacks in the email generator.
+Partial shipments remain Partially Received and can be reopened later. You may close an order with remaining quantities cancelled when the supplier is out of stock. Receiving history is retained.
 
-## Installation
+Optional receiving details include delivery date, supplier invoice, tracking number, freight type, actual freight cost and notes.
 
-1. Deploy this ZIP to Vercel.
-2. Run `supabase/v7_7_2_lea_hung_supplier_codes.sql` in Supabase SQL Editor.
-3. Refresh Workshop OS.
+## Supabase migration
 
-The migration does not change quantities or hardware allocations.
+Run `supabase/v7_7_7_purchase_order_editing_and_receiving.sql` once.
 
+## Rollback
 
-## v7.7.5 Purchase Orders
-Run `supabase/v7_7_5_purchase_orders.sql`. Generate Lea Hung purchase orders from Inventory > Reorder Planner, copy the formatted email, print/save as PDF, mark sent, and receive items into stock.
-
-
-## v7.7.6 Supplier email shortcut
-Purchase Orders now include an Open Email button that opens the default mail app with contact@leahung.com and the subject Hardware Order. Copy the formatted order first, then paste it into the blank message body. No new Supabase migration is required.
+Use v7.7.6. The additive database columns may remain safely.

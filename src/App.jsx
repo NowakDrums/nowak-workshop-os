@@ -2751,7 +2751,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.7.6 — purchase orders with one-click email addressing and subject setup.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.7.7 — editable purchase orders and accurate partial shipment receiving.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4630,6 +4630,10 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const [purchaseOrders,setPurchaseOrders]=useState([]);
   const [purchaseOrderOpen,setPurchaseOrderOpen]=useState(false);
   const [selectedPurchaseOrder,setSelectedPurchaseOrder]=useState(null);
+  const [purchaseOrderEditOpen,setPurchaseOrderEditOpen]=useState(false);
+  const [purchaseOrderDraft,setPurchaseOrderDraft]=useState(null);
+  const [purchaseOrderReceiveOpen,setPurchaseOrderReceiveOpen]=useState(false);
+  const [receivingDraft,setReceivingDraft]=useState(null);
   const loadPurchaseOrders=async()=>{
     const {data}=await supabase.from("supplier_orders").select("*").order("created_at",{ascending:false});
     setPurchaseOrders(data||[]);
@@ -4801,11 +4805,51 @@ Supplier: Lea Hung
 
 ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size} | Qty ${i.quantity}`).join("\n")}`;
   const printPurchaseOrder=order=>{const w=window.open("","_blank");if(!w)return setSupplierOrderMessage("Please allow pop-ups to print or save the purchase order.");w.document.write(purchaseOrderEmailHtml(order));w.document.close();w.focus();setTimeout(()=>w.print(),250)};
-  const updatePurchaseOrderStatus=async(order,status)=>{const patch={status};if(status==="Sent")patch.sent_at=new Date().toISOString();if(status==="Received")patch.received_at=new Date().toISOString();const {error}=await supabase.from("supplier_orders").update(patch).eq("id",order.id);if(error)return setSupplierOrderMessage(error.message);const updated={...order,...patch};setSelectedPurchaseOrder(updated);await loadPurchaseOrders();setSupplierOrderMessage(`${order.po_number} marked ${status}.`)};
-  const receivePurchaseOrder=async order=>{
-    if(!window.confirm(`Receive ${order.po_number} into stock? This will add all ordered quantities to On Hand.`))return;
-    for(const item of order.order_items||[]){if(!item.hardware_part_id)continue;const part=hardware.find(p=>p.id===item.hardware_part_id);if(part)await updateHardware(part.id,{qty_on_hand:Number(part.qty_on_hand||0)+Number(item.quantity||0)});}
-    await updatePurchaseOrderStatus(order,"Received");
+  const updatePurchaseOrderStatus=async(order,status)=>{const patch={status};if(status==="Sent")patch.sent_at=new Date().toISOString();if(status==="Received")patch.received_at=new Date().toISOString();const {data,error}=await supabase.from("supplier_orders").update(patch).eq("id",order.id).select().single();if(error)return setSupplierOrderMessage(error.message);const updated=data||{...order,...patch};setSelectedPurchaseOrder(updated);await loadPurchaseOrders();setSupplierOrderMessage(`${order.po_number} marked ${status}.`)};
+  const receivedTotals=order=>{
+    const totals={};
+    (order?.receiving_history||[]).forEach(receipt=>(receipt.items||[]).forEach(item=>{const key=item.hardware_part_id||item.code;totals[key]=(totals[key]||0)+Number(item.quantity_received||0)}));
+    return totals;
+  };
+  const openPurchaseOrderEditor=order=>{
+    setPurchaseOrderDraft({...order,order_items:(order.order_items||[]).map(item=>({...item}))});
+    setPurchaseOrderEditOpen(true);
+  };
+  const savePurchaseOrderEdits=async()=>{
+    if(!purchaseOrderDraft)return;
+    const cleanItems=(purchaseOrderDraft.order_items||[]).filter(item=>Number(item.quantity||0)>0).map(item=>({...item,quantity:Number(item.quantity||0),estimated_total:Number(item.quantity||0)*Number(item.unit_cost||0)}));
+    if(!cleanItems.length)return setSupplierOrderMessage("A purchase order must contain at least one item.");
+    const patch={order_items:cleanItems,estimated_value:cleanItems.reduce((sum,item)=>sum+Number(item.estimated_total||0),0),notes:purchaseOrderDraft.notes||""};
+    const {data,error}=await supabase.from("supplier_orders").update(patch).eq("id",purchaseOrderDraft.id).select().single();
+    if(error)return setSupplierOrderMessage(error.message);
+    setSelectedPurchaseOrder(data);setPurchaseOrderDraft(null);setPurchaseOrderEditOpen(false);await loadPurchaseOrders();setSupplierOrderMessage(`${data.po_number} updated.`);
+  };
+  const addPurchaseOrderItem=partId=>{
+    const part=hardware.find(p=>p.id===partId);if(!part||!purchaseOrderDraft)return;
+    if((purchaseOrderDraft.order_items||[]).some(item=>item.hardware_part_id===part.id))return;
+    const item={hardware_part_id:part.id,name:supplierName(part),colour:supplierColour(part),code:supplierCode(part),size:supplierSize(part),quantity:1,unit_cost:Number(part.landed_cost_aud||0),estimated_total:Number(part.landed_cost_aud||0)};
+    setPurchaseOrderDraft(current=>({...current,order_items:[...(current.order_items||[]),item]}));
+  };
+  const openReceiving=order=>{
+    const received=receivedTotals(order);
+    const rows=(order.order_items||[]).map(item=>{const key=item.hardware_part_id||item.code;const already=Number(received[key]||0);const outstanding=Math.max(0,Number(item.quantity||0)-already);return {...item,already_received:already,outstanding,receive_now:outstanding}});
+    setReceivingDraft({order,items:rows,delivery_date:new Date().toISOString().slice(0,10),supplier_invoice:order.supplier_invoice||"",tracking_number:order.tracking_number||"",freight_type:order.freight_type||"",shipping_cost:order.shipping_cost||0,notes:"",close_remaining:false});
+    setPurchaseOrderReceiveOpen(true);
+  };
+  const saveReceipt=async()=>{
+    if(!receivingDraft)return;
+    const receivedItems=receivingDraft.items.filter(item=>Number(item.receive_now||0)>0).map(item=>({...item,quantity_received:Math.min(Number(item.receive_now||0),Number(item.outstanding||0))}));
+    if(!receivedItems.length&&!receivingDraft.close_remaining)return setSupplierOrderMessage("Enter at least one received quantity, or choose to close the remaining balance.");
+    for(const item of receivedItems){if(!item.hardware_part_id)continue;const part=hardware.find(p=>p.id===item.hardware_part_id);if(part)await updateHardware(part.id,{qty_on_hand:Number(part.qty_on_hand||0)+Number(item.quantity_received||0)});}
+    const receipt={received_at:new Date().toISOString(),delivery_date:receivingDraft.delivery_date,items:receivedItems.map(item=>({hardware_part_id:item.hardware_part_id,code:item.code,name:item.name,quantity_received:item.quantity_received})),supplier_invoice:receivingDraft.supplier_invoice,tracking_number:receivingDraft.tracking_number,freight_type:receivingDraft.freight_type,shipping_cost:Number(receivingDraft.shipping_cost||0),notes:receivingDraft.notes};
+    const history=[...(receivingDraft.order.receiving_history||[]),receipt];
+    const newlyReceived={...receivedTotals(receivingDraft.order)};receivedItems.forEach(item=>{const key=item.hardware_part_id||item.code;newlyReceived[key]=(newlyReceived[key]||0)+Number(item.quantity_received||0)});
+    const hasOutstanding=(receivingDraft.order.order_items||[]).some(item=>Number(newlyReceived[item.hardware_part_id||item.code]||0)<Number(item.quantity||0));
+    const status=receivingDraft.close_remaining||!hasOutstanding?"Received":"Partially Received";
+    const patch={receiving_history:history,status,supplier_invoice:receivingDraft.supplier_invoice||null,tracking_number:receivingDraft.tracking_number||null,freight_type:receivingDraft.freight_type||null,shipping_cost:Number(receivingDraft.shipping_cost||0),received_at:status==="Received"?new Date().toISOString():null};
+    const {data,error}=await supabase.from("supplier_orders").update(patch).eq("id",receivingDraft.order.id).select().single();
+    if(error)return setSupplierOrderMessage(error.message);
+    setSelectedPurchaseOrder(data);setReceivingDraft(null);setPurchaseOrderReceiveOpen(false);await loadPurchaseOrders();setSupplierOrderMessage(`${data.po_number} ${status.toLowerCase()}. Stock increased only by the quantities received.`);
   };
 
 
@@ -4826,7 +4870,11 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
 
     {activeTab==="purchasing"&&<section className="inventoryBlock"><div className="sectionHeader"><div><h3>Purchase Orders</h3><p>Track supplier orders from draft through to receiving the hardware into stock.</p></div></div>{purchaseOrders.length?<div className="tableWrap"><table><thead><tr><th>PO</th><th>Supplier</th><th>Date</th><th>Status</th><th>Items</th><th></th></tr></thead><tbody>{purchaseOrders.map(order=><tr key={order.id}><td><b>{order.po_number||"Purchase order"}</b></td><td>{order.supplier}</td><td>{new Date(order.created_at).toLocaleDateString("en-AU")}</td><td><span className={`poStatus ${String(order.status||"Draft").toLowerCase()}`}>{order.status||"Draft"}</span></td><td>{(order.order_items||[]).length}</td><td><button onClick={()=>{setSelectedPurchaseOrder(order);setPurchaseOrderOpen(true)}}>Open</button></td></tr>)}</tbody></table></div>:<div className="stocktakeNotice"><b>No purchase orders yet.</b><span>Generate one from the Reorder Planner.</span></div>}</section>}
 
-    {purchaseOrderOpen&&selectedPurchaseOrder&&<div className="modalBackdrop"><div className="modal purchaseOrderModal"><div className="modalHeader"><div><h2>{selectedPurchaseOrder.po_number}</h2><p>Lea Hung · {selectedPurchaseOrder.status}</p></div><button onClick={()=>setPurchaseOrderOpen(false)}>Close</button></div><div className="purchaseOrderPreview" dangerouslySetInnerHTML={{__html:purchaseOrderEmailHtml(selectedPurchaseOrder)}}/><div className="buttonRow"><button onClick={()=>copyFormattedOrder(selectedPurchaseOrder)}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail(selectedPurchaseOrder)}><Mail size={16}/> Open Email</button><button onClick={()=>printPurchaseOrder(selectedPurchaseOrder)}><Printer size={16}/> Print / Save PDF</button>{selectedPurchaseOrder.status==="Draft"&&<button className="primary" onClick={()=>updatePurchaseOrderStatus(selectedPurchaseOrder,"Sent")}><CircleCheckBig size={16}/> Mark Sent</button>}{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>receivePurchaseOrder(selectedPurchaseOrder)}><Package size={16}/> Receive into Stock</button>}</div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</div></div>}
+    {purchaseOrderOpen&&selectedPurchaseOrder&&<div className="modalBackdrop"><div className="modal purchaseOrderModal"><div className="modalHeader"><div><h2>{selectedPurchaseOrder.po_number}</h2><p>Lea Hung · {selectedPurchaseOrder.status}</p></div><button onClick={()=>setPurchaseOrderOpen(false)}>Close</button></div><div className="purchaseOrderPreview" dangerouslySetInnerHTML={{__html:purchaseOrderEmailHtml(selectedPurchaseOrder)}}/>{(selectedPurchaseOrder.receiving_history||[]).length>0&&<section className="poReceiptSummary"><h3>Receiving history</h3>{selectedPurchaseOrder.receiving_history.map((receipt,index)=><div key={index}><b>{new Date(receipt.received_at).toLocaleDateString("en-AU")}</b><span>{(receipt.items||[]).reduce((sum,item)=>sum+Number(item.quantity_received||0),0)} pieces received{receipt.supplier_invoice?` · Invoice ${receipt.supplier_invoice}`:""}</span></div>)}</section>}<div className="buttonRow"><button onClick={()=>copyFormattedOrder(selectedPurchaseOrder)}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail(selectedPurchaseOrder)}><Mail size={16}/> Open Email</button><button onClick={()=>printPurchaseOrder(selectedPurchaseOrder)}><Printer size={16}/> Print / Save PDF</button>{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>openPurchaseOrderEditor(selectedPurchaseOrder)}><Pencil size={16}/> Edit Order</button>}{selectedPurchaseOrder.status==="Draft"&&<button className="primary" onClick={()=>updatePurchaseOrderStatus(selectedPurchaseOrder,"Sent")}><CircleCheckBig size={16}/> Mark Sent</button>}{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>openReceiving(selectedPurchaseOrder)}><Package size={16}/> Receive Shipment</button>}</div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</div></div>}
+
+    {purchaseOrderEditOpen&&purchaseOrderDraft&&<div className="modalBackdrop"><div className="modal purchaseOrderEditModal"><div className="modalHeader"><div><h2>Edit {purchaseOrderDraft.po_number}</h2><p>Adjust the order before sending or receiving it.</p></div><button onClick={()=>setPurchaseOrderEditOpen(false)}>Close</button></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Code / size</th><th>Quantity</th><th></th></tr></thead><tbody>{(purchaseOrderDraft.order_items||[]).map((item,index)=><tr key={`${item.hardware_part_id||item.code}-${index}`}><td>{item.name}<br/><small>{item.colour}</small></td><td>{item.code}<br/><small>{item.size}</small></td><td><input className="compactInput" type="number" min="0" value={item.quantity} onChange={e=>setPurchaseOrderDraft(current=>({...current,order_items:current.order_items.map((x,i)=>i===index?{...x,quantity:Number(e.target.value)}:x)}))}/></td><td><button className="dangerButton" onClick={()=>setPurchaseOrderDraft(current=>({...current,order_items:current.order_items.filter((_,i)=>i!==index)}))}><Trash2 size={14}/> Remove</button></td></tr>)}</tbody></table></div><label>Add another inventory item<select defaultValue="" onChange={e=>{addPurchaseOrderItem(e.target.value);e.target.value=""}}><option value="">Select hardware…</option>{hardware.filter(part=>/lea\s*hung/i.test(String(part.supplier||""))).sort(sortParts).map(part=><option key={part.id} value={part.id}>{part.part_name} · {part.size} · {supplierCode(part)}</option>)}</select></label><label>Order notes<textarea value={purchaseOrderDraft.notes||""} onChange={e=>setPurchaseOrderDraft({...purchaseOrderDraft,notes:e.target.value})}/></label><div className="buttonRow"><button onClick={()=>setPurchaseOrderEditOpen(false)}>Cancel</button><button className="primary" onClick={savePurchaseOrderEdits}><Save size={16}/> Save Changes</button></div></div></div>}
+
+    {purchaseOrderReceiveOpen&&receivingDraft&&<div className="modalBackdrop"><div className="modal purchaseOrderReceiveModal"><div className="modalHeader"><div><h2>Receive {receivingDraft.order.po_number}</h2><p>Enter only what arrived in this shipment.</p></div><button onClick={()=>setPurchaseOrderReceiveOpen(false)}>Close</button></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Ordered</th><th>Previously received</th><th>Outstanding</th><th>Received now</th></tr></thead><tbody>{receivingDraft.items.map((item,index)=><tr key={`${item.hardware_part_id||item.code}-${index}`}><td>{item.name}<br/><small>{item.code} · {item.size}</small></td><td>{item.quantity}</td><td>{item.already_received}</td><td><b>{item.outstanding}</b></td><td><input className="compactInput" type="number" min="0" max={item.outstanding} value={item.receive_now} onChange={e=>setReceivingDraft(current=>({...current,items:current.items.map((x,i)=>i===index?{...x,receive_now:Math.max(0,Math.min(Number(e.target.value),x.outstanding))}:x)}))}/></td></tr>)}</tbody></table></div><div className="receivingDetailsGrid"><label>Delivery date<input type="date" value={receivingDraft.delivery_date} onChange={e=>setReceivingDraft({...receivingDraft,delivery_date:e.target.value})}/></label><label>Supplier invoice<input value={receivingDraft.supplier_invoice} onChange={e=>setReceivingDraft({...receivingDraft,supplier_invoice:e.target.value})}/></label><label>Tracking number<input value={receivingDraft.tracking_number} onChange={e=>setReceivingDraft({...receivingDraft,tracking_number:e.target.value})}/></label><label>Freight type<select value={receivingDraft.freight_type} onChange={e=>setReceivingDraft({...receivingDraft,freight_type:e.target.value})}><option value="">Not entered</option><option>Air</option><option>Sea</option><option>Courier</option></select></label><label>Actual freight cost<input type="number" min="0" step="0.01" value={receivingDraft.shipping_cost} onChange={e=>setReceivingDraft({...receivingDraft,shipping_cost:Number(e.target.value)})}/></label></div><label>Receiving notes<textarea value={receivingDraft.notes} onChange={e=>setReceivingDraft({...receivingDraft,notes:e.target.value})} placeholder="Out of stock, backordered, damaged, substituted…"/></label><label className="poCloseRemaining"><input type="checkbox" checked={receivingDraft.close_remaining} onChange={e=>setReceivingDraft({...receivingDraft,close_remaining:e.target.checked})}/><span><b>Close the order after this shipment</b><small>Use this when the supplier cannot provide the remaining quantities. Outstanding items will be treated as cancelled rather than backordered.</small></span></label><div className="buttonRow"><button onClick={()=>setPurchaseOrderReceiveOpen(false)}>Cancel</button><button className="primary" onClick={saveReceipt}><Package size={16}/> Add Received Stock</button></div></div></div>}
 
   </section>;
 }
