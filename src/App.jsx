@@ -439,7 +439,16 @@ function parseDrumSize(size){
   return match ? {diameter:match[1],depth:normaliseDepthValue(match[2])} : null;
 }
 function hardwareFinishKey(value){
-  return /brass|gold/i.test(String(value||"")) ? "BRASS" : "CHROME";
+  const text=String(value||"");
+  if(/black\s*nickel/i.test(text)) return "BLACK-NICKEL";
+  if(/brass|gold/i.test(text)) return "BRASS";
+  return "CHROME";
+}
+function hardwareFinishLabel(value){
+  const key=hardwareFinishKey(value);
+  if(key==="BLACK-NICKEL") return "Black Nickel";
+  if(key==="BRASS") return "Brass";
+  return "Chrome";
 }
 function finishSku(base,finish){
   return `${base}-${hardwareFinishKey(finish)}`;
@@ -450,40 +459,41 @@ function drumHardwareRequirements(drum){
   if(!spec) return [];
   const diameter=spec.diameter;
   const type=String(drum?.drum_type||"Snare").toLowerCase();
-  const finish=drum?.hardware_finish||"Chrome Plated";
+  const finish=drum?.hardware_finish||"Chrome";
   const finishKey=hardwareFinishKey(finish);
+  const finishLabel=hardwareFinishLabel(finish);
   if(type==="snare"){
     const lugCount=diameter==="10" ? 6 : diameter==="14" ? 10 : 8;
     const rodCount=lugCount*2;
     const lugLength=snareLugLength(spec.depth);
     const ventSize=drum?.build_type==="Ply" ? "20mm" : "30mm";
     return [
-      {code:finishSku(`LUG-${lugLength.replace("mm","")}`,finish),qty:lugCount,label:`${lugLength} Agile Tube Lug — ${finish}`},
+      {code:finishSku(`LUG-${lugLength.replace("mm","")}`,finish),qty:lugCount,label:`${lugLength} Agile Tube Lug — ${finishLabel}`},
       {code:"TROD-45",qty:rodCount,label:"45mm stainless steel tension rod"},
-      {code:finishSku(`HOOP-${diameter}-${lugCount}-BAT`,finish),qty:1,label:`${diameter}\" ${lugCount}-lug 2.3mm hoop — ${finish}`},
-      {code:finishSku(`HOOP-${diameter}-${lugCount}-SNR`,finish),qty:1,label:`${diameter}\" ${lugCount}-lug 2.3mm snare-side hoop — ${finish}`},
+      {code:finishSku(`HOOP-${diameter}-${lugCount}-BAT`,finish),qty:1,label:`${diameter}\" ${lugCount}-lug 2.3mm hoop — ${finishLabel}`},
+      {code:finishSku(`HOOP-${diameter}-${lugCount}-SNR`,finish),qty:1,label:`${diameter}\" ${lugCount}-lug 2.3mm snare-side hoop — ${finishLabel}`},
       {code:`HEAD-${diameter}-BAT`,qty:1,label:`${diameter}\" Remo batter head`},
       {code:`HEAD-${diameter}-SNR`,qty:1,label:`${diameter}\" Remo snare-side head`},
-      {code:finishSku(`WIRE-${diameter}`,finish),qty:1,label:`${diameter}\" snare wire — ${finish}`},
+      {code:`WIRE-${diameter}-BRASS`,qty:1,label:`${diameter}\" snare wire — Brass`},
       {code:"THROW-TRICK-CHROME",qty:1,label:"Trick throw-off — Chrome"},
-      {code:finishSku(`VENT-${ventSize.replace("mm","")}`,finish),qty:1,label:`${ventSize} air vent — ${finish}`},
+      {code:finishSku(`VENT-${ventSize.replace("mm","")}`,finish),qty:1,label:`${ventSize} air vent — ${finishLabel}`},
     ].filter(item=>!item.code.includes("--"));
   }
   if(type==="tom"){
     if(!["8","10","12"].includes(diameter)) return [];
     return [
-      {code:finishSku(`TOM-HOOP-${diameter}-6`,finish),qty:2,label:`${diameter}\" 6-lug 2.3mm tom hoop — ${finish}`},
-      {code:finishSku("BALL-LUG",finish),qty:12,label:`ATL01-01 Agile Tube Lug – Ball — ${finish}`},
-      {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finish}`},
+      {code:finishSku(`TOM-HOOP-${diameter}-6`,finish),qty:2,label:`${diameter}\" 6-lug 2.3mm tom hoop — ${finishLabel}`},
+      {code:finishSku("BALL-LUG",finish),qty:12,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`},
+      {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
       {code:"TROD-45",qty:12,label:"45mm stainless steel tension rod"},
     ];
   }
   if(type==="floor tom"){
     if(!["14","16","18"].includes(diameter)) return [];
     return [
-      {code:finishSku(`FLOOR-HOOP-${diameter}-8`,finish),qty:2,label:`${diameter}\" 8-lug 2.3mm floor-tom hoop — ${finish}`},
-      {code:finishSku("BALL-LUG",finish),qty:16,label:`ATL01-01 Agile Tube Lug – Ball — ${finish}`},
-      {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finish}`},
+      {code:finishSku(`FLOOR-HOOP-${diameter}-8`,finish),qty:2,label:`${diameter}\" 8-lug 2.3mm floor-tom hoop — ${finishLabel}`},
+      {code:finishSku("BALL-LUG",finish),qty:16,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`},
+      {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
       {code:"TROD-45",qty:16,label:"45mm stainless steel tension rod"},
       {code:"FLOOR-LEG-SET",qty:1,label:"FL05-120540 floor-tom leg set (3 piece)"},
       {code:"TOM-MOUNT",qty:3,label:"TM001 tom mount"},
@@ -495,7 +505,7 @@ function drumHardwareRequirements(drum){
       {code:"TROD-110",qty:16,label:"TR02 110mm stainless steel bass-drum tension rod"},
       {code:"BASS-CLAW-CHROME",qty:16,label:"BC-010CR bass-drum claw"},
       {code:"BASS-SPUR-CHROME",qty:1,label:"BDS008CR bass-drum spur set"},
-      {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finish}`},
+      {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
       {code:"BASS-BALL-LUG-CHROME",qty:16,label:"ATL01-00CR ball lug"},
       {code:"BASS-LUG-GASKET",qty:16,label:"ATL01-00CR ball-lug gasket"},
       {code:`BASS-HOOP-${diameter}`,qty:2,label:`${diameter}\" HA06 maple bass-drum hoop`},
@@ -2153,7 +2163,7 @@ function App(){
       size:form.size,
       finish:form.finish || "TBD",
       hardware_option:form.hardware_option || "Standard Hardware",
-      hardware_finish:form.hardware_finish || "Chrome Plated",
+      hardware_finish:form.hardware_finish || "Chrome",
       customer:form.order_type === "Stock" ? "Stock" : (form.customer || ""),
       customer_phone:form.customer_phone || "",
       customer_email:form.customer_email || "",
@@ -2797,7 +2807,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.7.9 — tom, floor-tom and bass-drum hardware planning with HA06 maple bass-drum hoops.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.7.12 — repaired hardware finishes, Brass snare-wire defaults and Black Nickel support.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3596,7 +3606,7 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
     customTimber:"",
     finish:preset.finish || "To Be Decided",
     hardware_option:preset.hardware_option || "Standard Hardware",
-    hardware_finish:preset.hardware_finish || "Chrome Plated",
+    hardware_finish:preset.hardware_finish || "Chrome",
     order_type:"Stock",
     shipping_cost:0,
     timber_story:"",
@@ -3834,8 +3844,10 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
           </label>
           <label>Hardware finish
             <select value={form.hardware_finish} disabled={form.hardware_option==="No Hardware"} onChange={e=>setField("hardware_finish",e.target.value)}>
-              <option>Chrome Plated</option>
-              <option>Brass Plated</option>
+              <option>Chrome</option>
+              <option>Brass</option>
+              <option>Black Nickel</option>
+              <option>Mixed / Custom</option>
             </select>
           </label>
         </div>
@@ -4702,11 +4714,11 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   };
   useEffect(()=>{loadPurchaseOrders()},[]);
     const defaultPlan=[
-    {id:"14-6.5",drumType:"Snare",diameter:"14",depth:"6 1/2",qty:6,buildType:"Stave",hardwareFinish:"Chrome Plated"},
-    {id:"14-5.5",drumType:"Snare",diameter:"14",depth:"5 1/2",qty:4,buildType:"Stave",hardwareFinish:"Chrome Plated"},
-    {id:"13-7",drumType:"Snare",diameter:"13",depth:"7",qty:4,buildType:"Stave",hardwareFinish:"Chrome Plated"},
-    {id:"12-7",drumType:"Snare",diameter:"12",depth:"7",qty:4,buildType:"Stave",hardwareFinish:"Chrome Plated"},
-    {id:"10-5",drumType:"Snare",diameter:"10",depth:"5",qty:4,buildType:"Stave",hardwareFinish:"Chrome Plated"},
+    {id:"14-6.5",drumType:"Snare",diameter:"14",depth:"6 1/2",qty:6,buildType:"Stave",hardwareFinish:"Chrome"},
+    {id:"14-5.5",drumType:"Snare",diameter:"14",depth:"5 1/2",qty:4,buildType:"Stave",hardwareFinish:"Chrome"},
+    {id:"13-7",drumType:"Snare",diameter:"13",depth:"7",qty:4,buildType:"Stave",hardwareFinish:"Chrome"},
+    {id:"12-7",drumType:"Snare",diameter:"12",depth:"7",qty:4,buildType:"Stave",hardwareFinish:"Chrome"},
+    {id:"10-5",drumType:"Snare",diameter:"10",depth:"5",qty:4,buildType:"Stave",hardwareFinish:"Chrome"},
   ];
   const [reorderPlan,setReorderPlan]=useState(()=>{
     try{return JSON.parse(localStorage.getItem("nowakReorderPlan")||"null")||defaultPlan}catch{return defaultPlan}
@@ -4733,8 +4745,8 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const activeCustom=drums.filter(d=>d.sales_status==="Custom Order"&&!isArchivedStatus(d)&&!isSoldStatus(d)&&!isShippedStatus(d)&&String(d.hardware_option||"Standard Hardware")!=="No Hardware");
   const allocationByDrum=allocations.filter(a=>a.status==="Allocated").reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map},{});
   const byCode=Object.fromEntries(hardware.map(p=>[hardwareLookupKey(p),p]));
-  const requirementsFor=(diameter,depth,buildType="Stave",drumType="Snare",hardwareFinish="Chrome Plated",hardwareOption="Standard Hardware")=>drumHardwareRequirements({size:`${diameter} x ${depth}`,drum_type:drumType,build_type:buildType,hardware_finish:hardwareFinish,hardware_option:hardwareOption});
-  const capacityFor=(diameter,depth,buildType,drumType="Snare",hardwareFinish="Chrome Plated")=>{const reqs=requirementsFor(diameter,depth,buildType,drumType,hardwareFinish);const capacities=reqs.map(req=>Math.floor(Math.max(0,Number(byCode[req.code]?.qty_available||0))/req.qty));return capacities.length?Math.min(...capacities):0};
+  const requirementsFor=(diameter,depth,buildType="Stave",drumType="Snare",hardwareFinish="Chrome",hardwareOption="Standard Hardware")=>drumHardwareRequirements({size:`${diameter} x ${depth}`,drum_type:drumType,build_type:buildType,hardware_finish:hardwareFinish,hardware_option:hardwareOption});
+  const capacityFor=(diameter,depth,buildType,drumType="Snare",hardwareFinish="Chrome")=>{const reqs=requirementsFor(diameter,depth,buildType,drumType,hardwareFinish);const capacities=reqs.map(req=>Math.floor(Math.max(0,Number(byCode[req.code]?.qty_available||0))/req.qty));return capacities.length?Math.min(...capacities):0};
   const buildableOptions=[];
   const capacityOptions=[
     ...snareInventoryDiameters.flatMap(d=>snareInventoryDepths.filter(depth=>!((d==="12"||d==="13")&&depth==="8")).map(depth=>({drumType:"Snare",d,depth}))),
@@ -4742,12 +4754,12 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     {drumType:"Floor Tom",d:"14",depth:"14"},{drumType:"Floor Tom",d:"16",depth:"16"},{drumType:"Floor Tom",d:"18",depth:"16"},
     {drumType:"Bass Drum",d:"18",depth:"14"},{drumType:"Bass Drum",d:"20",depth:"14"},{drumType:"Bass Drum",d:"22",depth:"14"},{drumType:"Bass Drum",d:"24",depth:"14"},
   ];
-  capacityOptions.forEach(option=>["Stave","Ply"].forEach(type=>{const qty=capacityFor(option.d,option.depth,type,option.drumType,"Chrome Plated");if(qty>0)buildableOptions.push({...option,type,qty})}));
+  capacityOptions.forEach(option=>["Stave","Ply"].forEach(type=>{const qty=capacityFor(option.d,option.depth,type,option.drumType,"Chrome");if(qty>0)buildableOptions.push({...option,type,qty})}));
   const groups=["Lugs","Air Vents","Tension Rods","Hoops","Floor Tom Hardware","Bass Drum Hardware","Snare Wires","Throw-Offs","Drum Heads"];
   const consumed=allocations.filter(a=>a.status==="Consumed"),consumedByDrum=consumed.reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map},{}),partById=Object.fromEntries(hardware.map(p=>[p.id,p]));
 
   const plannedRequirements={};
-  reorderPlan.forEach(row=>requirementsFor(row.diameter,row.depth,row.buildType,row.drumType||"Snare",row.hardwareFinish||"Chrome Plated").forEach(req=>{plannedRequirements[req.code]=(plannedRequirements[req.code]||0)+(Number(row.qty||0)*req.qty)}));
+  reorderPlan.forEach(row=>requirementsFor(row.diameter,row.depth,row.buildType,row.drumType||"Snare",row.hardwareFinish||"Chrome").forEach(req=>{plannedRequirements[req.code]=(plannedRequirements[req.code]||0)+(Number(row.qty||0)*req.qty)}));
   const orderRows=Object.entries(plannedRequirements).map(([code,required])=>{const part=byCode[code];const available=Math.max(0,Number(part?.qty_available||0));const toOrder=Math.max(0,required-available);return {code,part,required,available,toOrder,cost:Number(part?.landed_cost_aud||0),total:toOrder*Number(part?.landed_cost_aud||0)}}).filter(row=>row.toOrder>0);
   const orderEstimate=orderRows.reduce((sum,row)=>sum+row.total,0);
   const planTotal=reorderPlan.reduce((sum,row)=>sum+Number(row.qty||0),0);
@@ -4758,7 +4770,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     mixProgress=false;
     simultaneousMix.forEach(row=>{
       if(row.buildable>=Number(row.qty||0)) return;
-      const reqs=requirementsFor(row.diameter,row.depth,row.buildType,row.drumType||"Snare",row.hardwareFinish||"Chrome Plated");
+      const reqs=requirementsFor(row.diameter,row.depth,row.buildType,row.drumType||"Snare",row.hardwareFinish||"Chrome");
       const canBuild=reqs.every(req=>Number(mixRemaining[req.code]||0)>=req.qty);
       if(canBuild){reqs.forEach(req=>{mixRemaining[req.code]-=req.qty});row.buildable+=1;mixProgress=true;}
     });
@@ -4771,9 +4783,10 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const supplierColour=part=>{
     if(part?.category==="Tension Rods") return "Stainless Steel";
     const finish=String(part?.finish||"").trim();
-    if(!finish) return "Chrome Plated";
-    if(/gold|brass/i.test(finish)) return "Brass Plated";
-    if(/chrome/i.test(finish)) return "Chrome Plated";
+    if(!finish) return "Chrome";
+    if(/black\s*nickel/i.test(finish)) return "Black Nickel";
+    if(/gold|brass/i.test(finish)) return "Brass";
+    if(/chrome/i.test(finish)) return "Chrome";
     if(/stainless/i.test(finish)) return "Stainless Steel";
     return finish;
   };
@@ -4942,7 +4955,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
 
     {activeTab==="capacity"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Right Now?</h3><p>Each card shows the maximum if you built only that option. Rare 12 × 8 and 13 × 8 sizes are excluded.</p></div></div>{buildableOptions.length?<div className="capacityGrid">{buildableOptions.sort((a,b)=>b.qty-a.qty||Number(b.d)-Number(a.d)).map(x=><article className="card" key={`${x.d}-${x.depth}-${x.type}`}><b>{x.d}" × {x.depth}" {x.drumType} · {x.type}</b><strong>{x.qty} complete drum{x.qty===1?"":"s"}</strong></article>)}</div>:<div className="stocktakeNotice"><b>No complete snare combinations currently available.</b><span>Enter your stocktake quantities and this page will update automatically.</span></div>}</section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Together?</h3><p>This checks the editable Reorder Planner mix against the same shared stock, so hardware is not counted twice.</p></div><strong>{simultaneousTotal} drums together</strong></div><div className="capacityGrid">{simultaneousMix.map(row=><article className="card" key={row.id}><b>{row.diameter}" × {row.depth}" {row.drumType||"Snare"} · {row.buildType}</b><strong>{row.buildable} of {row.qty}</strong><span>{row.buildable>=Number(row.qty||0)?"Target covered":"Limited by shared hardware"}</span></article>)}</div></section></>}
 
-    {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Drum type</th><th>Diameter</th><th>Depth</th><th>Build</th><th>Hardware finish</th><th></th></tr></thead><tbody>{reorderPlan.map((row,index)=>{const type=row.drumType||"Snare";const diameterOptions=type==="Tom"?["8","10","12"]:type==="Floor Tom"?["14","16","18"]:type==="Bass Drum"?["18","20","22","24"]:snareInventoryDiameters;return <tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={type} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,drumType:e.target.value,diameter:e.target.value==="Tom"?"10":e.target.value==="Floor Tom"?"16":e.target.value==="Bass Drum"?"20":"14",depth:e.target.value==="Snare"?"6 1/2":e.target.value==="Tom"?"8":e.target.value==="Floor Tom"?"16":"14"}:x))}><option>Snare</option><option>Tom</option><option>Floor Tom</option><option>Bass Drum</option></select></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{diameterOptions.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{drumDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td><td><select value={row.hardwareFinish||"Chrome Plated"} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,hardwareFinish:e.target.value}:x))}><option>Chrome Plated</option><option>Brass Plated</option></select></td><td><button className="dangerButton" onClick={()=>setReorderPlan(current=>current.filter((_,i)=>i!==index))}><Trash2 size={14}/></button></td></tr>})}</tbody></table></div><button onClick={()=>setReorderPlan(current=>[...current,{id:`plan-${Date.now()}`,drumType:"Snare",diameter:"14",depth:"6 1/2",qty:1,buildType:"Stave",hardwareFinish:"Chrome Plated"}])}><Plus size={15}/> Add drum option</button><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Order</h3><p>Required hardware minus current available stock. Items you already have enough of are not ordered.</p></div><div><b>{money(orderEstimate)}</b><br/><small>estimated order value</small></div></div>{orderRows.length?<div className="tableWrap"><table><thead><tr><th>Part</th><th>Required</th><th>Available</th><th>Order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{orderRows.sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)).map(row=><tr key={row.code}><td>{row.part?.part_name||row.code}<br/><small>{row.part?.size||"Catalogue item missing"}</small></td><td>{row.required}</td><td>{row.available}</td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="5">Approximate hardware order</th><th>{money(orderEstimate)}</th></tr></tfoot></table></div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix.</span></div>}<p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section><section className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>Lea Hung Purchase Order</h3><p>Create a professional purchase order from the current Lea Hung shortages.</p></div><div><b>{leaHungRows.length} line item{leaHungRows.length===1?"":"s"}</b></div></div>{leaHungRows.length?<><div className="supplierEmailPreview"><p><b>Supplier:</b> Lea Hung · contact@leahung.com</p><div className="supplierHtmlPreview" dangerouslySetInnerHTML={{__html:leaHungEmailHtml()}}/></div><div className="buttonRow"><button className="primary" onClick={()=>savePurchaseOrder("Draft")}><Save size={16}/> Generate Purchase Order</button><button onClick={()=>copyFormattedOrder()}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail()}><Mail size={16}/> Open Email</button></div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</>:<div className="stocktakeNotice"><b>No Lea Hung order required.</b><span>The current available stock covers the selected target mix, or the shortages belong to other suppliers.</span></div>}</section></>}
+    {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Drum type</th><th>Diameter</th><th>Depth</th><th>Build</th><th>Hardware finish</th><th></th></tr></thead><tbody>{reorderPlan.map((row,index)=>{const type=row.drumType||"Snare";const diameterOptions=type==="Tom"?["8","10","12"]:type==="Floor Tom"?["14","16","18"]:type==="Bass Drum"?["18","20","22","24"]:snareInventoryDiameters;return <tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={type} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,drumType:e.target.value,diameter:e.target.value==="Tom"?"10":e.target.value==="Floor Tom"?"16":e.target.value==="Bass Drum"?"20":"14",depth:e.target.value==="Snare"?"6 1/2":e.target.value==="Tom"?"8":e.target.value==="Floor Tom"?"16":"14"}:x))}><option>Snare</option><option>Tom</option><option>Floor Tom</option><option>Bass Drum</option></select></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{diameterOptions.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{drumDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td><td><select value={row.hardwareFinish||"Chrome"} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,hardwareFinish:e.target.value}:x))}><option>Chrome</option><option>Brass</option><option>Black Nickel</option><option>Mixed / Custom</option></select></td><td><button className="dangerButton" onClick={()=>setReorderPlan(current=>current.filter((_,i)=>i!==index))}><Trash2 size={14}/></button></td></tr>})}</tbody></table></div><button onClick={()=>setReorderPlan(current=>[...current,{id:`plan-${Date.now()}`,drumType:"Snare",diameter:"14",depth:"6 1/2",qty:1,buildType:"Stave",hardwareFinish:"Chrome"}])}><Plus size={15}/> Add drum option</button><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Order</h3><p>Required hardware minus current available stock. Items you already have enough of are not ordered.</p></div><div><b>{money(orderEstimate)}</b><br/><small>estimated order value</small></div></div>{orderRows.length?<div className="tableWrap"><table><thead><tr><th>Part</th><th>Required</th><th>Available</th><th>Order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{orderRows.sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)).map(row=><tr key={row.code}><td>{row.part?.part_name||row.code}<br/><small>{row.part?.size||"Catalogue item missing"}</small></td><td>{row.required}</td><td>{row.available}</td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="5">Approximate hardware order</th><th>{money(orderEstimate)}</th></tr></tfoot></table></div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix.</span></div>}<p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section><section className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>Lea Hung Purchase Order</h3><p>Create a professional purchase order from the current Lea Hung shortages.</p></div><div><b>{leaHungRows.length} line item{leaHungRows.length===1?"":"s"}</b></div></div>{leaHungRows.length?<><div className="supplierEmailPreview"><p><b>Supplier:</b> Lea Hung · contact@leahung.com</p><div className="supplierHtmlPreview" dangerouslySetInnerHTML={{__html:leaHungEmailHtml()}}/></div><div className="buttonRow"><button className="primary" onClick={()=>savePurchaseOrder("Draft")}><Save size={16}/> Generate Purchase Order</button><button onClick={()=>copyFormattedOrder()}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail()}><Mail size={16}/> Open Email</button></div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</>:<div className="stocktakeNotice"><b>No Lea Hung order required.</b><span>The current available stock covers the selected target mix, or the shortages belong to other suppliers.</span></div>}</section></>}
 
     {activeTab==="purchasing"&&<section className="inventoryBlock"><div className="sectionHeader"><div><h3>Purchase Orders</h3><p>Track supplier orders from draft through to receiving the hardware into stock.</p></div></div>{purchaseOrders.length?<div className="tableWrap"><table><thead><tr><th>PO</th><th>Supplier</th><th>Date</th><th>Status</th><th>Items</th><th></th></tr></thead><tbody>{purchaseOrders.map(order=><tr key={order.id}><td><b>{order.po_number||"Purchase order"}</b></td><td>{order.supplier}</td><td>{new Date(order.created_at).toLocaleDateString("en-AU")}</td><td><span className={`poStatus ${String(order.status||"Draft").toLowerCase()}`}>{order.status||"Draft"}</span></td><td>{(order.order_items||[]).length}</td><td><button onClick={()=>{setSelectedPurchaseOrder(order);setPurchaseOrderOpen(true)}}>Open</button></td></tr>)}</tbody></table></div>:<div className="stocktakeNotice"><b>No purchase orders yet.</b><span>Generate one from the Reorder Planner.</span></div>}</section>}
 

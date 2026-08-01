@@ -1,37 +1,30 @@
-# Nowak Workshop OS v7.7.9
+# Nowak Workshop OS v7.7.12
 
-## Update
-- Delete draft purchase orders.
-- Chrome or brass hardware selection in custom orders and Reorder Planner.
-- Standard hardware lists for rack toms, floor toms and bass drums.
-- No Hardware option for custom orders.
-- Brass snare-wire inventory options.
+This is a complete replacement for the unsuccessful v7.7.10 update and includes all v7.7.9 tom, floor-tom, bass-drum and purchase-order functionality.
+
+## Hardware finishes
+
+New and edited drums now offer:
+
+- Chrome
+- Brass
+- Black Nickel
+- Mixed / Custom
+
+The Reorder Planner also offers Chrome, Brass and Black Nickel.
+
+## Snare wires
+
+All standard snare builds use **Brass** snare wires by default, regardless of the general hardware finish. Individual hardware can still be changed through Adjust Hardware Used. The display wording is Brass, not Brass Plated.
 
 ## Supabase
-Run `supabase/v7_7_9_tom_kit_hardware_complete.sql` once after deployment.
 
-# Nowak Workshop OS v7.7.9
+Run once:
 
-## Editable Purchase Orders
+`supabase/v7_7_12_hardware_finishes_repair.sql`
 
-Saved purchase orders can now be edited before completion. You can change quantities, remove lines, add another Lea Hung inventory item and update notes. The formatted email and PDF use the revised saved quantities.
-
-## Accurate Shipment Receiving
-
-Receive Shipment opens a line-by-line receiving screen showing ordered, previously received, outstanding and received-now quantities. Only quantities actually received are added to stock.
-
-Partial shipments remain Partially Received and can be reopened later. You may close an order with remaining quantities cancelled when the supplier is out of stock. Receiving history is retained.
-
-Optional receiving details include delivery date, supplier invoice, tracking number, freight type, actual freight cost and notes.
-
-## Supabase migration
-
-Run `supabase/v7_7_7_purchase_order_editing_and_receiving.sql` once.
-
-## Rollback
-
-Use v7.7.6. The additive database columns may remain safely.
+Do not run the unsuccessful v7.7.10 migration first.
 
 
-## v7.7.9 addition
-Bass drums in 18, 20, 22 and 24 inch sizes now allocate two matching HA06 maple hoops. An 18 inch floor tom continues to use its standard 2.3 mm floor-tom hoops; drum type determines the hardware list.
+## v7.7.12 repair
+This release replaces the failed v7.7.11 SQL. Run only `supabase/v7_7_12_hardware_finishes_repair.sql`. It safely adds the missing `sku_key` column before installing Brass snare-wire defaults and Black Nickel variants.
