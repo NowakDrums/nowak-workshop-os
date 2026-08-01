@@ -2751,7 +2751,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.7.1 — supplier order emails, Shopify orders, Xero connection and workshop alerts.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.7.2 — formatted supplier emails, corrected Lea Hung codes and inventory ordering.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4688,33 +4688,87 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     .filter(row=>/lea\s*hung/i.test(String(row.part?.supplier||"")))
     .sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)||String(a.part?.part_name||"").localeCompare(String(b.part?.part_name||"")));
   const supplierColour=part=>{
+    if(part?.category==="Tension Rods") return "Stainless Steel";
     const finish=String(part?.finish||"").trim();
     if(!finish) return "Chrome Plated";
     if(/gold|brass/i.test(finish)) return "Brass Plated";
     if(/chrome/i.test(finish)) return "Chrome Plated";
+    if(/stainless/i.test(finish)) return "Stainless Steel";
     return finish;
   };
   const supplierName=part=>{
     if(part?.category==="Hoops") return "Steel Hoop";
     if(part?.category==="Tension Rods") return "Tension Rods (stainless steel)";
     if(part?.category==="Air Vents") return "Air Vent";
+    if(part?.category==="Snare Wires") return "Snare Wire";
     return part?.part_name||"Hardware";
   };
-  const supplierCode=part=>String(part?.code||"").trim();
-  const supplierSize=part=>String(part?.size||"").replace(/\s*x\s*/gi," × ").trim();
-  const pad=(value,width)=>String(value??"").slice(0,width).padEnd(width," ");
-  const leaHungTable=()=>{
-    const header=`${pad("Name",30)}${pad("Colour",18)}${pad("Code",14)}${pad("Size",14)}Order Quantity`;
-    const divider="-".repeat(90);
-    const rows=leaHungRows.map(row=>`${pad(supplierName(row.part),30)}${pad(supplierColour(row.part),18)}${pad(supplierCode(row.part),14)}${pad(supplierSize(row.part),14)}${row.toOrder}`);
-    return [header,divider,...rows].join("\n");
+  const supplierCode=part=>{
+    const category=String(part?.category||"");
+    const size=sizeNumber(part?.size||part?.part_name);
+    if(category==="Tension Rods") return "TR01";
+    if(category==="Snare Wires"){
+      const codes={10:"SE04-1020CI",12:"SE04-1220CI",13:"SE04-1320CI",14:"SE04-1420CI"};
+      return codes[size]||String(part?.code||"").trim();
+    }
+    return String(part?.code||"").trim();
   };
-  const leaHungEmailBody=()=>`Hi,\n\nI hope you are going well.\n\nI’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?\n\nShipping Address: 29 Meldrum Loop, Bedfordale, Western Australia, 6112\n\n${leaHungTable()}\n\nMany thanks\n\nKelly Nowak\nNowak Drum Company Australia`;
+  const supplierSize=part=>String(part?.size||"").replace(/\s*x\s*/gi," × ").trim();
+  const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[char]));
+  const groupedLeaHungRows=()=>{
+    const ordered=["Lugs","Air Vents","Tension Rods","Hoops","Snare Wires"];
+    return ordered.map(category=>({category,rows:leaHungRows.filter(row=>row.part?.category===category)})).filter(group=>group.rows.length);
+  };
+  const leaHungHtmlTable=()=>groupedLeaHungRows().map(group=>`
+    <tr><td colspan="5" style="padding:10px 8px;background:#e8e8e8;font-weight:700;border:1px solid #999;">${escapeHtml(group.category)}</td></tr>
+    ${group.rows.map(row=>`<tr>
+      <td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierName(row.part))}</td>
+      <td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierColour(row.part))}</td>
+      <td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierCode(row.part))}</td>
+      <td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierSize(row.part))}</td>
+      <td style="padding:8px;border:1px solid #aaa;text-align:right;font-weight:700;">${row.toOrder}</td>
+    </tr>`).join("")}
+  `).join("");
+  const leaHungEmailHtml=()=>`<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111;line-height:1.45;">
+    <p>Hi,</p>
+    <p>I hope you are going well.</p>
+    <p>I’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?</p>
+    <p><strong>Shipping Address:</strong> 29 Meldrum Loop, Bedfordale, Western Australia, 6112</p>
+    <table style="border-collapse:collapse;width:100%;max-width:900px;font-size:14px;">
+      <thead><tr style="background:#d8d8d8;">
+        <th style="padding:8px;border:1px solid #888;text-align:left;">Name</th>
+        <th style="padding:8px;border:1px solid #888;text-align:left;">Colour</th>
+        <th style="padding:8px;border:1px solid #888;text-align:left;">Code</th>
+        <th style="padding:8px;border:1px solid #888;text-align:left;">Size</th>
+        <th style="padding:8px;border:1px solid #888;text-align:right;">Order Quantity</th>
+      </tr></thead><tbody>${leaHungHtmlTable()}</tbody>
+    </table>
+    <p>Many thanks</p>
+    <p>Kelly Nowak<br/>Nowak Drum Company Australia</p>
+  </body></html>`;
+  const leaHungPlainTable=()=>groupedLeaHungRows().map(group=>{
+    const rows=group.rows.map(row=>`- ${supplierName(row.part)} | ${supplierColour(row.part)} | ${supplierCode(row.part)} | ${supplierSize(row.part)} | Qty ${row.toOrder}`);
+    return `${group.category}\n${rows.join("\n")}`;
+  }).join("\n\n");
+  const leaHungEmailBody=()=>`Hi,\n\nI hope you are going well.\n\nI’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?\n\nShipping Address: 29 Meldrum Loop, Bedfordale, Western Australia, 6112\n\n${leaHungPlainTable()}\n\nMany thanks\n\nKelly Nowak\nNowak Drum Company Australia`;
   const leaHungMailto=leaHungRows.length?`mailto:${encodeURIComponent("contact@leahung.com")}?subject=${encodeURIComponent("Hardware Order")}&body=${encodeURIComponent(leaHungEmailBody())}`:"";
   const copyLeaHungEmail=async()=>{
-    await navigator.clipboard?.writeText(`To: contact@leahung.com\nSubject: Hardware Order\n\n${leaHungEmailBody()}`);
-    setSupplierOrderMessage("Lea Hung order email copied.");
-    window.setTimeout(()=>setSupplierOrderMessage(""),2500);
+    try{
+      if(navigator.clipboard?.write && typeof ClipboardItem!=="undefined"){
+        await navigator.clipboard.write([new ClipboardItem({
+          "text/html":new Blob([leaHungEmailHtml()],{type:"text/html"}),
+          "text/plain":new Blob([leaHungEmailBody()],{type:"text/plain"}),
+        })]);
+        setSupplierOrderMessage("Formatted Lea Hung email copied. Paste it into your email draft.");
+      }else{
+        await navigator.clipboard?.writeText(`To: contact@leahung.com\nSubject: Hardware Order\n\n${leaHungEmailBody()}`);
+        setSupplierOrderMessage("Lea Hung order email copied as plain text.");
+      }
+    }catch{
+      await navigator.clipboard?.writeText(`To: contact@leahung.com\nSubject: Hardware Order\n\n${leaHungEmailBody()}`);
+      setSupplierOrderMessage("Lea Hung order email copied as plain text.");
+    }
+    window.setTimeout(()=>setSupplierOrderMessage(""),3500);
   };
   const markLeaHungOrderSent=async()=>{
     if(!leaHungRows.length) return;
@@ -4749,7 +4803,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
 
     {activeTab==="capacity"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Right Now?</h3><p>Each card shows the maximum if you built only that option. Rare 12 × 8 and 13 × 8 sizes are excluded.</p></div></div>{buildableOptions.length?<div className="capacityGrid">{buildableOptions.sort((a,b)=>b.qty-a.qty||Number(b.d)-Number(a.d)).map(x=><article className="card" key={`${x.d}-${x.depth}-${x.type}`}><b>{x.d}" × {x.depth}" {x.type}</b><strong>{x.qty} complete drum{x.qty===1?"":"s"}</strong></article>)}</div>:<div className="stocktakeNotice"><b>No complete snare combinations currently available.</b><span>Enter your stocktake quantities and this page will update automatically.</span></div>}</section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Together?</h3><p>This checks the editable Reorder Planner mix against the same shared stock, so hardware is not counted twice.</p></div><strong>{simultaneousTotal} drums together</strong></div><div className="capacityGrid">{simultaneousMix.map(row=><article className="card" key={row.id}><b>{row.diameter}" × {row.depth}" {row.buildType}</b><strong>{row.buildable} of {row.qty}</strong><span>{row.buildable>=Number(row.qty||0)?"Target covered":"Limited by shared hardware"}</span></article>)}</div></section></>}
 
-    {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Diameter</th><th>Depth</th><th>Build</th></tr></thead><tbody>{reorderPlan.map((row,index)=><tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{snareInventoryDiameters.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{snareInventoryDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td></tr>)}</tbody></table></div><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Order</h3><p>Required hardware minus current available stock. Items you already have enough of are not ordered.</p></div><div><b>{money(orderEstimate)}</b><br/><small>estimated order value</small></div></div>{orderRows.length?<div className="tableWrap"><table><thead><tr><th>Part</th><th>Required</th><th>Available</th><th>Order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{orderRows.sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)).map(row=><tr key={row.code}><td>{row.part?.part_name||row.code}<br/><small>{row.part?.size||"Catalogue item missing"}</small></td><td>{row.required}</td><td>{row.available}</td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="5">Approximate hardware order</th><th>{money(orderEstimate)}</th></tr></tfoot></table></div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix.</span></div>}<p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section><section className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>Lea Hung Hardware Order Email</h3><p>Creates an email using only the Lea Hung items currently required by the Suggested Purchase Order.</p></div><div><b>{leaHungRows.length} line item{leaHungRows.length===1?"":"s"}</b><br/><small>{money(leaHungRows.reduce((sum,row)=>sum+row.total,0))} estimated</small></div></div>{leaHungRows.length?<><div className="supplierEmailPreview"><p><b>To:</b> contact@leahung.com</p><p><b>Subject:</b> Hardware Order</p><pre>{leaHungEmailBody()}</pre></div><div className="buttonRow"><a className="buttonLike primary" href={leaHungMailto}><Mail size={16}/> Open Email Draft</a><button onClick={copyLeaHungEmail}>Copy Email</button><button onClick={markLeaHungOrderSent}><CircleCheckBig size={16}/> Mark Order as Sent</button></div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</>:<div className="stocktakeNotice"><b>No Lea Hung order required.</b><span>The current available stock covers the selected target mix, or the shortages belong to other suppliers.</span></div>}<p className="mutedLine">The email requests air and sea freight quotations and approximate delivery times. Marking it sent records the order in Workshop OS.</p></section></>}
+    {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Diameter</th><th>Depth</th><th>Build</th></tr></thead><tbody>{reorderPlan.map((row,index)=><tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{snareInventoryDiameters.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{snareInventoryDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td></tr>)}</tbody></table></div><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Order</h3><p>Required hardware minus current available stock. Items you already have enough of are not ordered.</p></div><div><b>{money(orderEstimate)}</b><br/><small>estimated order value</small></div></div>{orderRows.length?<div className="tableWrap"><table><thead><tr><th>Part</th><th>Required</th><th>Available</th><th>Order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{orderRows.sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)).map(row=><tr key={row.code}><td>{row.part?.part_name||row.code}<br/><small>{row.part?.size||"Catalogue item missing"}</small></td><td>{row.required}</td><td>{row.available}</td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="5">Approximate hardware order</th><th>{money(orderEstimate)}</th></tr></tfoot></table></div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix.</span></div>}<p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section><section className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>Lea Hung Hardware Order Email</h3><p>Creates an email using only the Lea Hung items currently required by the Suggested Purchase Order.</p></div><div><b>{leaHungRows.length} line item{leaHungRows.length===1?"":"s"}</b><br/><small>{money(leaHungRows.reduce((sum,row)=>sum+row.total,0))} estimated</small></div></div>{leaHungRows.length?<><div className="supplierEmailPreview"><p><b>To:</b> contact@leahung.com</p><p><b>Subject:</b> Hardware Order</p><div className="supplierHtmlPreview" dangerouslySetInnerHTML={{__html:leaHungEmailHtml()}}/></div><div className="buttonRow"><button className="primary" onClick={copyLeaHungEmail}><Copy size={16}/> Copy Formatted Email</button><a className="buttonLike" href={leaHungMailto}><Mail size={16}/> Open Email Draft</a><button onClick={markLeaHungOrderSent}><CircleCheckBig size={16}/> Mark Order as Sent</button></div><p className="mutedLine">For the best table layout, click Copy Formatted Email, open the draft, then paste into the message body.</p>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</>:<div className="stocktakeNotice"><b>No Lea Hung order required.</b><span>The current available stock covers the selected target mix, or the shortages belong to other suppliers.</span></div>}<p className="mutedLine">The email requests air and sea freight quotations and approximate delivery times. Marking it sent records the order in Workshop OS.</p></section></>}
   </section>;
 }
 

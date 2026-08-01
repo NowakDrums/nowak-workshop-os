@@ -1807,3 +1807,8 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .supplierEmailPreview p{margin:3px 0}
 .supplierEmailPreview pre{white-space:pre-wrap;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;line-height:1.45;color:#eee4d3;border-top:1px solid #493b29;padding-top:12px;margin:12px 0 0}
 @media(max-width:700px){.supplierOrderPanel .buttonRow>*{width:100%;justify-content:center}}
+
+/* v7.7.2 formatted supplier order preview */
+.supplierHtmlPreview{background:#fff;color:#111;padding:16px;border-radius:10px;overflow:auto;max-height:620px}
+.supplierHtmlPreview table{min-width:680px}
+.supplierHtmlPreview p{color:#111}
