@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.8.0
+# Nowak Workshop OS v7.8.1
 
 ## Direct Marketing Portal
 
@@ -60,7 +60,7 @@ Run `supabase/v7_7_17_inventory_catalogue_cleanup.sql` after deployment. This mi
 - No Supabase migration is required.
 
 
-## v7.8.0 throw-off catalogue repair
+## v7.8.1 throw-off catalogue repair
 
 - Normalises all throw-off category spellings to `Throw-Offs`.
 - Merges duplicate throw-off stock rows by finish while preserving quantities, costs, reorder levels and allocations.
@@ -70,5 +70,11 @@ Run `supabase/v7_7_17_inventory_catalogue_cleanup.sql` after deployment. This mi
 Run `supabase/v7_7_19_throw_off_duplicate_repair.sql` after deployment.
 
 
-## v7.8.0 database update
-Before using the new landed-cost receiving calculator, run `supabase/v7_8_0_landed_cost_receiving.sql` in the Supabase SQL Editor. The migration only adds purchase-order costing fields and does not remove existing data.
+## v7.8.1 database update
+Before using the new landed-cost receiving calculator, run `supabase/v7_8_1_landed_cost_receiving.sql` in the Supabase SQL Editor. The migration only adds purchase-order costing fields and does not remove existing data.
+
+## v7.8.1 duplicate throw-off repair
+
+The app now automatically hides the obsolete **Throw Off + Butt Plate** record whenever the retained Chrome **Trick Throw-Off** exists. The hidden legacy row is also excluded from stock totals and stock-value calculations.
+
+For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_duplicate.sql` once in the Supabase SQL Editor.

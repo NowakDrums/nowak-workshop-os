@@ -422,6 +422,24 @@ function hardwareLookupKey(part){
   return part?.sku_key || part?.code || "";
 }
 
+function normaliseHardwareName(value){
+  return String(value||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+}
+
+function removeLegacyThrowOffDuplicates(parts=[]){
+  const normalised=parts.map(part=>({...part,category:canonicalInventoryCategory(part.category)}));
+  const hasChromeTrick=normalised.some(part=>{
+    const name=normaliseHardwareName(part.part_name);
+    const finish=String(part.finish||"").toLowerCase();
+    return name==="trickthrowoff" && !/(gold|brass|blacknickel)/.test(finish.replace(/[^a-z]/g,""));
+  });
+  if(!hasChromeTrick) return normalised;
+  return normalised.filter(part=>{
+    const name=normaliseHardwareName(part.part_name);
+    return !["throwoffbuttplate","throwoffandbuttplate"].includes(name);
+  });
+}
+
 function normaliseDepthValue(value){
   return String(value||"").replace(/½/g," 1/2").replace(/\.5/g," 1/2").trim();
 }
@@ -1626,7 +1644,7 @@ function App(){
     });
 
     setDrums(loadedDrums);
-    setHardware((h.data||[]).map(part=>({...part,category:canonicalInventoryCategory(part.category)})));
+    setHardware(removeLegacyThrowOffDuplicates(h.data||[]));
     setHardwareAllocations(a.data||[]);
     setTemplates(t.data||[]);
     setSales(s.data||[]);
