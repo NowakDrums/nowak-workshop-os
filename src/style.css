@@ -1830,3 +1830,6 @@ button:disabled{opacity:.55;cursor:not-allowed}
 
 /* v7.7.14 direct marketing portal */
 .marketingPortalShell{max-width:1500px;margin:0 auto;padding:22px}.marketingPortalHeader{position:sticky;top:0;z-index:20;background:rgba(15,14,12,.96);backdrop-filter:blur(12px);margin-bottom:18px}.marketingPortalFooter{text-align:center;opacity:.65;padding:28px 10px 10px}.marketingPortalShell .socialHandoffIntro .buttonRow button:first-child{display:none}@media(max-width:760px){.marketingPortalShell{padding:10px}.marketingPortalHeader{position:static}}
+
+/* v7.8.0 landed-cost receiving */
+.landedCostSummary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.landedCostSummary>div{display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid #4b3e2c;border-radius:9px;background:#15130f}.landedCostSummary span{font-size:12px;color:#b8aa96}.landedCostSummary b{font-size:18px}.landedCostSummary .total{border-color:#c99b4d;background:#211b12}.purchaseOrderReceiveModal table{min-width:980px}.purchaseOrderReceiveModal label small{display:block;margin-top:4px;color:#9f927f;font-weight:400}@media(max-width:800px){.landedCostSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}

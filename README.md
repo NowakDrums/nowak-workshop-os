@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.7.19
+# Nowak Workshop OS v7.8.0
 
 ## Direct Marketing Portal
 
@@ -60,5 +60,15 @@ Run `supabase/v7_7_17_inventory_catalogue_cleanup.sql` after deployment. This mi
 - No Supabase migration is required.
 
 
-## v7.7.19 throw-off cleanup
-Run `supabase/v7_7_19_throw_off_deduplication.sql` to merge duplicate Trick throw-off records and category spellings while preserving stock and allocations.
+## v7.8.0 throw-off catalogue repair
+
+- Normalises all throw-off category spellings to `Throw-Offs`.
+- Merges duplicate throw-off stock rows by finish while preserving quantities, costs, reorder levels and allocations.
+- Keeps separate legitimate finish variants such as Chrome and Gold.
+- The app also canonicalises category names when loading inventory, so the Stock and Audit pages cannot split `Throw Off` and `Throw-Offs`.
+
+Run `supabase/v7_7_19_throw_off_duplicate_repair.sql` after deployment.
+
+
+## v7.8.0 database update
+Before using the new landed-cost receiving calculator, run `supabase/v7_8_0_landed_cost_receiving.sql` in the Supabase SQL Editor. The migration only adds purchase-order costing fields and does not remove existing data.
