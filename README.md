@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.7.15
+# Nowak Workshop OS v7.7.17
 
 ## Direct Marketing Portal
 
@@ -40,3 +40,13 @@ Do not run the unsuccessful v7.7.10 migration first.
 
 ## v7.7.12 repair
 This release replaces the failed v7.7.11 SQL. Run only `supabase/v7_7_12_hardware_finishes_repair.sql`. It safely adds the missing `sku_key` column before installing Brass snare-wire defaults and Black Nickel variants.
+
+
+## v7.7.17 inventory cleanup
+
+Run `supabase/v7_7_17_inventory_catalogue_cleanup.sql` after deployment. This migration:
+
+- combines `Throw Off` and `Throw-Offs` into one category;
+- removes the incorrect `ATL01-00CR` bass-drum lug record and merges its stock/allocation history into `ATL01-01`;
+- renames chrome snare wires to Stainless Steel;
+- preserves existing quantities, costs and active allocations.

@@ -506,8 +506,8 @@ function drumHardwareRequirements(drum){
       {code:"BASS-CLAW-CHROME",qty:16,label:"BC-010CR bass-drum claw"},
       {code:"BASS-SPUR-CHROME",qty:1,label:"BDS008CR bass-drum spur set"},
       {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
-      {code:"BASS-BALL-LUG-CHROME",qty:16,label:"ATL01-00CR ball lug"},
-      {code:"BASS-LUG-GASKET",qty:16,label:"ATL01-00CR ball-lug gasket"},
+      {code:finishSku("BALL-LUG",finish),qty:16,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`},
+      {code:"BASS-LUG-GASKET",qty:16,label:"ATL01-01 ball-lug gasket"},
       {code:`BASS-HOOP-${diameter}`,qty:2,label:`${diameter}\" HA06 maple bass-drum hoop`},
     ];
   }
@@ -2824,7 +2824,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.7.15 — direct Marketing Portal for social-media content handoff.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.7.17 — inventory catalogue cleanup, corrected bass-drum ball lugs and unified throw-off values.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5227,6 +5227,12 @@ function Orders({drums, openJobCard, externalOrders=[], createDrumFromShopify, u
 
 
 
+function canonicalInventoryCategory(category){
+  const compact=String(category||"Other").toLowerCase().replace(/[^a-z]/g,"");
+  if(compact==="throwoff"||compact==="throwoffs") return "Throw-Offs";
+  return category||"Other";
+}
+
 function InventoryValueAudit({hardware}){
   const rows=[...hardware].map(part=>{
     const qty=Number(part.qty_on_hand||0);
@@ -5235,7 +5241,7 @@ function InventoryValueAudit({hardware}){
   }).sort((a,b)=>b.audit_total-a.audit_total);
   const total=rows.reduce((sum,row)=>sum+row.audit_total,0);
   const categories={};
-  rows.forEach(row=>{categories[row.category||"Other"]=(categories[row.category||"Other"]||0)+row.audit_total});
+  rows.forEach(row=>{const category=canonicalInventoryCategory(row.category);categories[category]=(categories[category]||0)+row.audit_total});
   const categoryRows=Object.entries(categories).sort((a,b)=>b[1]-a[1]);
   const zeroCost=rows.filter(row=>row.audit_qty>0 && row.audit_unit<=0);
   const suspicious=rows.filter(row=>row.audit_qty>0 && (row.audit_unit>250 || row.audit_total>1000));
@@ -5481,7 +5487,7 @@ function MarketingContentQueue({drums,openJobCard,setMessage}){
 
             <div className="marketingQueueActions">
               <button onClick={()=>setExpanded(open?"":item.key)}><Camera size={15}/> {open?"Hide Media":"Open Media"}</button>
-              {!portalMode && <button onClick={()=>openJobCard(drum)}>Open Drum</button>}
+              <button onClick={()=>openJobCard(drum)}>Open Drum</button>
               {item.status!=="Held for Final Post" && <button onClick={()=>setStatus(item,"Held for Final Post")}>Hold for Final</button>}
               {item.status!=="Completed" && <button className="primary" onClick={()=>setStatus(item,"Completed")}><CheckCircle2 size={15}/> Complete</button>}
               {item.status!=="Ignored" && <button onClick={()=>setStatus(item,"Ignored")}>Ignore</button>}
