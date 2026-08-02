@@ -2803,11 +2803,28 @@ function App(){
     setView("production");
   }
 
+  const marketingPortal = window.location.pathname.replace(/\/+$/, "") === "/marketing";
+
+  if(marketingPortal){
+    return <main className="marketingPortalShell">
+      <header className="hero marketingPortalHeader">
+        <div className="heroBrand">
+          <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
+          <div><span className="launchPackEyebrow">NOWAK DRUM COMPANY</span><h1>Marketing Portal</h1><p>Photos, videos and drum details ready for social-media content.</p></div>
+        </div>
+        <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
+      </header>
+      {message && <section className="panel warning">{message}</section>}
+      {loading ? <section className="panel">Loading marketing content...</section> : <SocialMediaHandoff drums={drums} openJobCard={()=>{}} setMessage={setMessage} portalMode/>}
+      <footer className="marketingPortalFooter">Nowak Drum Company Australia · Marketing content portal</footer>
+    </main>;
+  }
+
   return <main>
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.7.13 — inventory value audit and social-media handoff workspace.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.7.14 — direct Marketing Portal for social-media content handoff.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3454,7 +3471,7 @@ function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,completePlanne
                     <span>{item.task_label}</span>
                   </div>
                   <strong>{formatPlanTime(item.estimated_hours)}</strong>
-                  {drum && <button onClick={()=>openJobCard(drum)}>Open Drum</button>}
+                  {drum && {!portalMode && <button onClick={()=>openJobCard(drum)}>Open Drum</button>}}
                   <button className="dangerButton" onClick={()=>removePlanItem(item.id)}><Trash2 size={14}/></button>
                 </article>;
               })}</div>
@@ -5227,7 +5244,7 @@ function InventoryValueAudit({hardware}){
   </section>;
 }
 
-function SocialMediaHandoff({drums,openJobCard,setMessage}){
+function SocialMediaHandoff({drums,openJobCard,setMessage,portalMode=false}){
   const [photos,setPhotos]=useState([]);
   const [loading,setLoading]=useState(false);
   const [onlyCompleted,setOnlyCompleted]=useState(true);
@@ -5240,11 +5257,11 @@ function SocialMediaHandoff({drums,openJobCard,setMessage}){
   const cards=eligible.map(d=>({drum:d,media:photoMap[d.id]||[]})).filter(item=>item.media.length).sort((a,b)=>String(b.drum.updated_at||b.drum.created_at||"").localeCompare(String(a.drum.updated_at||a.drum.created_at||"")));
   const brief=d=>`${d.size||"Drum"} ${d.timber||"timber"} ${String(d.build_type||"").toLowerCase()} ${String(d.drum_type||"snare").toLowerCase()}, finished in ${d.finish||"a custom finish"}. Handmade in Western Australia by Nowak Drum Company.`;
   const copyBrief=async d=>{await navigator.clipboard?.writeText(brief(d));setMessage?.("Brief description copied.")};
-  const copyLink=async()=>{await navigator.clipboard?.writeText(window.location.href);setMessage?.("Page link copied. Anyone using it will need the same Workshop OS access as you.")};
+  const copyLink=async()=>{const link=`${window.location.origin}/marketing`;await navigator.clipboard?.writeText(link);setMessage?.("Direct Marketing Portal link copied.")};
   return <section className="socialHandoffPage">
     <section className="panel socialHandoffIntro"><div><span className="launchPackEyebrow">CONTENT FOR YOUR SOCIAL-MEDIA PERSON</span><h3>Social Media Handoff</h3><p>Completed drums are packaged with a short factual description plus all available completion, finish-reveal and workshop media. Production photos remain available for behind-the-scenes posts.</p></div><div className="buttonRow"><button onClick={copyLink}><Link2 size={15}/> Copy Page Link</button><button onClick={load}><RefreshCw size={15}/> {loading?"Loading...":"Refresh"}</button></div></section>
     <section className="panel inner handoffControls"><label><input type="checkbox" checked={onlyCompleted} onChange={e=>setOnlyCompleted(e.target.checked)}/> Show completed drums only</label><span>{cards.length} drums with media</span></section>
-    {cards.length===0?<section className="panel"><p>No drums with matching photos or videos were found.</p></section>:<div className="socialHandoffGrid">{cards.map(({drum,media})=>{const open=expanded===drum.id;const completion=media.filter(p=>["completed","finishreveal","shellcomplete"].includes(String(p.milestone||"").toLowerCase()));const production=media.filter(p=>!completion.includes(p));return <article className="panel socialHandoffCard" key={drum.id}><header><div><span className="futureStageBadge">{drumLifecycleStatus(drum)}</span><h3>#{drum.serial||"Pending"} {drum.timber}</h3><p>{drum.size} · {drum.drum_type||"Snare"} · {drum.build_type} · {drum.finish}</p></div><b>{media.length} files</b></header><p className="handoffBrief">{brief(drum)}</p><div className="buttonRow"><button onClick={()=>copyBrief(drum)}><Copy size={15}/> Copy Brief</button><button onClick={()=>setExpanded(open?"":drum.id)}><Images size={15}/> {open?"Hide Media":"View Media"}</button><button onClick={()=>openJobCard(drum)}>Open Drum</button></div>{open&&<div className="handoffMediaSections"><HandoffMediaGroup title="Completion & finish media" media={completion}/><HandoffMediaGroup title="Production & workshop media" media={production}/></div>}</article>})}</div>}
+    {cards.length===0?<section className="panel"><p>No drums with matching photos or videos were found.</p></section>:<div className="socialHandoffGrid">{cards.map(({drum,media})=>{const open=expanded===drum.id;const completion=media.filter(p=>["completed","finishreveal","shellcomplete"].includes(String(p.milestone||"").toLowerCase()));const production=media.filter(p=>!completion.includes(p));return <article className="panel socialHandoffCard" key={drum.id}><header><div><span className="futureStageBadge">{drumLifecycleStatus(drum)}</span><h3>#{drum.serial||"Pending"} {drum.timber}</h3><p>{drum.size} · {drum.drum_type||"Snare"} · {drum.build_type} · {drum.finish}</p></div><b>{media.length} files</b></header><p className="handoffBrief">{brief(drum)}</p><div className="buttonRow"><button onClick={()=>copyBrief(drum)}><Copy size={15}/> Copy Brief</button><button onClick={()=>setExpanded(open?"":drum.id)}><Images size={15}/> {open?"Hide Media":"View Media"}</button>{!portalMode && <button onClick={()=>openJobCard(drum)}>Open Drum</button>}</div>{open&&<div className="handoffMediaSections"><HandoffMediaGroup title="Completion & finish media" media={completion}/><HandoffMediaGroup title="Production & workshop media" media={production}/></div>}</article>})}</div>}
   </section>;
 }
 function HandoffMediaGroup({title,media}){if(!media.length)return null;return <section><h4>{title}</h4><div className="handoffMediaGrid">{media.map(item=><a href={item.public_url} target="_blank" rel="noreferrer" key={item.id}>{item.media_type==="video"?<video src={item.public_url} muted playsInline/>:<img src={item.public_url} alt={title}/>}<span>{marketingMilestoneLabel(item.milestone)||"Workshop media"}</span></a>)}</div></section>}
@@ -5449,7 +5466,7 @@ function MarketingContentQueue({drums,openJobCard,setMessage}){
 
             <div className="marketingQueueActions">
               <button onClick={()=>setExpanded(open?"":item.key)}><Camera size={15}/> {open?"Hide Media":"Open Media"}</button>
-              <button onClick={()=>openJobCard(drum)}>Open Drum</button>
+              {!portalMode && <button onClick={()=>openJobCard(drum)}>Open Drum</button>}
               {item.status!=="Held for Final Post" && <button onClick={()=>setStatus(item,"Held for Final Post")}>Hold for Final</button>}
               {item.status!=="Completed" && <button className="primary" onClick={()=>setStatus(item,"Completed")}><CheckCircle2 size={15}/> Complete</button>}
               {item.status!=="Ignored" && <button onClick={()=>setStatus(item,"Ignored")}>Ignore</button>}

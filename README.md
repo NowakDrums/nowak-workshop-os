@@ -1,3 +1,15 @@
+# Nowak Workshop OS v7.7.14
+
+## Direct Marketing Portal
+
+After deployment, share this URL with the social-media person:
+
+`https://nowak-workshop-os.vercel.app/marketing`
+
+The portal shows completed Nowak drums with brief descriptions, completion photos/videos, and production/workshop media. It does not show the normal Workshop OS navigation.
+
+No Supabase migration is required for this release.
+
 # Nowak Workshop OS v7.7.12
 
 This is a complete replacement for the unsuccessful v7.7.10 update and includes all v7.7.9 tom, floor-tom, bass-drum and purchase-order functionality.
