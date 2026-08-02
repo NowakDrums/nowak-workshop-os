@@ -2807,7 +2807,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.7.12 — repaired hardware finishes, Brass snare-wire defaults and Black Nickel support.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.7.13 — inventory value audit and social-media handoff workspace.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4944,12 +4944,14 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
 
   return <section className="panel inventoryModule">
     <div className="sectionHeader"><div><h2>Inventory</h2><p>{hardware.length} parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={()=>{setCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stocktake</button></div>:<button onClick={()=>setStocktakeMode(true)}>Start Stocktake</button>)}</div>
-    <nav className="inventoryTabs"><button className={activeTab==="stock"?"active":""} onClick={()=>setActiveTab("stock")}>Stock</button><button className={activeTab==="allocations"?"active":""} onClick={()=>setActiveTab("allocations")}>Drum Hardware</button><button className={activeTab==="capacity"?"active":""} onClick={()=>setActiveTab("capacity")}>Build Capacity</button><button className={activeTab==="reorder"?"active":""} onClick={()=>setActiveTab("reorder")}>Reorder Planner</button><button className={activeTab==="purchasing"?"active":""} onClick={()=>setActiveTab("purchasing")}>Purchase Orders</button></nav>
+    <nav className="inventoryTabs"><button className={activeTab==="stock"?"active":""} onClick={()=>setActiveTab("stock")}>Stock</button><button className={activeTab==="audit"?"active":""} onClick={()=>setActiveTab("audit")}>Inventory Audit</button><button className={activeTab==="allocations"?"active":""} onClick={()=>setActiveTab("allocations")}>Drum Hardware</button><button className={activeTab==="capacity"?"active":""} onClick={()=>setActiveTab("capacity")}>Build Capacity</button><button className={activeTab==="reorder"?"active":""} onClick={()=>setActiveTab("reorder")}>Reorder Planner</button><button className={activeTab==="purchasing"?"active":""} onClick={()=>setActiveTab("purchasing")}>Purchase Orders</button></nav>
 
     {activeTab==="stock"&&<><div className="inventorySummaryGrid"><article className="card"><b>On hand</b><strong>{hardware.reduce((s,p)=>s+Number(p.qty_on_hand||0),0)}</strong></article><article className="card"><b>Allocated</b><strong>{hardware.reduce((s,p)=>s+Number(p.qty_allocated||0),0)}</strong></article><article className="card"><b>Available</b><strong>{hardware.reduce((s,p)=>s+Math.max(0,Number(p.qty_available||0)),0)}</strong></article><article className="card"><b>Stock value</b><strong>{money(inventoryValue)}</strong></article></div>
       {stocktakeMode&&<div className="stocktakeNotice"><b>Stocktake mode</b><span>Enter the quantity physically on the shelf. Fitted hardware is not included.</span></div>}
       {groups.map(group=>{const parts=hardware.filter(p=>p.category===group).sort(sortParts);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Unit cost</th><th>Minimum</th></tr></thead><tbody>{parts.map(p=><tr key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" value={counts[p.id]??p.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[p.id]:Number(e.target.value)}))}/>:<b>{p.qty_on_hand}</b>}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td><input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/></td><td><input className="compactInput" type="number" min="0" defaultValue={Number(p.reorder_level||0)} onBlur={e=>Number(e.target.value)!==Number(p.reorder_level||0)&&updateHardware(p.id,{reorder_level:Number(e.target.value||0)})}/></td></tr>)}</tbody></table></div></section>})}
       {stocktakeMode&&<div className="stocktakeFooter"><button onClick={()=>{setCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stocktake</button></div>}</>}
+
+    {activeTab==="audit"&&<InventoryValueAudit hardware={hardware}/>}
 
     {activeTab==="allocations"&&<><section className="inventoryBlock"><h3>Custom Order Hardware Allocation</h3><p>Allocate parts when an order is accepted and physically place them aside. Assembling a drum deducts its selected hardware automatically.</p>{activeCustom.length===0?<p>No active custom snare orders.</p>:<div className="allocationGrid">{activeCustom.map(d=>{const allocated=allocationByDrum[d.id]?.length>0,reqs=drumHardwareRequirements(d),shortages=reqs.filter(req=>Number(byCode[req.code]?.qty_available||0)<req.qty);return <article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.customer||"Customer not entered"} · {d.build_type}</span><span className={allocated?"okText":shortages.length?"dangerText":"warningText"}>{allocated?"Hardware allocated":shortages.length?`${shortages.length} shortages`:"Ready to allocate"}</span>{shortages.length>0&&!allocated&&<small>{shortages.map(x=>x.label).join(", ")}</small>}<div className="buttonRow">{allocated?<button onClick={()=>releaseHardware(d)}>Release allocation</button>:<button className="primary" onClick={()=>allocateHardware(d)}>Allocate hardware</button>}</div></article>})}</div>}</section><section className="inventoryBlock"><h3>Hardware Fitted to Drums</h3><p>Open a Job Card and use <b>Adjust Hardware Used</b> to change this list.</p><div className="allocationGrid">{drums.filter(d=>consumedByDrum[d.id]?.length).map(d=><article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.timber} · {d.build_type}</span><small>{consumedByDrum[d.id].map(a=>`${a.quantity} × ${partById[a.hardware_part_id]?.part_name||"Hardware"}`).join(", ")}</small></article>)}</div>{!drums.some(d=>consumedByDrum[d.id]?.length)&&<p>No fitted hardware has been recorded yet.</p>}</section></>}
 
@@ -5192,6 +5194,61 @@ function Orders({drums, openJobCard, externalOrders=[], createDrumFromShopify, u
 }
 
 
+
+function InventoryValueAudit({hardware}){
+  const rows=[...hardware].map(part=>{
+    const qty=Number(part.qty_on_hand||0);
+    const unit=Number(part.landed_cost_aud||0);
+    return {...part,audit_qty:qty,audit_unit:unit,audit_total:qty*unit};
+  }).sort((a,b)=>b.audit_total-a.audit_total);
+  const total=rows.reduce((sum,row)=>sum+row.audit_total,0);
+  const categories={};
+  rows.forEach(row=>{categories[row.category||"Other"]=(categories[row.category||"Other"]||0)+row.audit_total});
+  const categoryRows=Object.entries(categories).sort((a,b)=>b[1]-a[1]);
+  const zeroCost=rows.filter(row=>row.audit_qty>0 && row.audit_unit<=0);
+  const suspicious=rows.filter(row=>row.audit_qty>0 && (row.audit_unit>250 || row.audit_total>1000));
+  return <section className="inventoryAudit">
+    <section className="inventorySummaryGrid">
+      <article className="card"><b>Total stock value</b><strong>{money(total)}</strong><span>On-hand quantity × unit cost</span></article>
+      <article className="card"><b>Priced stock lines</b><strong>{rows.filter(r=>r.audit_unit>0).length}</strong><span>{zeroCost.length} stocked lines have no cost</span></article>
+      <article className="card"><b>Highest-value line</b><strong>{rows[0]?money(rows[0].audit_total):money(0)}</strong><span>{rows[0]?.part_name||"No stock"}</span></article>
+      <article className="card"><b>Lines to review</b><strong>{suspicious.length}</strong><span>High unit or extended value</span></article>
+    </section>
+    {(zeroCost.length>0||suspicious.length>0)&&<section className="panel inner auditWarnings">
+      <h3>Check these figures</h3>
+      {zeroCost.length>0&&<p><b>{zeroCost.length}</b> stocked items have a $0 unit cost and are excluded from the value.</p>}
+      {suspicious.length>0&&<p><b>{suspicious.length}</b> lines have an unusually high unit or total value. Review them below.</p>}
+    </section>}
+    <section className="inventoryAuditGrid">
+      <section className="panel inner"><h3>Value by category</h3><div className="auditCategoryList">{categoryRows.map(([category,value])=><div key={category}><span>{category}</span><b>{money(value)}</b><i style={{width:`${total?Math.max(2,(value/total)*100):0}%`}}/></div>)}</div></section>
+      <section className="panel inner"><h3>Highest-value items</h3><div className="auditTopList">{rows.slice(0,8).map(row=><div key={row.id}><span>{row.part_name} <small>{row.finish||""} {row.size||""}</small></span><b>{row.audit_qty} × {money(row.audit_unit)} = {money(row.audit_total)}</b></div>)}</div></section>
+    </section>
+    <section className="inventoryBlock"><h3>Full stock-value calculation</h3><p>This is the calculation behind the stock-value card. Edit unit costs on the Stock tab if a line is incorrect.</p><div className="tableWrap"><table><thead><tr><th>Part</th><th>Category</th><th>On hand</th><th>Unit cost</th><th>Line value</th></tr></thead><tbody>{rows.map(row=><tr className={row.audit_total>1000||row.audit_unit>250?"auditReviewRow":""} key={row.id}><td>{row.part_name}<br/><small>{row.finish||""} {row.size||""}</small></td><td>{row.category||"—"}</td><td>{row.audit_qty}</td><td>{money(row.audit_unit)}</td><td><b>{money(row.audit_total)}</b></td></tr>)}</tbody><tfoot><tr><th colSpan="4">Total inventory value</th><th>{money(total)}</th></tr></tfoot></table></div></section>
+  </section>;
+}
+
+function SocialMediaHandoff({drums,openJobCard,setMessage}){
+  const [photos,setPhotos]=useState([]);
+  const [loading,setLoading]=useState(false);
+  const [onlyCompleted,setOnlyCompleted]=useState(true);
+  const [expanded,setExpanded]=useState("");
+  async function load(){setLoading(true);const {data,error}=await supabase.from("drum_photos").select("*").order("created_at",{ascending:false});if(error)setMessage?.("Could not load social-media files: "+error.message);else setPhotos(data||[]);setLoading(false)}
+  useEffect(()=>{load()},[]);
+  const nowak=drums.filter(d=>d.build_client!=="Brady" && !isArchivedStatus(d));
+  const eligible=nowak.filter(d=>!onlyCompleted||isManufacturingComplete(d)||["Completed","Sold","Shipped"].includes(drumLifecycleStatus(d)));
+  const photoMap={};photos.forEach(photo=>{(photoMap[photo.drum_id]??=[]).push(photo)});
+  const cards=eligible.map(d=>({drum:d,media:photoMap[d.id]||[]})).filter(item=>item.media.length).sort((a,b)=>String(b.drum.updated_at||b.drum.created_at||"").localeCompare(String(a.drum.updated_at||a.drum.created_at||"")));
+  const brief=d=>`${d.size||"Drum"} ${d.timber||"timber"} ${String(d.build_type||"").toLowerCase()} ${String(d.drum_type||"snare").toLowerCase()}, finished in ${d.finish||"a custom finish"}. Handmade in Western Australia by Nowak Drum Company.`;
+  const copyBrief=async d=>{await navigator.clipboard?.writeText(brief(d));setMessage?.("Brief description copied.")};
+  const copyLink=async()=>{await navigator.clipboard?.writeText(window.location.href);setMessage?.("Page link copied. Anyone using it will need the same Workshop OS access as you.")};
+  return <section className="socialHandoffPage">
+    <section className="panel socialHandoffIntro"><div><span className="launchPackEyebrow">CONTENT FOR YOUR SOCIAL-MEDIA PERSON</span><h3>Social Media Handoff</h3><p>Completed drums are packaged with a short factual description plus all available completion, finish-reveal and workshop media. Production photos remain available for behind-the-scenes posts.</p></div><div className="buttonRow"><button onClick={copyLink}><Link2 size={15}/> Copy Page Link</button><button onClick={load}><RefreshCw size={15}/> {loading?"Loading...":"Refresh"}</button></div></section>
+    <section className="panel inner handoffControls"><label><input type="checkbox" checked={onlyCompleted} onChange={e=>setOnlyCompleted(e.target.checked)}/> Show completed drums only</label><span>{cards.length} drums with media</span></section>
+    {cards.length===0?<section className="panel"><p>No drums with matching photos or videos were found.</p></section>:<div className="socialHandoffGrid">{cards.map(({drum,media})=>{const open=expanded===drum.id;const completion=media.filter(p=>["completed","finishreveal","shellcomplete"].includes(String(p.milestone||"").toLowerCase()));const production=media.filter(p=>!completion.includes(p));return <article className="panel socialHandoffCard" key={drum.id}><header><div><span className="futureStageBadge">{drumLifecycleStatus(drum)}</span><h3>#{drum.serial||"Pending"} {drum.timber}</h3><p>{drum.size} · {drum.drum_type||"Snare"} · {drum.build_type} · {drum.finish}</p></div><b>{media.length} files</b></header><p className="handoffBrief">{brief(drum)}</p><div className="buttonRow"><button onClick={()=>copyBrief(drum)}><Copy size={15}/> Copy Brief</button><button onClick={()=>setExpanded(open?"":drum.id)}><Images size={15}/> {open?"Hide Media":"View Media"}</button><button onClick={()=>openJobCard(drum)}>Open Drum</button></div>{open&&<div className="handoffMediaSections"><HandoffMediaGroup title="Completion & finish media" media={completion}/><HandoffMediaGroup title="Production & workshop media" media={production}/></div>}</article>})}</div>}
+  </section>;
+}
+function HandoffMediaGroup({title,media}){if(!media.length)return null;return <section><h4>{title}</h4><div className="handoffMediaGrid">{media.map(item=><a href={item.public_url} target="_blank" rel="noreferrer" key={item.id}>{item.media_type==="video"?<video src={item.public_url} muted playsInline/>:<img src={item.public_url} alt={title}/>}<span>{marketingMilestoneLabel(item.milestone)||"Workshop media"}</span></a>)}</div></section>}
+
 function marketingMilestoneLabel(key,drum){
   if(key==="shellcomplete"){
     if(drum?.build_client==="Nowak") return isCustomCustomerDrum(drum) ? "Custom Drum Complete" : "Drum Complete";
@@ -5237,6 +5294,12 @@ function CommsMarketingCentre({filteredDrums,allDrums,openJobCard,setMessage,onA
           <ClipboardList size={16}/> Content Queue
         </button>
         <button
+          className={section==="handoff" ? "primary" : ""}
+          onClick={()=>setSection("handoff")}
+        >
+          <Images size={16}/> Social Media Handoff
+        </button>
+        <button
           className={section==="drafts" ? "primary" : ""}
           onClick={()=>setSection("drafts")}
         >
@@ -5253,9 +5316,11 @@ function CommsMarketingCentre({filteredDrums,allDrums,openJobCard,setMessage,onA
 
     {section==="queue"
       ? <MarketingContentQueue drums={allDrums} openJobCard={openJobCard} setMessage={setMessage}/>
-      : section==="drafts"
-        ? <MarketingCentre drums={allDrums} openJobCard={openJobCard} setMessage={setMessage} embedded/>
-        : <CommsCentre drums={filteredDrums.filter(d=>d.build_client!=="Brady")} openJobCard={openJobCard} embedded onAddPhoto={onAddPhoto}/>
+      : section==="handoff"
+        ? <SocialMediaHandoff drums={allDrums} openJobCard={openJobCard} setMessage={setMessage}/>
+        : section==="drafts"
+          ? <MarketingCentre drums={allDrums} openJobCard={openJobCard} setMessage={setMessage} embedded/>
+          : <CommsCentre drums={filteredDrums.filter(d=>d.build_client!=="Brady")} openJobCard={openJobCard} embedded onAddPhoto={onAddPhoto}/>
     }
   </section>
 }
