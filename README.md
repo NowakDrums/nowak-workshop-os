@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.7.17
+# Nowak Workshop OS v7.7.18
 
 ## Direct Marketing Portal
 
@@ -50,3 +50,11 @@ Run `supabase/v7_7_17_inventory_catalogue_cleanup.sql` after deployment. This mi
 - removes the incorrect `ATL01-00CR` bass-drum lug record and merges its stock/allocation history into `ATL01-01`;
 - renames chrome snare wires to Stainless Steel;
 - preserves existing quantities, costs and active allocations.
+
+
+## v7.7.18 purchase-order draft workflow
+
+- Keeps one editable Lea Hung draft and updates it instead of generating duplicate drafts.
+- Drafts remain in Reorder Planner and only Sent, Partially Received, Received or Closed orders appear in Purchase Orders.
+- The Add another inventory item selector now shows the hardware finish/colour.
+- No Supabase migration is required.
