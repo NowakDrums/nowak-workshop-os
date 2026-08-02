@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.7.18
+# Nowak Workshop OS v7.7.19
 
 ## Direct Marketing Portal
 
@@ -58,3 +58,7 @@ Run `supabase/v7_7_17_inventory_catalogue_cleanup.sql` after deployment. This mi
 - Drafts remain in Reorder Planner and only Sent, Partially Received, Received or Closed orders appear in Purchase Orders.
 - The Add another inventory item selector now shows the hardware finish/colour.
 - No Supabase migration is required.
+
+
+## v7.7.19 throw-off cleanup
+Run `supabase/v7_7_19_throw_off_deduplication.sql` to merge duplicate Trick throw-off records and category spellings while preserving stock and allocations.

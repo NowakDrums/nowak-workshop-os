@@ -2824,7 +2824,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.7.18 — single editable purchase-order draft, confirmed-order history and clearer hardware finish selection.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.7.19 — duplicate throw-offs consolidated and inventory catalogue cleaned.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
