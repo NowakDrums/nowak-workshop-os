@@ -128,3 +128,10 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Saving stock levels no longer reloads the app or sends the user to Dashboard.
 - Newly created Brass and Black Nickel variants are reloaded immediately.
 - Non-zero finish variants are visible in the normal Stock Levels view; zero-stock variants remain hidden.
+
+
+## v7.8.12
+- Stocktake quantity fields no longer re-render the entire Inventory page on every digit entered.
+- Brass snare-wire quantities can be entered safely on mobile and desktop.
+- Save Stock Levels continues reading the final values directly from the visible fields.
+- No Supabase migration is required for this update.
