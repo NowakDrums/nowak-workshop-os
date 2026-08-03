@@ -1846,3 +1846,11 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .newVariantRow small{color:var(--muted)}
 
 .allocationHint{display:block;color:#c58b36;font-weight:700;margin-top:3px;white-space:nowrap}
+
+/* v7.8.17 inventory shortages */
+.inventoryShortageRow td{background:rgba(190,48,48,.16)!important;border-bottom-color:rgba(255,115,105,.55)}
+.inventoryShortageRow td:first-child{box-shadow:inset 4px 0 0 #ff675d}
+.inventoryZeroAvailableRow td{background:rgba(213,170,93,.08)}
+.shortageBadge{display:inline-block!important;margin:7px 0 0 8px;padding:3px 8px;border-radius:999px;background:#b92f2f;color:#fff!important;font-size:11px;font-weight:900;letter-spacing:.03em}
+.shortageHint{display:block!important;color:#ff9b8f!important;font-weight:800;margin-top:3px}
+.purchaseShortageRow td{background:rgba(190,48,48,.13)!important}

@@ -167,3 +167,13 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Allocated quantities are displayed on each inventory line with the number of drums reserved.
 - Added a Currently Reserved Hardware table listing part quantities and drum numbers.
 - Allocation status matching is case-insensitive and survives hidden duplicate catalogue rows.
+
+
+## v7.8.17 shortage highlighting and purchase-order carry-forward
+
+- Inventory rows turn red when allocations exceed physical stock.
+- The exact shortage quantity is shown on the stock line.
+- Zero available stock reserved to a drum is highlighted separately.
+- Current allocation shortages are automatically added to the Suggested Purchase Order, even when the target drum planner requires zero additional units.
+- Negative availability is preserved in the purchase calculation so shortages are not lost by rounding to zero.
+- An allocated item with exactly zero available stock is treated as an urgent replenishment line: it is red in Inventory and adds at least one replacement unit to the next suggested purchase order.
