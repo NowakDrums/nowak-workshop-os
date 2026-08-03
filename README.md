@@ -117,8 +117,14 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Added explicit saved-item counts in the success message.
 
 
-## v7.8.10
+## v7.8.11
 - Stock adjustment now writes every visible quantity rather than relying on change detection.
 - Saved quantities are read back from Supabase and verified before success is shown.
 - New finish variants use robust IDs even when the base ID contains punctuation.
 - The app reloads only after a verified save.
+
+
+## v7.8.11
+- Saving stock levels no longer reloads the app or sends the user to Dashboard.
+- Newly created Brass and Black Nickel variants are reloaded immediately.
+- Non-zero finish variants are visible in the normal Stock Levels view; zero-stock variants remain hidden.

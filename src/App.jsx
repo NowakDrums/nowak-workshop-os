@@ -2853,7 +2853,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.8.10 — stock levels are written and verified against Supabase.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.8.11 — saved finish variants remain visible and Inventory stays open.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3168,7 +3168,7 @@ function App(){
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard} externalOrders={externalOrders} createDrumFromShopify={createDrumFromShopify} updateExternalOrderStatus={updateExternalOrderStatus}/>}
     {view==="repairs" && <RepairsPage repairs={repairs} openRepair={setRepairJob} addRepair={()=>setShowAddRepair(true)}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
-    {view==="inventory" && <Inventory hardware={availableHardware} allocations={hardwareAllocations} drums={drums} updateHardware={updateHardware} saveStocktake={saveHardwareStocktake} allocateHardware={allocateHardwareForDrum} releaseHardware={releaseHardwareForDrum} lowStock={lowStock} inventoryValue={inventoryValue}/>}
+    {view==="inventory" && <Inventory hardware={availableHardware} allocations={hardwareAllocations} drums={drums} updateHardware={updateHardware} saveStocktake={saveHardwareStocktake} refreshData={loadAll} allocateHardware={allocateHardwareForDrum} releaseHardware={releaseHardwareForDrum} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
     {view==="summary" && <WorkshopSummary drums={drums} sales={sales} labourRate={labourRate}/>}
     {view==="comms" && <CommsMarketingCentre
@@ -4749,7 +4749,7 @@ function RepairJobModal({repair,onClose,updateRepair,deleteRepair,setMessage}){
   </div></div>
 }
 
-function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStocktake, allocateHardware, releaseHardware, lowStock, inventoryValue}){
+function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStocktake, refreshData, allocateHardware, releaseHardware, lowStock, inventoryValue}){
   const [activeTab,setActiveTab]=useState("stock");
   const [stocktakeMode,setStocktakeMode]=useState(false);
   const [counts,setCounts]=useState({});
@@ -4868,11 +4868,12 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
         if(mismatch) throw new Error("Supabase did not return the saved quantity for one or more stock items. Please check database permissions.");
       }
 
+      if(refreshData) await refreshData();
       setCounts({});
       setNewVariantCounts({});
       setStocktakeMode(false);
+      setActiveTab("stock");
       setStockSaveMessage(`Stock levels saved and verified · ${existingCount} existing item${existingCount===1?"":"s"} written${createdCount?` · ${createdCount} new finish variant${createdCount===1?"":"s"} added`:""}.`);
-      window.setTimeout(()=>window.location.reload(),1100);
     }catch(error){
       setStockSaveMessage(error?.message||"Stock levels could not be saved.");
     }finally{
@@ -4924,10 +4925,10 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     // Snare-wire finish rows are managed only in stocktake mode. The everyday
     // view uses the stainless-steel line as the single catalogue row.
     if(String(part.category||"")==="Snare Wires") return family==="Stainless Steel";
-    // Normal stock view shows only the main catalogue line. Colour variants are
-    // available only after selecting Adjust Stock Levels.
+    // Normal stock view always shows the main catalogue line. Brass and Black
+    // Nickel variants are hidden at zero, but become visible once stock exists.
     if(standardFinish) return true;
-    return !hasStandardCounterpart(part)&&(hasStock||specialFinishNeeded(part.finish));
+    return hasStock||specialFinishNeeded(part.finish);
   };
   const visibleHardware=hardware.filter(showInventoryPart);
   const variantsFor=part=>hardware.filter(candidate=>{
