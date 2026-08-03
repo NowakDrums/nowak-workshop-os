@@ -2,5 +2,13 @@
   "rewrites": [
     { "source": "/marketing", "destination": "/index.html" },
     { "source": "/marketing/:path*", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
+      ]
+    }
   ]
 }

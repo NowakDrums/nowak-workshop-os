@@ -2853,7 +2853,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.8.0 — actual invoice, exchange-rate and landed-cost receiving.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.8.9 — reliable stock-level saving and visible build version.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4803,12 +4803,24 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     setStockSaving(true);
     setStockSaveMessage("");
     try{
-      const changed=Object.fromEntries(Object.entries(counts).filter(([id,qty])=>Number(qty)!==Number(hardware.find(p=>p.id===id)?.qty_on_hand||0)));
-      const missing=Object.entries(newVariantCounts).filter(([,qty])=>Number(qty)>0);
+      // Read the live input values as well as React state. This makes saving
+      // reliable on iPhone/iPad and desktop browsers even when the final
+      // number field has not blurred before Save Stock Levels is pressed.
+      const liveCounts={...counts};
+      document.querySelectorAll("input[data-stock-id]").forEach(input=>{
+        liveCounts[input.dataset.stockId]=Math.max(0,Number(input.value||0));
+      });
+      const liveVariantCounts={...newVariantCounts};
+      document.querySelectorAll("input[data-new-variant-key]").forEach(input=>{
+        liveVariantCounts[input.dataset.newVariantKey]=Math.max(0,Number(input.value||0));
+      });
+
+      const changed=Object.fromEntries(Object.entries(liveCounts).filter(([id,qty])=>Number(qty)!==Number(hardware.find(p=>p.id===id)?.qty_on_hand||0)));
+      const missing=Object.entries(liveVariantCounts).filter(([,qty])=>Number(qty)>0);
       const changedCount=Object.keys(changed).length;
 
       if(!changedCount&&!missing.length){
-        setStockSaveMessage("No stock quantities were changed.");
+        setStockSaveMessage("No stock quantities were changed. Enter a different number, then press Save Stock Levels.");
         return;
       }
 
@@ -4845,7 +4857,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
       setCounts({});
       setNewVariantCounts({});
       setStocktakeMode(false);
-      setStockSaveMessage(`Stock levels saved successfully${createdCount?` · ${createdCount} new finish variant${createdCount===1?"":"s"} added`:""}.`);
+      setStockSaveMessage(`Stock levels saved successfully · ${changedCount} existing item${changedCount===1?"":"s"} updated${createdCount?` · ${createdCount} new finish variant${createdCount===1?"":"s"} added`:""}.`);
       if(missing.length){
         window.setTimeout(()=>window.location.reload(),900);
       }else{
@@ -5160,9 +5172,9 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
       <div className="stockLevelHelp"><b>Stock levels:</b> select <b>Adjust Stock Levels</b> when you want to enter physical counts. The normal view stays read-only and shows only useful stock lines.</div>
       {groups.map(group=>{const parts=visibleHardware.filter(p=>p.category===group).sort(sortParts);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Unit cost</th><th>Minimum</th></tr></thead><tbody>{parts.flatMap(p=>{
         const variants=variantsFor(p).sort(sortParts);
-        const main=<tr key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" value={counts[p.id]??p.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[p.id]:Number(e.target.value)}))}/>:<b>{p.qty_on_hand}</b>}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td><input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/></td><td><input className="compactInput" type="number" min="0" defaultValue={Number(p.reorder_level||0)} onBlur={e=>Number(e.target.value)!==Number(p.reorder_level||0)&&updateHardware(p.id,{reorder_level:Number(e.target.value||0)})}/></td></tr>;
+        const main=<tr key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={p.id} value={counts[p.id]??p.qty_on_hand??0} onInput={e=>setCounts(c=>({...c,[p.id]:Number(e.currentTarget.value)}))} onChange={e=>setCounts(c=>({...c,[p.id]:Number(e.target.value)}))}/>:<b>{p.qty_on_hand}</b>}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td><input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/></td><td><input className="compactInput" type="number" min="0" defaultValue={Number(p.reorder_level||0)} onBlur={e=>Number(e.target.value)!==Number(p.reorder_level||0)&&updateHardware(p.id,{reorder_level:Number(e.target.value||0)})}/></td></tr>;
         if(!stocktakeMode) return [main];
-        const existingRows=variants.map(v=><tr className="variantRow" key={v.id}><td><span className="variantIndent">↳ {v.finish||v.part_name}</span></td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" value={counts[v.id]??v.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[v.id]:Number(e.target.value)}))}/></td><td>{v.qty_allocated}</td><td><b>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td>{v.reorder_level||0}</td></tr>);
+        const existingRows=variants.map(v=><tr className="variantRow" key={v.id}><td><span className="variantIndent">↳ {v.finish||v.part_name}</span></td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={v.id} value={counts[v.id]??v.qty_on_hand??0} onInput={e=>setCounts(c=>({...c,[v.id]:Number(e.currentTarget.value)}))} onChange={e=>setCounts(c=>({...c,[v.id]:Number(e.target.value)}))}/></td><td>{v.qty_allocated}</td><td><b>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td>{v.reorder_level||0}</td></tr>);
         const missingRows=[];
         const optionalFinishes=(p.category==="Snare Wires"&&finishFamily(p)==="Stainless Steel")
           ?["Brass"]
@@ -5173,7 +5185,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
           optionalFinishes.forEach(finish=>{
             const wantedFamily=finish==="Black Nickel"?"Black Nickel":"Brass / Gold";
             const exists=variants.some(v=>finishFamily(v)===wantedFamily);
-            if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional hardware finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" value={newVariantCounts[key]??0} onChange={e=>setNewVariantCounts(c=>({...c,[key]:Number(e.target.value)}))}/></td><td>0</td><td><b>{newVariantCounts[key]??0}</b></td><td>{money(p.landed_cost_aud||0)}</td><td>{p.reorder_level||0}</td></tr>)};
+            if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional hardware finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-new-variant-key={key} value={newVariantCounts[key]??0} onInput={e=>setNewVariantCounts(c=>({...c,[key]:Number(e.currentTarget.value)}))} onChange={e=>setNewVariantCounts(c=>({...c,[key]:Number(e.target.value)}))}/></td><td>0</td><td><b>{newVariantCounts[key]??0}</b></td><td>{money(p.landed_cost_aud||0)}</td><td>{p.reorder_level||0}</td></tr>)};
           });
         }
         return [main,...existingRows,...missingRows];

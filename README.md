@@ -111,9 +111,7 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Run `supabase/v7_8_7_ball_lug_variant_cleanup.sql` to permanently remove duplicate ATL01-01 Chrome Plated rows.
 
 
-## v7.8.8 Stock-level save confirmation and reliability
-
-- Fixed saving when only a newly created finish variant has been entered.
-- Save Stock Levels now displays Saving… while the update is in progress.
-- A clear on-screen success or error confirmation appears beside the stock screen after saving.
-- No-change attempts now explain that no quantities were altered instead of appearing unresponsive.
+## v7.8.9
+- Corrected the visible app version.
+- Stock saving now reads live input values directly before comparing and saving.
+- Added explicit saved-item counts in the success message.
