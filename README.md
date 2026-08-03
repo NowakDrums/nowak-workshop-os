@@ -169,7 +169,7 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Allocation status matching is case-insensitive and survives hidden duplicate catalogue rows.
 
 
-## v7.8.17 shortage highlighting and purchase-order carry-forward
+## v7.8.18 shortage highlighting and purchase-order carry-forward
 
 - Inventory rows turn red when allocations exceed physical stock.
 - The exact shortage quantity is shown on the stock line.
@@ -177,3 +177,10 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Current allocation shortages are automatically added to the Suggested Purchase Order, even when the target drum planner requires zero additional units.
 - Negative availability is preserved in the purchase calculation so shortages are not lost by rounding to zero.
 - An allocated item with exactly zero available stock is treated as an urgent replenishment line: it is red in Inventory and adds at least one replacement unit to the next suggested purchase order.
+
+
+## v7.8.18
+- Removed the duplicate Shipped fulfilment checkbox; shipping now has one linked status control.
+- The Shipped button becomes Undo Shipped when active.
+- Back to Production now explicitly sets lifecycle status to Production, clears legacy shipped state and removes tracking details.
+- Sold and Shipped legacy fields now remain distinct.
