@@ -1837,14 +1837,13 @@ function App(){
     const reasons=[];
     const due=d.due_date ? new Date(`${d.due_date}T23:59:59`) : null;
     if(due && due<new Date() && !isShippedStatus(d)) reasons.push("Overdue");
-    else if(dueWithinDays(d,7) && !isShippedStatus(d)) reasons.push("Due within 7 days");
+    else if(dueWithinDays(d,7) && !isShippedStatus(d)) reasons.push("Nearly due");
+
+    const cure=cureStatusForDrum(d);
+    if(cure?.ready) reasons.push(cure.type==="sealer" ? "Seal coat cured — ready" : "Cure complete — ready");
 
     if(outstandingWorkFromNotes(d.notes)) reasons.push(outstandingWorkFromNotes(d.notes));
     if(isSoldStatus(d) && !isShippedStatus(d)) reasons.push("Sold — awaiting shipment");
-
-    const isNowakCustom=d.build_client==="Nowak" && d.sales_status==="Custom Order";
-    if(isNowakCustom && !String(d.customer || "").trim()) reasons.push("Customer name missing");
-    if(isNowakCustom && !String(d.customer_email || "").trim()) reasons.push("Customer email missing");
 
     return reasons;
   }
@@ -2374,9 +2373,19 @@ function App(){
     };
     const {data,error}=await supabase.from("drums").update(patch).eq("id",d.id).select("*").single();
     if(error){setMessage("Could not return drum to production: "+error.message);return false;}
-    setDrums(current=>current.map(item=>item.id===d.id?{...item,...data}:item));
+
+    // A drum returned to production is no longer a completed sale. Remove any
+    // linked sale record so old financial/lifecycle data cannot mark it Sold again.
+    const {error:saleError}=await supabase.from("sales").delete().eq("drum_id",d.id);
+    if(saleError){
+      setMessage("Drum returned to Production, but the old sale record could not be removed: "+saleError.message);
+    }
+
+    await loadAll();
     setJobCard(current=>current?.id===d.id?{...current,...data}:current);
-    setMessage("Drum returned to Production. Shipping and completion status were removed.");
+    setMessage(saleError
+      ? "Drum returned to Production. Please review the old sale record warning."
+      : "Drum returned to Production. Complete, Sold and Shipped status were removed.");
     return true;
   }
 
@@ -2936,7 +2945,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.2 — suggested purchase orders separated by supplier with estimated values.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.3 — operational attention rules and reliable return-to-production status cleanup.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>

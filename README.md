@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.9.2
+# Nowak Workshop OS v7.9.3
 
 Controlled repair release consolidating hardware allocations, shortages, purchase-order calculations and two-decimal AUD currency formatting. Custom drum orders now reserve standard hardware automatically, including reservations that create a shortage.
 
@@ -197,3 +197,10 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Shows an estimated order value for each supplier and a combined hardware total.
 - Keeps the existing Lea Hung purchase-order generator unchanged.
 - Does not add purchase-order generation for Mega Music or Rech yet.
+
+
+## v7.9.3 — operational attention and lifecycle cleanup
+
+- Missing customer names or email addresses no longer place drums in Needs Attention.
+- Needs Attention now prioritises overdue, nearly due, cure-ready, outstanding-work and fulfilment issues.
+- Returning a drum to Production clears Complete, Sold and Shipped status and removes its linked sale record so stale sale data cannot reapply Sold status.
