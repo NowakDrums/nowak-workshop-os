@@ -488,7 +488,7 @@ function drumHardwareRequirements(drum){
     return [
       {code:finishSku(`LUG-${lugLength.replace("mm","")}`,finish),qty:lugCount,label:`${lugLength} Agile Tube Lug — ${finishLabel}`},
       {code:"TROD-45",qty:rodCount,label:"45mm stainless steel tension rod"},
-      {code:finishSku(`HOOP-${diameter}-${lugCount}-BAT`,finish),qty:1,label:`${diameter}\" ${lugCount}-lug 2.3mm hoop — ${finishLabel}`},
+      {code:diameter==="10" ? finishSku("TOM-HOOP-10-6",finish) : finishSku(`HOOP-${diameter}-${lugCount}-BAT`,finish),qty:1,label:diameter==="10" ? `10\" 6-lug 2.3mm top/tom hoop — ${finishLabel}` : `${diameter}\" ${lugCount}-lug 2.3mm hoop — ${finishLabel}`},
       {code:finishSku(`HOOP-${diameter}-${lugCount}-SNR`,finish),qty:1,label:`${diameter}\" ${lugCount}-lug 2.3mm snare-side hoop — ${finishLabel}`},
       {code:`HEAD-${diameter}-BAT`,qty:1,label:`${diameter}\" Remo batter head`},
       {code:`HEAD-${diameter}-SNR`,qty:1,label:`${diameter}\" Remo snare-side head`},
@@ -1716,10 +1716,18 @@ function App(){
     return g;
   },[filtered]);
   const allocatedByPart=hardwareAllocations.filter(a=>a.status==="Allocated").reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
+  const hardwareById=Object.fromEntries(hardware.map(part=>[part.id,part]));
   const catalogueIdentity=part=>{
     const clean=value=>String(value||"").toLowerCase().replace(/\s+/g," ").trim();
     return [clean(part.category),clean(part.part_name),clean(part.code),clean(part.finish),clean(part.size)].join("|");
   };
+  const allocatedByIdentity=hardwareAllocations.filter(a=>a.status==="Allocated").reduce((map,a)=>{
+    const part=hardwareById[a.hardware_part_id];
+    if(!part) return map;
+    const key=catalogueIdentity(part);
+    map[key]=(map[key]||0)+Number(a.quantity||0);
+    return map;
+  },{});
   const catalogueHardware=Object.values(hardware.reduce((map,part)=>{
     const key=catalogueIdentity(part);
     const current=map[key];
@@ -1727,7 +1735,10 @@ function App(){
     if(!current||score(part)>score(current)) map[key]=part;
     return map;
   },{}));
-  const availableHardware=catalogueHardware.map(p=>({...p,qty_allocated:Number(allocatedByPart[p.id]||0),qty_available:Number(p.qty_on_hand||0)-Number(allocatedByPart[p.id]||0)}));
+  const availableHardware=catalogueHardware.map(p=>{
+    const allocated=Number(allocatedByIdentity[catalogueIdentity(p)]||0);
+    return {...p,qty_allocated:allocated,qty_available:Number(p.qty_on_hand||0)-allocated};
+  });
   const inventoryValue=catalogueHardware.reduce((s,p)=>s+Number(p.qty_on_hand||0)*Number(p.landed_cost_aud||0),0);
   const lowStock=availableHardware.filter(p=>Number(p.qty_available||0)<=Number(p.reorder_level||0)).length;
   const retail=active.reduce((s,d)=>s+Number(d.total_price||d.retail_price||0),0);
@@ -2297,6 +2308,22 @@ function App(){
     return true;
   }
 
+  async function returnDrumToProduction(d){
+    if(!window.confirm("Move this drum back into Production? This will remove Complete/Sold/Shipped status but keep the build history up to final preparation.")) return false;
+    const reopenSteps=new Set(parseChecked(d.notes));
+    ["Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].forEach(step=>reopenSteps.delete(step));
+    const notes=clearArchiveDetailsFromNotes(setChecklistInNotes(d.notes,reopenSteps));
+    const flow=workflowState(d.build_type||"Stave",reopenSteps,d.finish||"To Be Decided",d.build_client||"Nowak",d.drum_type,d.size);
+    const history=(Array.isArray(d.stage_history)?d.stage_history:[]).filter(entry=>!["Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].includes(entry.item));
+    const patch={lifecycle_status:null,production_status:flow.status,next_step:flow.nextStep,completion_date:null,sales_status:d.order_type==="Custom" ? "Custom Order" : "Stock",notes,stage_history:history};
+    const {data,error}=await supabase.from("drums").update(patch).eq("id",d.id).select("*").single();
+    if(error){setMessage("Could not return drum to production: "+error.message);return false;}
+    setDrums(current=>current.map(item=>item.id===d.id?{...item,...data}:item));
+    setJobCard(current=>current?.id===d.id?{...current,...data}:current);
+    setMessage("Drum returned to Production. Shipping and completion status were removed.");
+    return true;
+  }
+
   async function markSold(d){
     const defaultSalePrice=Number(d.custom_price || d.retail_price || 0);
     const saleEntry=prompt("Drum selling price (excluding shipping)?", defaultSalePrice);
@@ -2853,7 +2880,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.8.14 — clean finish variants, duplicate protection and correct minimum-level rules.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.8.15 — corrected 10-inch hoop ordering, allocation totals and reversible drum status.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3209,7 +3236,7 @@ function App(){
     />}
     {showAddRepair && <AddRepairModal repairs={repairs} onClose={()=>setShowAddRepair(false)} onCreate={createRepair}/>}
     {repairJob && <RepairJobModal repair={repairJob} onClose={()=>setRepairJob(null)} updateRepair={updateRepair} deleteRepair={deleteRepair} setMessage={setMessage}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}} hardware={hardware} hardwareAllocations={hardwareAllocations} consumeHardwareForDrum={consumeHardwareForDrum} syncHardwareUsed={syncHardwareUsed}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} returnDrumToProduction={returnDrumToProduction} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}} hardware={hardware} hardwareAllocations={hardwareAllocations} consumeHardwareForDrum={consumeHardwareForDrum} syncHardwareUsed={syncHardwareUsed}/>}
   </main>
 }
 
@@ -7392,7 +7419,7 @@ ${emailBody}`,"Customer email")}>Copy Email</button>
 }
 
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject, hardware=[], hardwareAllocations=[], consumeHardwareForDrum, syncHardwareUsed}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, returnDrumToProduction, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject, hardware=[], hardwareAllocations=[], consumeHardwareForDrum, syncHardwareUsed}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
@@ -8010,6 +8037,13 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           >
             <Truck size={16}/> Shipped
           </button>
+
+          {["Completed","Sold","Shipped"].includes(drumLifecycleStatus(drum)) && <button
+            className="secondary"
+            onClick={()=>returnDrumToProduction(drum)}
+          >
+            <Hammer size={16}/> Back to Production
+          </button>}
 
           {!isArchivedStatus(drum) && <button
             className="archiveDrumButton"

@@ -150,3 +150,13 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Special-finish hardware has no minimum-order level; snare wires remain the exception.
 - Duplicate finish rows are collapsed in the app and a database cleanup migration is included.
 - Adjustment mode shows one Chrome/Stainless parent with one Brass and one Black Nickel row only.
+
+## v7.8.15 order, allocation and lifecycle repair
+- A 10-inch snare now uses HA01-S for the snare-side hoop and the existing 10 x 6 HA01 tom/top hoop for the batter side.
+- Allocated inventory is aggregated across duplicate catalogue identities so Allocated and Available totals remain visible even when an older duplicate row was used.
+- Completed, Sold or Shipped drums can be moved back to Production from the Job Card. Completion, shipping and fulfilment steps are cleared while prior manufacturing history is retained.
+
+## v7.8.15 order, allocation and lifecycle repair
+- A 10-inch snare uses HA01-S for the snare-side hoop and the existing 10 x 6 HA01 tom/top hoop for the batter side.
+- Allocated inventory is aggregated across duplicate catalogue identities so Allocated and Available totals stay visible.
+- Completed, Sold or Shipped drums can be moved back to Production from the Job Card.
