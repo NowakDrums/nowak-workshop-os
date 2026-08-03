@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.9.1
+# Nowak Workshop OS v7.9.2
 
 Controlled repair release consolidating hardware allocations, shortages, purchase-order calculations and two-decimal AUD currency formatting. Custom drum orders now reserve standard hardware automatically, including reservations that create a shortage.
 
@@ -189,3 +189,11 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Zero-stock parts can still be reserved; the negative available balance is highlighted red and carried into purchase ordering.
 - Physical stock is deducted only when the drum is marked Assembled.
 - Run `supabase/v7_9_1_restore_production_reservations.sql` once to repair production allocations that older builds incorrectly recorded as Consumed.
+
+
+## v7.9.2 — supplier purchase-order breakdown
+
+- Splits the Suggested Purchase Orders into Lea Hung, Mega Music and Rech sections.
+- Shows an estimated order value for each supplier and a combined hardware total.
+- Keeps the existing Lea Hung purchase-order generator unchanged.
+- Does not add purchase-order generation for Mega Music or Rech yet.

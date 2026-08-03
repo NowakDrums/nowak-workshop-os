@@ -1854,3 +1854,12 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .shortageBadge{display:inline-block!important;margin:7px 0 0 8px;padding:3px 8px;border-radius:999px;background:#b92f2f;color:#fff!important;font-size:11px;font-weight:900;letter-spacing:.03em}
 .shortageHint{display:block!important;color:#ff9b8f!important;font-weight:800;margin-top:3px}
 .purchaseShortageRow td{background:rgba(190,48,48,.13)!important}
+
+/* v7.9.2 supplier purchase-order breakdown */
+.supplierBreakdown{display:grid;gap:18px;margin-top:14px}
+.supplierBreakdownCard{border:1px solid var(--line,#4b4435);border-radius:14px;padding:14px;background:rgba(255,255,255,.015)}
+.supplierBreakdownHeader{margin-bottom:10px}
+.supplierBreakdownHeader h4{margin:0;color:var(--gold,#e0b858);font-size:1.15rem}
+.supplierBreakdownHeader p{margin:3px 0 0}
+.supplierGrandTotal{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:18px;padding:16px;border:1px solid var(--gold,#e0b858);border-radius:12px;font-size:1.08rem}
+.supplierGrandTotal b{font-size:1.2rem;color:var(--gold,#e0b858)}
