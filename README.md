@@ -109,3 +109,11 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Brass Plated and Black Nickel variants are grouped beneath the Chrome Plated parent only in Adjust Stock Levels mode.
 - Variant matching now uses supplier code and size, making grouping consistent even when names differ slightly.
 - Run `supabase/v7_8_7_ball_lug_variant_cleanup.sql` to permanently remove duplicate ATL01-01 Chrome Plated rows.
+
+
+## v7.8.8 Stock-level save confirmation and reliability
+
+- Fixed saving when only a newly created finish variant has been entered.
+- Save Stock Levels now displays Saving… while the update is in progress.
+- A clear on-screen success or error confirmation appears beside the stock screen after saving.
+- No-change attempts now explain that no quantities were altered instead of appearing unresponsive.

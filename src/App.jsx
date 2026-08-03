@@ -4754,6 +4754,8 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const [stocktakeMode,setStocktakeMode]=useState(false);
   const [counts,setCounts]=useState({});
   const [newVariantCounts,setNewVariantCounts]=useState({});
+  const [stockSaving,setStockSaving]=useState(false);
+  const [stockSaveMessage,setStockSaveMessage]=useState("");
   const [supplierOrderMessage,setSupplierOrderMessage]=useState("");
   const [purchaseOrders,setPurchaseOrders]=useState([]);
   const [purchaseOrderOpen,setPurchaseOrderOpen]=useState(false);
@@ -4797,30 +4799,63 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     return String(a.part_name||"").localeCompare(String(b.part_name||""));
   };
   const saveAllCounts=async()=>{
-    const changed=Object.fromEntries(Object.entries(counts).filter(([id,qty])=>Number(qty)!==Number(hardware.find(p=>p.id===id)?.qty_on_hand||0)));
-    const ok=await saveStocktake?.(changed);
-    if(!ok) return;
-    const missing=Object.entries(newVariantCounts).filter(([,qty])=>Number(qty)>0);
-    for(const [key,qty] of missing){
-      const [baseId,finish]=key.split("::");
-      const base=hardware.find(p=>p.id===baseId);
-      if(!base) continue;
-      const suffix=(finish==="Brass Plated"||finish==="Brass")?"-BR":"-BN";
-      await supabase.from("hardware_parts").insert({
-        part_name:base.part_name,
-        category:base.category,
-        code:`${base.code||(base.category==="Tension Rods"?"TROD":"LUG")}${suffix}`,
-        finish,
-        size:base.size,
-        qty_on_hand:Number(qty),
-        reorder_level:Number(base.reorder_level||0),
-        landed_cost_aud:Number(base.landed_cost_aud||0),
-        supplier:base.supplier,
-        notes:`Colour variant of ${base.code||base.part_name}`,
-      });
+    if(stockSaving) return;
+    setStockSaving(true);
+    setStockSaveMessage("");
+    try{
+      const changed=Object.fromEntries(Object.entries(counts).filter(([id,qty])=>Number(qty)!==Number(hardware.find(p=>p.id===id)?.qty_on_hand||0)));
+      const missing=Object.entries(newVariantCounts).filter(([,qty])=>Number(qty)>0);
+      const changedCount=Object.keys(changed).length;
+
+      if(!changedCount&&!missing.length){
+        setStockSaveMessage("No stock quantities were changed.");
+        return;
+      }
+
+      if(changedCount){
+        const ok=await saveStocktake?.(changed);
+        if(!ok){
+          setStockSaveMessage("Stock levels were not saved. Check the message at the top of the app and try again.");
+          return;
+        }
+      }
+
+      let createdCount=0;
+      for(const [key,qty] of missing){
+        const [baseId,finish]=key.split("::");
+        const base=hardware.find(p=>p.id===baseId);
+        if(!base) continue;
+        const suffix=(finish==="Brass Plated"||finish==="Brass")?"-BR":"-BN";
+        const {error}=await supabase.from("hardware_parts").insert({
+          part_name:base.part_name,
+          category:base.category,
+          code:`${base.code||(base.category==="Tension Rods"?"TROD":"LUG")}${suffix}`,
+          finish,
+          size:base.size,
+          qty_on_hand:Number(qty),
+          reorder_level:Number(base.reorder_level||0),
+          landed_cost_aud:Number(base.landed_cost_aud||0),
+          supplier:base.supplier,
+          notes:`Colour variant of ${base.code||base.part_name}`,
+        });
+        if(error) throw new Error(`Could not create ${finish} ${base.part_name}: ${error.message}`);
+        createdCount+=1;
+      }
+
+      setCounts({});
+      setNewVariantCounts({});
+      setStocktakeMode(false);
+      setStockSaveMessage(`Stock levels saved successfully${createdCount?` · ${createdCount} new finish variant${createdCount===1?"":"s"} added`:""}.`);
+      if(missing.length){
+        window.setTimeout(()=>window.location.reload(),900);
+      }else{
+        window.setTimeout(()=>setStockSaveMessage(""),3500);
+      }
+    }catch(error){
+      setStockSaveMessage(error?.message||"Stock levels could not be saved.");
+    }finally{
+      setStockSaving(false);
     }
-    setCounts({});setNewVariantCounts({});setStocktakeMode(false);
-    if(missing.length) window.location.reload();
   };
   const activeCustom=drums.filter(d=>d.sales_status==="Custom Order"&&!isArchivedStatus(d)&&!isSoldStatus(d)&&!isShippedStatus(d)&&String(d.hardware_option||"Standard Hardware")!=="No Hardware");
   const allocationByDrum=allocations.filter(a=>a.status==="Allocated").reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map},{});
@@ -5116,7 +5151,8 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
 
 
   return <section className="panel inventoryModule">
-    <div className="sectionHeader"><div><h2>Inventory</h2><p>{visibleHardware.length} displayed parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stock Levels</button></div>:<button className="primary" onClick={()=>setStocktakeMode(true)}>Adjust Stock Levels</button>)}</div>
+    {stockSaveMessage&&<div className={`stockSaveToast ${/successfully/i.test(stockSaveMessage)?"success":"notice"}`} role="status">{stockSaveMessage}</div>}
+    <div className="sectionHeader"><div><h2>Inventory</h2><p>{visibleHardware.length} displayed parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" disabled={stockSaving} onClick={saveAllCounts}>{stockSaving?"Saving…":"Save Stock Levels"}</button></div>:<button className="primary" onClick={()=>setStocktakeMode(true)}>Adjust Stock Levels</button>)}</div>
     <nav className="inventoryTabs"><button className={activeTab==="stock"?"active":""} onClick={()=>setActiveTab("stock")}>Stock Levels</button><button className={activeTab==="allocations"?"active":""} onClick={()=>setActiveTab("allocations")}>Drum Hardware</button><button className={activeTab==="capacity"?"active":""} onClick={()=>setActiveTab("capacity")}>Build Capacity</button><button className={activeTab==="reorder"?"active":""} onClick={()=>setActiveTab("reorder")}>Reorder Planner</button><button className={activeTab==="purchasing"?"active":""} onClick={()=>setActiveTab("purchasing")}>Purchase Orders</button></nav>
 
     {activeTab==="stock"&&<><div className="inventorySummaryGrid"><article className="card"><b>On hand</b><strong>{visibleHardware.reduce((s,p)=>s+Number(p.qty_on_hand||0),0)}</strong></article><article className="card"><b>Allocated</b><strong>{visibleHardware.reduce((s,p)=>s+Number(p.qty_allocated||0),0)}</strong></article><article className="card"><b>Available</b><strong>{visibleHardware.reduce((s,p)=>s+Math.max(0,Number(p.qty_available||0)),0)}</strong></article><article className="card"><b>Stock value</b><strong>{money(inventoryValue)}</strong></article></div>
@@ -5142,7 +5178,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
         }
         return [main,...existingRows,...missingRows];
       })}</tbody></table></div></section>})}
-      {stocktakeMode&&<div className="stocktakeFooter"><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stock Levels</button></div>}</>}
+      {stocktakeMode&&<div className="stocktakeFooter"><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" disabled={stockSaving} onClick={saveAllCounts}>{stockSaving?"Saving…":"Save Stock Levels"}</button></div>}</>}
 
     {activeTab==="allocations"&&<><section className="inventoryBlock"><h3>Custom Order Hardware Allocation</h3><p>Allocate parts when an order is accepted and physically place them aside. Assembling a drum deducts its selected hardware automatically.</p>{activeCustom.length===0?<p>No active custom snare orders.</p>:<div className="allocationGrid">{activeCustom.map(d=>{const allocated=allocationByDrum[d.id]?.length>0,reqs=drumHardwareRequirements(d),shortages=reqs.filter(req=>Number(byCode[req.code]?.qty_available||0)<req.qty);return <article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.customer||"Customer not entered"} · {d.build_type}</span><span className={allocated?"okText":shortages.length?"dangerText":"warningText"}>{allocated?"Hardware allocated":shortages.length?`${shortages.length} shortages`:"Ready to allocate"}</span>{shortages.length>0&&!allocated&&<small>{shortages.map(x=>x.label).join(", ")}</small>}<div className="buttonRow">{allocated?<button onClick={()=>releaseHardware(d)}>Release allocation</button>:<button className="primary" onClick={()=>allocateHardware(d)}>Allocate hardware</button>}</div></article>})}</div>}</section><section className="inventoryBlock"><h3>Hardware Fitted to Drums</h3><p>Open a Job Card and use <b>Adjust Hardware Used</b> to change this list.</p><div className="allocationGrid">{drums.filter(d=>consumedByDrum[d.id]?.length).map(d=><article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.timber} · {d.build_type}</span><small>{consumedByDrum[d.id].map(a=>`${a.quantity} × ${partById[a.hardware_part_id]?.part_name||"Hardware"}`).join(", ")}</small></article>)}</div>{!drums.some(d=>consumedByDrum[d.id]?.length)&&<p>No fitted hardware has been recorded yet.</p>}</section></>}
 

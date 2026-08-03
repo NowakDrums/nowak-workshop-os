@@ -1,0 +1,2 @@
+
+.stockSaveToast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2000;max-width:min(560px,calc(100vw - 28px));padding:14px 18px;border-radius:14px;border:1px solid #80652d;background:#201b12;color:#fff;font-weight:800;box-shadow:0 12px 35px rgba(0,0,0,.45);text-align:center}.stockSaveToast.success{background:#16351f;border-color:#4e9a61}.stockSaveToast.notice{background:#3a2a12;border-color:#c29136}.primary:disabled{opacity:.65;cursor:wait}
