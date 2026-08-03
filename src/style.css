@@ -1844,3 +1844,5 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .photoLightboxClose{position:fixed;top:max(16px,env(safe-area-inset-top));right:16px;width:46px;height:46px;border-radius:50%;font-size:30px;line-height:1;background:rgba(20,18,15,.85);color:#fff;border:1px solid rgba(255,255,255,.35);z-index:10001}
 .photoLightboxCaption{position:fixed;left:50%;bottom:max(18px,env(safe-area-inset-bottom));transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:rgba(20,18,15,.82);color:#fff}
 .newVariantRow small{color:var(--muted)}
+
+.allocationHint{display:block;color:#c58b36;font-weight:700;margin-top:3px;white-space:nowrap}
