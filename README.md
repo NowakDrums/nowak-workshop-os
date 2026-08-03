@@ -85,3 +85,11 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Added clear Adjust Stock Levels controls and direct plus/minus quantity adjustment.
 - Hides zero-stock special finishes while keeping chrome/stainless items and brass snare wires visible.
 - Special finish variants can be expanded beneath the matching chrome item.
+
+
+## v7.8.5 stock display correction
+
+- Snare wires are limited to Stainless Steel and Brass.
+- Black Nickel snare-wire variants are removed.
+- Colour-finish rows remain hidden in the normal Stock Levels view and appear only in Adjust Stock Levels mode.
+- Run `supabase/v7_8_5_snare_wire_finishes.sql` once to remove any accidental Black Nickel snare-wire records already in Supabase.

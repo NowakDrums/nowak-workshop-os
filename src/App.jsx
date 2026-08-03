@@ -4794,7 +4794,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
       const [baseId,finish]=key.split("::");
       const base=hardware.find(p=>p.id===baseId);
       if(!base) continue;
-      const suffix=finish==="Brass Plated"?"-BR":"-BN";
+      const suffix=(finish==="Brass Plated"||finish==="Brass")?"-BR":"-BN";
       await supabase.from("hardware_parts").insert({
         part_name:base.part_name,
         category:base.category,
@@ -4850,14 +4850,23 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const hasStandardCounterpart=part=>hardware.some(candidate=>candidate.id!==part.id&&variantBaseKey(candidate)===variantBaseKey(part)&&["Chrome","Stainless Steel"].includes(finishFamily(candidate)));
   const showInventoryPart=part=>{
     const family=finishFamily(part);
-    const isBrassSnareWire=String(part.category||"")==="Snare Wires" && family==="Brass / Gold";
     const hasStock=Number(part.qty_on_hand||0)>0||Number(part.qty_allocated||0)>0;
     const standardFinish=["Chrome","Stainless Steel"].includes(family);
-    if(standardFinish||isBrassSnareWire) return true;
+    // Snare-wire finish rows are managed only in stocktake mode. The everyday
+    // view uses the stainless-steel line as the single catalogue row.
+    if(String(part.category||"")==="Snare Wires") return family==="Stainless Steel";
+    // Normal stock view shows only the main catalogue line. Colour variants are
+    // available only after selecting Adjust Stock Levels.
+    if(standardFinish) return true;
     return !hasStandardCounterpart(part)&&(hasStock||specialFinishNeeded(part.finish));
   };
   const visibleHardware=hardware.filter(showInventoryPart);
-  const variantsFor=part=>hardware.filter(candidate=>candidate.id!==part.id&&variantBaseKey(candidate)===variantBaseKey(part)&&finishFamily(candidate)!==finishFamily(part));
+  const variantsFor=part=>hardware.filter(candidate=>{
+    if(candidate.id===part.id||variantBaseKey(candidate)!==variantBaseKey(part)||finishFamily(candidate)===finishFamily(part)) return false;
+    // Snare wires are manufactured only in stainless steel or brass.
+    if(String(part.category||"")==="Snare Wires") return finishFamily(candidate)==="Brass / Gold";
+    return true;
+  });
   const consumed=allocations.filter(a=>a.status==="Consumed"),consumedByDrum=consumed.reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map},{}),partById=Object.fromEntries(hardware.map(p=>[p.id,p]));
 
   const plannedRequirements={};
@@ -5106,9 +5115,15 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
         if(!stocktakeMode) return [main];
         const existingRows=variants.map(v=><tr className="variantRow" key={v.id}><td><span className="variantIndent">↳ {v.finish||v.part_name}</span></td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" value={counts[v.id]??v.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[v.id]:Number(e.target.value)}))}/></td><td>{v.qty_allocated}</td><td><b>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td>{v.reorder_level||0}</td></tr>);
         const missingRows=[];
-        if((p.category==="Lugs"&&finishFamily(p)==="Chrome")||(p.category==="Tension Rods"&&["Chrome","Stainless Steel"].includes(finishFamily(p)))){
-          ["Brass Plated","Black Nickel"].forEach(finish=>{
-            const exists=variants.some(v=>finishFamily(v)===(finish==="Brass Plated"?"Brass / Gold":"Black Nickel"));
+        const optionalFinishes=(p.category==="Snare Wires"&&finishFamily(p)==="Stainless Steel")
+          ?["Brass"]
+          :((p.category==="Lugs"&&finishFamily(p)==="Chrome")||(p.category==="Tension Rods"&&["Chrome","Stainless Steel"].includes(finishFamily(p))))
+            ?["Brass Plated","Black Nickel"]
+            :[];
+        if(optionalFinishes.length){
+          optionalFinishes.forEach(finish=>{
+            const wantedFamily=finish==="Black Nickel"?"Black Nickel":"Brass / Gold";
+            const exists=variants.some(v=>finishFamily(v)===wantedFamily);
             if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional hardware finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" value={newVariantCounts[key]??0} onChange={e=>setNewVariantCounts(c=>({...c,[key]:Number(e.target.value)}))}/></td><td>0</td><td><b>{newVariantCounts[key]??0}</b></td><td>{money(p.landed_cost_aud||0)}</td><td>{p.reorder_level||0}</td></tr>)};
           });
         }
