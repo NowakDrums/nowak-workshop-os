@@ -2853,7 +2853,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.8.9 — reliable stock-level saving and visible build version.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.8.10 — stock levels are written and verified against Supabase.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4803,29 +4803,31 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     setStockSaving(true);
     setStockSaveMessage("");
     try{
-      // Read the live input values as well as React state. This makes saving
-      // reliable on iPhone/iPad and desktop browsers even when the final
-      // number field has not blurred before Save Stock Levels is pressed.
-      const liveCounts={...counts};
+      // Treat the rendered stocktake inputs as the source of truth. Saving all
+      // visible existing rows avoids browser timing issues where React state
+      // has not caught up with the final number entered before Save is tapped.
+      const allVisibleCounts={};
       document.querySelectorAll("input[data-stock-id]").forEach(input=>{
-        liveCounts[input.dataset.stockId]=Math.max(0,Number(input.value||0));
+        const id=String(input.dataset.stockId||"");
+        if(id) allVisibleCounts[id]=Math.max(0,Number(input.value||0));
       });
-      const liveVariantCounts={...newVariantCounts};
+
+      const allVisibleVariantCounts={};
       document.querySelectorAll("input[data-new-variant-key]").forEach(input=>{
-        liveVariantCounts[input.dataset.newVariantKey]=Math.max(0,Number(input.value||0));
+        const key=String(input.dataset.newVariantKey||"");
+        if(key) allVisibleVariantCounts[key]=Math.max(0,Number(input.value||0));
       });
 
-      const changed=Object.fromEntries(Object.entries(liveCounts).filter(([id,qty])=>Number(qty)!==Number(hardware.find(p=>p.id===id)?.qty_on_hand||0)));
-      const missing=Object.entries(liveVariantCounts).filter(([,qty])=>Number(qty)>0);
-      const changedCount=Object.keys(changed).length;
+      const existingCount=Object.keys(allVisibleCounts).length;
+      const missing=Object.entries(allVisibleVariantCounts).filter(([,qty])=>Number(qty)>0);
 
-      if(!changedCount&&!missing.length){
-        setStockSaveMessage("No stock quantities were changed. Enter a different number, then press Save Stock Levels.");
+      if(!existingCount&&!missing.length){
+        setStockSaveMessage("No stock fields were available to save. Close adjustment mode, reopen it and try again.");
         return;
       }
 
-      if(changedCount){
-        const ok=await saveStocktake?.(changed);
+      if(existingCount){
+        const ok=await saveStocktake?.(allVisibleCounts);
         if(!ok){
           setStockSaveMessage("Stock levels were not saved. Check the message at the top of the app and try again.");
           return;
@@ -4834,9 +4836,11 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
 
       let createdCount=0;
       for(const [key,qty] of missing){
-        const [baseId,finish]=key.split("::");
-        const base=hardware.find(p=>p.id===baseId);
-        if(!base) continue;
+        const separator=key.lastIndexOf("::");
+        const baseId=separator>=0?key.slice(0,separator):key;
+        const finish=separator>=0?key.slice(separator+2):"";
+        const base=hardware.find(p=>String(p.id)===String(baseId));
+        if(!base) throw new Error(`Could not find the base hardware item for ${finish}.`);
         const suffix=(finish==="Brass Plated"||finish==="Brass")?"-BR":"-BN";
         const {error}=await supabase.from("hardware_parts").insert({
           part_name:base.part_name,
@@ -4854,15 +4858,21 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
         createdCount+=1;
       }
 
+      // Verify existing quantities directly against Supabase before reporting success.
+      if(existingCount){
+        const ids=Object.keys(allVisibleCounts);
+        const {data,error}=await supabase.from("hardware_parts").select("id,qty_on_hand").in("id",ids);
+        if(error) throw new Error(`Stock was sent but could not be verified: ${error.message}`);
+        const saved=Object.fromEntries((data||[]).map(row=>[String(row.id),Number(row.qty_on_hand||0)]));
+        const mismatch=ids.find(id=>Number(saved[String(id)])!==Number(allVisibleCounts[id]));
+        if(mismatch) throw new Error("Supabase did not return the saved quantity for one or more stock items. Please check database permissions.");
+      }
+
       setCounts({});
       setNewVariantCounts({});
       setStocktakeMode(false);
-      setStockSaveMessage(`Stock levels saved successfully · ${changedCount} existing item${changedCount===1?"":"s"} updated${createdCount?` · ${createdCount} new finish variant${createdCount===1?"":"s"} added`:""}.`);
-      if(missing.length){
-        window.setTimeout(()=>window.location.reload(),900);
-      }else{
-        window.setTimeout(()=>setStockSaveMessage(""),3500);
-      }
+      setStockSaveMessage(`Stock levels saved and verified · ${existingCount} existing item${existingCount===1?"":"s"} written${createdCount?` · ${createdCount} new finish variant${createdCount===1?"":"s"} added`:""}.`);
+      window.setTimeout(()=>window.location.reload(),1100);
     }catch(error){
       setStockSaveMessage(error?.message||"Stock levels could not be saved.");
     }finally{

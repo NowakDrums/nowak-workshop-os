@@ -115,3 +115,10 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Corrected the visible app version.
 - Stock saving now reads live input values directly before comparing and saving.
 - Added explicit saved-item counts in the success message.
+
+
+## v7.8.10
+- Stock adjustment now writes every visible quantity rather than relying on change detection.
+- Saved quantities are read back from Supabase and verified before success is shown.
+- New finish variants use robust IDs even when the base ID contains punctuation.
+- The app reloads only after a verified save.
