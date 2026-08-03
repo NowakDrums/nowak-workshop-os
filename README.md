@@ -93,3 +93,11 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Black Nickel snare-wire variants are removed.
 - Colour-finish rows remain hidden in the normal Stock Levels view and appear only in Adjust Stock Levels mode.
 - Run `supabase/v7_8_5_snare_wire_finishes.sql` once to remove any accidental Black Nickel snare-wire records already in Supabase.
+
+
+## v7.8.6 remaining hardware finish variants
+
+- Floor tom leg sets and tom mounts now offer Brass Plated and Black Nickel variants in Adjust Stock Levels.
+- Bass drum claws and bass drum spurs now offer Brass Plated and Black Nickel variants in Adjust Stock Levels.
+- Missing variants are created automatically when a non-zero quantity is entered and stock levels are saved.
+- Run `supabase/v7_8_6_floor_tom_and_bass_hardware_finishes.sql` to pre-create these variants at zero stock.

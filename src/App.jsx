@@ -5117,7 +5117,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
         const missingRows=[];
         const optionalFinishes=(p.category==="Snare Wires"&&finishFamily(p)==="Stainless Steel")
           ?["Brass"]
-          :((p.category==="Lugs"&&finishFamily(p)==="Chrome")||(p.category==="Tension Rods"&&["Chrome","Stainless Steel"].includes(finishFamily(p))))
+          :(((p.category==="Lugs"||p.category==="Floor Tom Hardware"||p.category==="Bass Drum Hardware")&&finishFamily(p)==="Chrome")||(p.category==="Tension Rods"&&["Chrome","Stainless Steel"].includes(finishFamily(p))))
             ?["Brass Plated","Black Nickel"]
             :[];
         if(optionalFinishes.length){
