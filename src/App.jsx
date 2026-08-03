@@ -2853,7 +2853,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.8.13 — stable mobile stock editing for snare wires and hardware.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.8.14 — clean finish variants, duplicate protection and correct minimum-level rules.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4867,7 +4867,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
           finish,
           size:base.size,
           qty_on_hand:Number(qty),
-          reorder_level:Number(allVisibleVariantMinimums[key]??base.reorder_level??0),
+          reorder_level:String(base.category||"")==="Snare Wires"?Number(allVisibleVariantMinimums[key]??base.reorder_level??0):0,
           landed_cost_aud:Number(base.landed_cost_aud||0),
           supplier:base.supplier,
           notes:`Colour variant of ${base.code||base.part_name}`,
@@ -4935,21 +4935,39 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const code=String(part.code||"").toUpperCase().replace(/-(?:BR|BN)$/i,"").trim();
     return [part.category,code||clean(part.part_name),clean(part.size)].join("|");
   };
-  const hasStandardCounterpart=part=>hardware.some(candidate=>candidate.id!==part.id&&variantBaseKey(candidate)===variantBaseKey(part)&&["Chrome","Stainless Steel"].includes(finishFamily(candidate)));
+  // Collapse duplicate catalogue rows for display. Repeated records created by older
+  // finish-variant releases represent the same physical stock, so use the highest
+  // quantity rather than adding them together and keep one stable database id.
+  const displayHardware=Array.from(hardware.reduce((map,part)=>{
+    const key=`${variantBaseKey(part)}|${finishFamily(part)}`;
+    const existing=map.get(key);
+    if(!existing){ map.set(key,{...part}); return map; }
+    map.set(key,{
+      ...existing,
+      qty_on_hand:Math.max(Number(existing.qty_on_hand||0),Number(part.qty_on_hand||0)),
+      qty_allocated:Math.max(Number(existing.qty_allocated||0),Number(part.qty_allocated||0)),
+      qty_available:Math.max(Number(existing.qty_available||0),Number(part.qty_available||0)),
+      reorder_level:Math.max(Number(existing.reorder_level||0),Number(part.reorder_level||0)),
+      landed_cost_aud:Number(existing.landed_cost_aud||0)||Number(part.landed_cost_aud||0),
+    });
+    return map;
+  },new Map()).values());
+  const hasStandardCounterpart=part=>displayHardware.some(candidate=>candidate.id!==part.id&&variantBaseKey(candidate)===variantBaseKey(part)&&["Chrome","Stainless Steel"].includes(finishFamily(candidate)));
   const showInventoryPart=part=>{
     const family=finishFamily(part);
     const hasStock=Number(part.qty_on_hand||0)>0||Number(part.qty_allocated||0)>0;
     const standardFinish=["Chrome","Stainless Steel"].includes(family);
     // In adjustment mode, brass snare wires are grouped beneath the stainless
     // parent. In the normal inventory view, brass appears only when stock exists.
-    if(String(part.category||"")==="Snare Wires") return family==="Stainless Steel"||(!stocktakeMode&&family==="Brass / Gold"&&hasStock);
-    // Normal stock view always shows the main catalogue line. Brass and Black
-    // Nickel variants are hidden at zero, but become visible once stock exists.
+    if(String(part.category||"")==="Snare Wires") return family==="Stainless Steel"||(!stocktakeMode&&family==="Brass / Gold");
+    // Normal stock view always shows the main Chrome/Stainless catalogue line.
+    // Brass and Black Nickel hardware is hidden whenever its physical quantity is zero.
     if(standardFinish) return true;
-    return hasStock||specialFinishNeeded(part.finish);
+    return hasStock;
   };
-  const visibleHardware=hardware.filter(showInventoryPart);
-  const variantsFor=part=>hardware.filter(candidate=>{
+  const visibleHardware=displayHardware.filter(showInventoryPart);
+  const stocktakeParents=displayHardware.filter(part=>["Chrome","Stainless Steel"].includes(finishFamily(part)));
+  const variantsFor=part=>displayHardware.filter(candidate=>{
     if(candidate.id===part.id||variantBaseKey(candidate)!==variantBaseKey(part)||finishFamily(candidate)===finishFamily(part)) return false;
     if(["Chrome","Stainless Steel"].includes(finishFamily(candidate))) return false;
     // Snare wires are manufactured only in stainless steel or brass.
@@ -5199,11 +5217,11 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
     {activeTab==="stock"&&<><div className="inventorySummaryGrid"><article className="card"><b>On hand</b><strong>{visibleHardware.reduce((s,p)=>s+Number(p.qty_on_hand||0),0)}</strong></article><article className="card"><b>Allocated</b><strong>{visibleHardware.reduce((s,p)=>s+Number(p.qty_allocated||0),0)}</strong></article><article className="card"><b>Available</b><strong>{visibleHardware.reduce((s,p)=>s+Math.max(0,Number(p.qty_available||0)),0)}</strong></article><article className="card"><b>Stock value</b><strong>{money(inventoryValue)}</strong></article></div>
       {stocktakeMode&&<div className="stocktakeNotice"><b>Stocktake mode</b><span>Enter the quantity physically on the shelf. Fitted hardware is not included.</span></div>}
       <div className="stockLevelHelp"><b>Stock levels:</b> select <b>Adjust Stock Levels</b> when you want to enter physical counts. The normal view stays read-only and shows only useful stock lines.</div>
-      {groups.map(group=>{const parts=visibleHardware.filter(p=>p.category===group).sort(sortParts);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Unit cost</th><th>Minimum</th></tr></thead><tbody>{parts.flatMap(p=>{
-        const variants=variantsFor(p).sort(sortParts);
+      {groups.map(group=>{const parts=(stocktakeMode?stocktakeParents:visibleHardware).filter(p=>p.category===group).sort(sortParts);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Unit cost</th><th>Minimum</th></tr></thead><tbody>{parts.flatMap(p=>{
+        const variants=stocktakeMode?variantsFor(p).sort(sortParts):[];
         const main=<tr key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={p.id} defaultValue={Number(p.qty_on_hand||0)}/>:<b>{p.qty_on_hand}</b>}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td>{stocktakeMode?<input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/>:money(p.landed_cost_aud||0)}</td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" data-stock-min-id={p.id} defaultValue={Number(p.reorder_level||0)}/>:<b>{p.reorder_level||0}</b>}</td></tr>;
         if(!stocktakeMode) return [main];
-        const existingRows=variants.map(v=><tr className="variantRow" key={v.id}><td><span className="variantIndent">↳ {v.finish||v.part_name}</span></td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={v.id} defaultValue={Number(v.qty_on_hand||0)}/></td><td>{v.qty_allocated}</td><td><b>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td><input className="compactInput" type="number" min="0" data-stock-min-id={v.id} defaultValue={Number(v.reorder_level||0)}/></td></tr>);
+        const existingRows=variants.map(v=>{const allowMinimum=String(v.category||"")==="Snare Wires";return <tr className="variantRow" key={v.id}><td><span className="variantIndent">↳ {v.finish||v.part_name}</span></td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={v.id} defaultValue={Number(v.qty_on_hand||0)}/></td><td>{v.qty_allocated}</td><td><b>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td>{allowMinimum?<input className="compactInput" type="number" min="0" data-stock-min-id={v.id} defaultValue={Number(v.reorder_level||0)}/>:<b>—</b>}</td></tr>});
         const missingRows=[];
         const optionalFinishes=(p.category==="Snare Wires"&&finishFamily(p)==="Stainless Steel")
           ?["Brass"]
@@ -5214,7 +5232,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
           optionalFinishes.forEach(finish=>{
             const wantedFamily=finish==="Black Nickel"?"Black Nickel":"Brass / Gold";
             const exists=variants.some(v=>finishFamily(v)===wantedFamily);
-            if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional hardware finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-new-variant-key={key} defaultValue={0}/></td><td>0</td><td><b>—</b></td><td>{money(p.landed_cost_aud||0)}</td><td><input className="compactInput" type="number" min="0" data-new-variant-min-key={key} defaultValue={Number(p.reorder_level||0)}/></td></tr>)};
+            if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional hardware finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-new-variant-key={key} defaultValue={0}/></td><td>0</td><td><b>—</b></td><td>{money(p.landed_cost_aud||0)}</td><td>{String(p.category||"")==="Snare Wires"?<input className="compactInput" type="number" min="0" data-new-variant-min-key={key} defaultValue={Number(p.reorder_level||0)}/>:<b>—</b>}</td></tr>)};
           });
         }
         return [main,...existingRows,...missingRows];

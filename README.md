@@ -141,3 +141,12 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Normal Inventory view is read-only.
 - Brass snare wires with stock now display in normal Inventory.
 - Brass and other finish variants support editable minimum levels in Adjust Stock Levels mode.
+
+
+## v7.8.14 inventory variant cleanup
+
+- Zero-stock Brass Plated and Black Nickel hardware is hidden in normal Inventory.
+- Brass snare wires remain visible even at zero stock.
+- Special-finish hardware has no minimum-order level; snare wires remain the exception.
+- Duplicate finish rows are collapsed in the app and a database cleanup migration is included.
+- Adjustment mode shows one Chrome/Stainless parent with one Brass and one Black Nickel row only.
