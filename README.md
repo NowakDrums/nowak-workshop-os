@@ -101,3 +101,11 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Bass drum claws and bass drum spurs now offer Brass Plated and Black Nickel variants in Adjust Stock Levels.
 - Missing variants are created automatically when a non-zero quantity is entered and stock levels are saved.
 - Run `supabase/v7_8_6_floor_tom_and_bass_hardware_finishes.sql` to pre-create these variants at zero stock.
+
+
+## v7.8.7 Ball Lug and variant grouping cleanup
+
+- Duplicate catalogue rows are collapsed in the app so the Agile Tube Lug – Ball appears once.
+- Brass Plated and Black Nickel variants are grouped beneath the Chrome Plated parent only in Adjust Stock Levels mode.
+- Variant matching now uses supplier code and size, making grouping consistent even when names differ slightly.
+- Run `supabase/v7_8_7_ball_lug_variant_cleanup.sql` to permanently remove duplicate ATL01-01 Chrome Plated rows.

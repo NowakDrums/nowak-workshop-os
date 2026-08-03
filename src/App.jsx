@@ -1716,8 +1716,19 @@ function App(){
     return g;
   },[filtered]);
   const allocatedByPart=hardwareAllocations.filter(a=>a.status==="Allocated").reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
-  const availableHardware=hardware.map(p=>({...p,qty_allocated:Number(allocatedByPart[p.id]||0),qty_available:Number(p.qty_on_hand||0)-Number(allocatedByPart[p.id]||0)}));
-  const inventoryValue=hardware.reduce((s,p)=>s+Number(p.qty_on_hand||0)*Number(p.landed_cost_aud||0),0);
+  const catalogueIdentity=part=>{
+    const clean=value=>String(value||"").toLowerCase().replace(/\s+/g," ").trim();
+    return [clean(part.category),clean(part.part_name),clean(part.code),clean(part.finish),clean(part.size)].join("|");
+  };
+  const catalogueHardware=Object.values(hardware.reduce((map,part)=>{
+    const key=catalogueIdentity(part);
+    const current=map[key];
+    const score=item=>Number(item?.qty_on_hand||0)+Number(allocatedByPart[item?.id]||0)+(Number(item?.landed_cost_aud||0)>0?0.01:0);
+    if(!current||score(part)>score(current)) map[key]=part;
+    return map;
+  },{}));
+  const availableHardware=catalogueHardware.map(p=>({...p,qty_allocated:Number(allocatedByPart[p.id]||0),qty_available:Number(p.qty_on_hand||0)-Number(allocatedByPart[p.id]||0)}));
+  const inventoryValue=catalogueHardware.reduce((s,p)=>s+Number(p.qty_on_hand||0)*Number(p.landed_cost_aud||0),0);
   const lowStock=availableHardware.filter(p=>Number(p.qty_available||0)<=Number(p.reorder_level||0)).length;
   const retail=active.reduce((s,d)=>s+Number(d.total_price||d.retail_price||0),0);
   const cost=active.reduce((s,d)=>s+templateCost(templateMap[d.template_name],labourRate),0);
@@ -4843,9 +4854,10 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   };
   const variantBaseKey=part=>{
     const clean=value=>String(value||"").toLowerCase()
-      .replace(/black\s*nickel|chrome\s*plated|chrome|brass|gold|stainless\s*steel/g,"")
+      .replace(/black\s*nickel|chrome\s*plated|chrome|brass\s*plated|brass|gold|stainless\s*steel/g,"")
       .replace(/[^a-z0-9]+/g," ").trim();
-    return [part.category,clean(part.part_name),clean(part.size)].join("|");
+    const code=String(part.code||"").toUpperCase().replace(/-(?:BR|BN)$/i,"").trim();
+    return [part.category,code||clean(part.part_name),clean(part.size)].join("|");
   };
   const hasStandardCounterpart=part=>hardware.some(candidate=>candidate.id!==part.id&&variantBaseKey(candidate)===variantBaseKey(part)&&["Chrome","Stainless Steel"].includes(finishFamily(candidate)));
   const showInventoryPart=part=>{
@@ -4863,6 +4875,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const visibleHardware=hardware.filter(showInventoryPart);
   const variantsFor=part=>hardware.filter(candidate=>{
     if(candidate.id===part.id||variantBaseKey(candidate)!==variantBaseKey(part)||finishFamily(candidate)===finishFamily(part)) return false;
+    if(["Chrome","Stainless Steel"].includes(finishFamily(candidate))) return false;
     // Snare wires are manufactured only in stainless steel or brass.
     if(String(part.category||"")==="Snare Wires") return finishFamily(candidate)==="Brass / Gold";
     return true;
