@@ -1833,3 +1833,8 @@ button:disabled{opacity:.55;cursor:not-allowed}
 
 /* v7.8.0 landed-cost receiving */
 .landedCostSummary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.landedCostSummary>div{display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid #4b3e2c;border-radius:9px;background:#15130f}.landedCostSummary span{font-size:12px;color:#b8aa96}.landedCostSummary b{font-size:18px}.landedCostSummary .total{border-color:#c99b4d;background:#211b12}.purchaseOrderReceiveModal table{min-width:980px}.purchaseOrderReceiveModal label small{display:block;margin-top:4px;color:#9f927f;font-weight:400}@media(max-width:800px){.landedCostSummary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stockLevelHelp{margin:12px 0 18px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:rgba(213,170,93,.08);line-height:1.45}
+.qtyAdjust{display:flex;align-items:center;gap:8px;white-space:nowrap}.qtyAdjust button{width:30px;height:30px;padding:0;border-radius:8px;font-size:18px;line-height:1}.qtyAdjust b{min-width:26px;text-align:center}
+.variantToggle{display:block;margin-top:7px;padding:4px 8px;font-size:12px;border-radius:8px;background:transparent;color:var(--gold);border:1px solid rgba(213,170,93,.35)}
+.variantRow{background:rgba(213,170,93,.045)}.variantIndent{padding-left:12px;color:var(--gold)}
+@media(max-width:700px){.qtyAdjust{gap:5px}.qtyAdjust button{width:34px;height:34px}.variantToggle{font-size:11px}}
