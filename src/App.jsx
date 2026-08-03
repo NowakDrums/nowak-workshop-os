@@ -2853,7 +2853,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.8.12 — stable mobile stock editing for snare wires and hardware.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.8.13 — stable mobile stock editing for snare wires and hardware.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4818,6 +4818,17 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
         if(key) allVisibleVariantCounts[key]=Math.max(0,Number(input.value||0));
       });
 
+      const allVisibleMinimums={};
+      document.querySelectorAll("input[data-stock-min-id]").forEach(input=>{
+        const id=String(input.dataset.stockMinId||"");
+        if(id) allVisibleMinimums[id]=Math.max(0,Number(input.value||0));
+      });
+      const allVisibleVariantMinimums={};
+      document.querySelectorAll("input[data-new-variant-min-key]").forEach(input=>{
+        const key=String(input.dataset.newVariantMinKey||"");
+        if(key) allVisibleVariantMinimums[key]=Math.max(0,Number(input.value||0));
+      });
+
       const existingCount=Object.keys(allVisibleCounts).length;
       const missing=Object.entries(allVisibleVariantCounts).filter(([,qty])=>Number(qty)>0);
 
@@ -4831,6 +4842,13 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
         if(!ok){
           setStockSaveMessage("Stock levels were not saved. Check the message at the top of the app and try again.");
           return;
+        }
+      }
+      for(const [id,minimum] of Object.entries(allVisibleMinimums)){
+        const current=hardware.find(part=>String(part.id)===String(id));
+        if(current&&Number(current.reorder_level||0)!==Number(minimum)){
+          const {error}=await supabase.from("hardware_parts").update({reorder_level:Number(minimum)}).eq("id",id);
+          if(error) throw new Error(`Could not save the minimum level for ${current.part_name}: ${error.message}`);
         }
       }
 
@@ -4849,7 +4867,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
           finish,
           size:base.size,
           qty_on_hand:Number(qty),
-          reorder_level:Number(base.reorder_level||0),
+          reorder_level:Number(allVisibleVariantMinimums[key]??base.reorder_level??0),
           landed_cost_aud:Number(base.landed_cost_aud||0),
           supplier:base.supplier,
           notes:`Colour variant of ${base.code||base.part_name}`,
@@ -4922,9 +4940,9 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const family=finishFamily(part);
     const hasStock=Number(part.qty_on_hand||0)>0||Number(part.qty_allocated||0)>0;
     const standardFinish=["Chrome","Stainless Steel"].includes(family);
-    // Snare-wire finish rows are managed only in stocktake mode. The everyday
-    // view uses the stainless-steel line as the single catalogue row.
-    if(String(part.category||"")==="Snare Wires") return family==="Stainless Steel";
+    // In adjustment mode, brass snare wires are grouped beneath the stainless
+    // parent. In the normal inventory view, brass appears only when stock exists.
+    if(String(part.category||"")==="Snare Wires") return family==="Stainless Steel"||(!stocktakeMode&&family==="Brass / Gold"&&hasStock);
     // Normal stock view always shows the main catalogue line. Brass and Black
     // Nickel variants are hidden at zero, but become visible once stock exists.
     if(standardFinish) return true;
@@ -5183,9 +5201,9 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
       <div className="stockLevelHelp"><b>Stock levels:</b> select <b>Adjust Stock Levels</b> when you want to enter physical counts. The normal view stays read-only and shows only useful stock lines.</div>
       {groups.map(group=>{const parts=visibleHardware.filter(p=>p.category===group).sort(sortParts);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Unit cost</th><th>Minimum</th></tr></thead><tbody>{parts.flatMap(p=>{
         const variants=variantsFor(p).sort(sortParts);
-        const main=<tr key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={p.id} defaultValue={Number(p.qty_on_hand||0)}/>:<b>{p.qty_on_hand}</b>}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td><input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/></td><td><input className="compactInput" type="number" min="0" defaultValue={Number(p.reorder_level||0)} onBlur={e=>Number(e.target.value)!==Number(p.reorder_level||0)&&updateHardware(p.id,{reorder_level:Number(e.target.value||0)})}/></td></tr>;
+        const main=<tr key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={p.id} defaultValue={Number(p.qty_on_hand||0)}/>:<b>{p.qty_on_hand}</b>}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td>{stocktakeMode?<input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/>:money(p.landed_cost_aud||0)}</td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" data-stock-min-id={p.id} defaultValue={Number(p.reorder_level||0)}/>:<b>{p.reorder_level||0}</b>}</td></tr>;
         if(!stocktakeMode) return [main];
-        const existingRows=variants.map(v=><tr className="variantRow" key={v.id}><td><span className="variantIndent">↳ {v.finish||v.part_name}</span></td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={v.id} defaultValue={Number(v.qty_on_hand||0)}/></td><td>{v.qty_allocated}</td><td><b>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td>{v.reorder_level||0}</td></tr>);
+        const existingRows=variants.map(v=><tr className="variantRow" key={v.id}><td><span className="variantIndent">↳ {v.finish||v.part_name}</span></td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={v.id} defaultValue={Number(v.qty_on_hand||0)}/></td><td>{v.qty_allocated}</td><td><b>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td><input className="compactInput" type="number" min="0" data-stock-min-id={v.id} defaultValue={Number(v.reorder_level||0)}/></td></tr>);
         const missingRows=[];
         const optionalFinishes=(p.category==="Snare Wires"&&finishFamily(p)==="Stainless Steel")
           ?["Brass"]
@@ -5196,7 +5214,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
           optionalFinishes.forEach(finish=>{
             const wantedFamily=finish==="Black Nickel"?"Black Nickel":"Brass / Gold";
             const exists=variants.some(v=>finishFamily(v)===wantedFamily);
-            if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional hardware finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-new-variant-key={key} defaultValue={0}/></td><td>0</td><td><b>—</b></td><td>{money(p.landed_cost_aud||0)}</td><td>{p.reorder_level||0}</td></tr>)};
+            if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional hardware finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-new-variant-key={key} defaultValue={0}/></td><td>0</td><td><b>—</b></td><td>{money(p.landed_cost_aud||0)}</td><td><input className="compactInput" type="number" min="0" data-new-variant-min-key={key} defaultValue={Number(p.reorder_level||0)}/></td></tr>)};
           });
         }
         return [main,...existingRows,...missingRows];

@@ -117,21 +117,27 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Added explicit saved-item counts in the success message.
 
 
-## v7.8.11
+## v7.8.13
 - Stock adjustment now writes every visible quantity rather than relying on change detection.
 - Saved quantities are read back from Supabase and verified before success is shown.
 - New finish variants use robust IDs even when the base ID contains punctuation.
 - The app reloads only after a verified save.
 
 
-## v7.8.11
+## v7.8.13
 - Saving stock levels no longer reloads the app or sends the user to Dashboard.
 - Newly created Brass and Black Nickel variants are reloaded immediately.
 - Non-zero finish variants are visible in the normal Stock Levels view; zero-stock variants remain hidden.
 
 
-## v7.8.12
+## v7.8.13
 - Stocktake quantity fields no longer re-render the entire Inventory page on every digit entered.
 - Brass snare-wire quantities can be entered safely on mobile and desktop.
 - Save Stock Levels continues reading the final values directly from the visible fields.
 - No Supabase migration is required for this update.
+
+
+## v7.8.13
+- Normal Inventory view is read-only.
+- Brass snare wires with stock now display in normal Inventory.
+- Brass and other finish variants support editable minimum levels in Adjust Stock Levels mode.
