@@ -4798,7 +4798,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
       await supabase.from("hardware_parts").insert({
         part_name:base.part_name,
         category:base.category,
-        code:`${base.code||"LUG"}${suffix}`,
+        code:`${base.code||(base.category==="Tension Rods"?"TROD":"LUG")}${suffix}`,
         finish,
         size:base.size,
         qty_on_hand:Number(qty),
@@ -5106,10 +5106,10 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
         if(!stocktakeMode) return [main];
         const existingRows=variants.map(v=><tr className="variantRow" key={v.id}><td><span className="variantIndent">↳ {v.finish||v.part_name}</span></td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" value={counts[v.id]??v.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[v.id]:Number(e.target.value)}))}/></td><td>{v.qty_allocated}</td><td><b>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td>{v.reorder_level||0}</td></tr>);
         const missingRows=[];
-        if(p.category==="Lugs"&&finishFamily(p)==="Chrome"){
+        if((p.category==="Lugs"&&finishFamily(p)==="Chrome")||(p.category==="Tension Rods"&&["Chrome","Stainless Steel"].includes(finishFamily(p)))){
           ["Brass Plated","Black Nickel"].forEach(finish=>{
             const exists=variants.some(v=>finishFamily(v)===(finish==="Brass Plated"?"Brass / Gold":"Black Nickel"));
-            if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional lug finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" value={newVariantCounts[key]??0} onChange={e=>setNewVariantCounts(c=>({...c,[key]:Number(e.target.value)}))}/></td><td>0</td><td><b>{newVariantCounts[key]??0}</b></td><td>{money(p.landed_cost_aud||0)}</td><td>{p.reorder_level||0}</td></tr>)};
+            if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional hardware finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" value={newVariantCounts[key]??0} onChange={e=>setNewVariantCounts(c=>({...c,[key]:Number(e.target.value)}))}/></td><td>0</td><td><b>{newVariantCounts[key]??0}</b></td><td>{money(p.landed_cost_aud||0)}</td><td>{p.reorder_level||0}</td></tr>)};
           });
         }
         return [main,...existingRows,...missingRows];
