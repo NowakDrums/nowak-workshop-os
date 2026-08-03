@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.9.0
+# Nowak Workshop OS v7.9.1
 
 Controlled repair release consolidating hardware allocations, shortages, purchase-order calculations and two-decimal AUD currency formatting. Custom drum orders now reserve standard hardware automatically, including reservations that create a shortage.
 
@@ -181,3 +181,11 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Current allocation shortages are automatically added to the Suggested Purchase Order, even when the target drum planner requires zero additional units.
 - Negative availability is preserved in the purchase calculation so shortages are not lost by rounding to zero.
 - An allocated item with exactly zero available stock is treated as an urgent replenishment line: it is red in Inventory and adds at least one replacement unit to the next suggested purchase order.
+
+## v7.9.1 — reservation model repair
+
+- Reserving hardware for a production drum no longer reduces physical `On hand` stock.
+- `Allocated` increases and `Available = On hand - Allocated`, including negative values.
+- Zero-stock parts can still be reserved; the negative available balance is highlighted red and carried into purchase ordering.
+- Physical stock is deducted only when the drum is marked Assembled.
+- Run `supabase/v7_9_1_restore_production_reservations.sql` once to repair production allocations that older builds incorrectly recorded as Consumed.

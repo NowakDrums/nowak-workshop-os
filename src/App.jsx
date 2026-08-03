@@ -1995,53 +1995,85 @@ function App(){
   async function consumeHardwareForDrum(drum){
     const requirements=drumHardwareRequirements(drum);
     if(!requirements.length){setMessage("Standard hardware is available for 10, 12, 13 and 14-inch snare drums only.");return false;}
-    return await syncHardwareUsed(drum,requirements);
+    return await syncHardwareUsed(drum,requirements,true);
   }
 
-  async function syncHardwareUsed(drum,selectedRequirements,allowNegative=false){
-    const selectedCodes=new Set(selectedRequirements.map(req=>req.code));
-    const byCode=Object.fromEntries(hardware.map(part=>[hardwareLookupKey(part),part]));
-    const consumed=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Consumed");
-    const allocated=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Allocated");
-    const workingQty=Object.fromEntries(hardware.map(part=>[part.id,Number(part.qty_on_hand||0)]));
+  async function syncHardwareReservation(drum,selectedRequirements){
+    const byCode=Object.fromEntries(availableHardware.flatMap(part=>[
+      [hardwareLookupKey(part),part],
+      [String(part.code||""),part],
+      [String(part.sku_key||""),part]
+    ]).filter(([key])=>key));
+    const active=hardwareAllocations.filter(a=>a.drum_id===drum.id && String(a.status||"").toLowerCase()==="allocated");
+    const wanted=new Map(selectedRequirements.map(req=>[req.code,req]));
 
-    for(const allocation of consumed){
-      const part=hardware.find(p=>p.id===allocation.hardware_part_id);
-      if(part && !selectedCodes.has(hardwareLookupKey(part))){
-        workingQty[part.id]=Number(workingQty[part.id]||0)+Number(allocation.quantity||0);
-        const {error:stockError}=await supabase.from("hardware_parts").update({qty_on_hand:workingQty[part.id]}).eq("id",part.id);
-        if(stockError){setMessage("Could not return hardware to stock: "+stockError.message);return false;}
-        const {error:releaseError}=await supabase.from("hardware_allocations").update({status:"Released",released_at:new Date().toISOString()}).eq("id",allocation.id);
-        if(releaseError){setMessage(releaseError.message);return false;}
+    // Release obsolete or mismatched reservations first. Allocation is a reservation only:
+    // it must never reduce physical on-hand stock.
+    for(const allocation of active){
+      const part=allocation.hardware_part||hardware.find(p=>p.id===allocation.hardware_part_id);
+      const code=part?hardwareLookupKey(part):"";
+      const req=wanted.get(code);
+      if(!req || Number(allocation.quantity||0)!==Number(req.qty||0)){
+        const {error}=await supabase.from("hardware_allocations")
+          .update({status:"Released",released_at:new Date().toISOString()})
+          .eq("id",allocation.id);
+        if(error){setMessage("Could not update hardware reservation: "+error.message);return false;}
+      }else{
+        wanted.delete(code);
       }
     }
 
-    for(const req of selectedRequirements){
+    const missing=[];
+    const rows=[];
+    for(const req of wanted.values()){
       const part=byCode[req.code];
-      if(!part){setMessage(`Inventory part not found: ${req.label}`);return false;}
-      const existingQty=consumed.filter(a=>a.hardware_part_id===part.id).reduce((sum,a)=>sum+Number(a.quantity||0),0);
-      if(existingQty>=req.qty) continue;
-      const addQty=req.qty-existingQty;
-      if(Number(workingQty[part.id]||0)<addQty && !allowNegative){setMessage(`Not enough ${req.label}. Need ${addQty}, on hand ${Number(workingQty[part.id]||0)}.`);return false;}
-      workingQty[part.id]=Number(workingQty[part.id]||0)-addQty;
-      const {error:stockError}=await supabase.from("hardware_parts").update({qty_on_hand:workingQty[part.id]}).eq("id",part.id);
-      if(stockError){setMessage("Could not deduct hardware: "+stockError.message);return false;}
-
-      const activeAllocation=allocated.find(a=>a.hardware_part_id===part.id);
-      if(activeAllocation && Number(activeAllocation.quantity||0)===addQty){
-        const {error:updateError}=await supabase.from("hardware_allocations").update({status:"Consumed",consumed_at:new Date().toISOString()}).eq("id",activeAllocation.id);
-        if(updateError){setMessage(updateError.message);return false;}
-      }else{
-        if(activeAllocation){
-          const {error:releaseError}=await supabase.from("hardware_allocations").update({status:"Released",released_at:new Date().toISOString()}).eq("id",activeAllocation.id);
-          if(releaseError){setMessage(releaseError.message);return false;}
-        }
-        const {error:insertError}=await supabase.from("hardware_allocations").insert({drum_id:drum.id,hardware_part_id:part.id,quantity:addQty,status:"Consumed",consumed_at:new Date().toISOString()});
-        if(insertError){setMessage(insertError.message);return false;}
-      }
+      if(!part){missing.push(req.label);continue;}
+      rows.push({drum_id:drum.id,hardware_part_id:part.id,quantity:req.qty,status:"Allocated"});
+    }
+    if(missing.length){
+      setMessage("These catalogue items are missing and could not be reserved: "+missing.join("; "));
+      return false;
+    }
+    if(rows.length){
+      const {error}=await supabase.from("hardware_allocations").insert(rows);
+      if(error){setMessage("Could not reserve hardware: "+error.message);return false;}
     }
     await loadAll();
-    setMessage("Hardware used updated and stock reconciled.");
+    setMessage("Hardware reserved. On hand is unchanged; Allocated and Available now reflect the production requirement.");
+    return true;
+  }
+
+  async function syncHardwareUsed(drum,selectedRequirements,consumeNow=false){
+    // While a drum is in production, changing its hardware only updates reservations.
+    // Physical stock is deducted only when the drum is actually assembled.
+    if(!consumeNow) return await syncHardwareReservation(drum,selectedRequirements);
+
+    const reserved=await syncHardwareReservation(drum,selectedRequirements);
+    if(!reserved) return false;
+
+    // Reloaded allocation state is not immediately available in this closure, so fetch the
+    // current active reservations directly before consuming them.
+    const {data:activeRows,error:loadError}=await supabase.from("hardware_allocations")
+      .select("*, hardware_part:hardware_parts(*)")
+      .eq("drum_id",drum.id)
+      .ilike("status","allocated");
+    if(loadError){setMessage("Could not load reserved hardware: "+loadError.message);return false;}
+
+    for(const allocation of (activeRows||[])){
+      const part=allocation.hardware_part||hardware.find(p=>p.id===allocation.hardware_part_id);
+      if(!part) continue;
+      const newQty=Number(part.qty_on_hand||0)-Number(allocation.quantity||0);
+      const {error:stockError}=await supabase.from("hardware_parts")
+        .update({qty_on_hand:newQty})
+        .eq("id",part.id);
+      if(stockError){setMessage("Could not deduct fitted hardware: "+stockError.message);return false;}
+      const {error:updateError}=await supabase.from("hardware_allocations")
+        .update({status:"Consumed",consumed_at:new Date().toISOString()})
+        .eq("id",allocation.id);
+      if(updateError){setMessage(updateError.message);return false;}
+    }
+    await loadAll();
+    setMessage("Hardware fitted to the drum. Physical stock has now been deducted.");
     return true;
   }
 
@@ -2904,7 +2936,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.0 — consolidated inventory allocation, shortages, purchase orders and currency.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.1 — reservations separated from physical stock; negative availability highlights shortages.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -7514,7 +7546,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
   const standardHardware=drumHardwareRequirements({...drum,...draft,build_type:localBuildType});
   const partByCode=Object.fromEntries(hardware.map(part=>[hardwareLookupKey(part),part]));
-  const consumedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && a.status==="Consumed");
+  const consumedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && String(a.status||"").toLowerCase()==="consumed");
   const consumedByPart=consumedForDrum.reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
 
   function openHardwareUsed(shortages=[],forAssembly=false){
@@ -7546,7 +7578,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       if(pendingAssembly){
         const next=new Set(checked);next.add("Assembled");setChecked(next);await saveWorkflow(next,"Assembled",true);
         setSavedMessage(assemblyShortages.length?"Saved as assembled — hardware shortage highlighted in inventory":"Saved as assembled");
-      }else setSavedMessage("Hardware used updated");
+      }else setSavedMessage("Hardware reservation updated");
       setPendingAssembly(false);setAssemblyShortages([]);setTimeout(()=>setSavedMessage(""),3000);
     }
   }
