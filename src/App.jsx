@@ -4571,6 +4571,7 @@ function RepairJobModal({repair,onClose,updateRepair,deleteRepair,setMessage}){
   const [photoType,setPhotoType]=useState("Before");
   const [uploading,setUploading]=useState(false);
   const [savedMessage,setSavedMessage]=useState("");
+  const [viewingPhoto,setViewingPhoto]=useState(null);
 
   useEffect(()=>{ setDraft({...repair,services:Array.isArray(repair.services)?repair.services:[]}); },[repair.id]);
 
@@ -4717,10 +4718,16 @@ function RepairJobModal({repair,onClose,updateRepair,deleteRepair,setMessage}){
       {photos.length===0
         ? <p>No photos stored yet.</p>
         : <div className="repairPhotoGrid">{photos.map(photo=><figure key={photo.id}>
-            <img src={photo.public_url} alt={`${photo.photo_type} repair photo`}/>
+            <button className="repairPhotoOpen" type="button" onClick={()=>setViewingPhoto(photo)} aria-label="Open photo full screen"><img src={photo.public_url} alt={`${photo.photo_type} repair photo`}/></button>
             <figcaption><span>{photo.photo_type}</span><button onClick={()=>removePhoto(photo)}><Trash2 size={14}/></button></figcaption>
           </figure>)}</div>}
     </section>
+
+    {viewingPhoto&&<div className="photoLightbox" onClick={()=>setViewingPhoto(null)}>
+      <button className="photoLightboxClose" onClick={()=>setViewingPhoto(null)} aria-label="Close photo">×</button>
+      <img src={viewingPhoto.public_url} alt={`${viewingPhoto.photo_type} repair photo full screen`} onClick={e=>e.stopPropagation()}/>
+      <div className="photoLightboxCaption">{viewingPhoto.photo_type}</div>
+    </div>}
 
     <div className="jobSaveFooter">
       <button onClick={()=>deleteRepair(repair.id)} className="dangerButton"><Trash2 size={16}/> Delete</button>
@@ -4735,7 +4742,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const [activeTab,setActiveTab]=useState("stock");
   const [stocktakeMode,setStocktakeMode]=useState(false);
   const [counts,setCounts]=useState({});
-  const [expandedVariants,setExpandedVariants]=useState({});
+  const [newVariantCounts,setNewVariantCounts]=useState({});
   const [supplierOrderMessage,setSupplierOrderMessage]=useState("");
   const [purchaseOrders,setPurchaseOrders]=useState([]);
   const [purchaseOrderOpen,setPurchaseOrderOpen]=useState(false);
@@ -4778,8 +4785,32 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     if(a.category==="Air Vents") return sizeNumber(a.size)-sizeNumber(b.size);
     return String(a.part_name||"").localeCompare(String(b.part_name||""));
   };
-  const saveAllCounts=async()=>{const changed=Object.fromEntries(Object.entries(counts).filter(([id,qty])=>Number(qty)!==Number(hardware.find(p=>p.id===id)?.qty_on_hand||0)));const ok=await saveStocktake?.(changed);if(ok){setCounts({});setStocktakeMode(false)}};
-  const adjustStock=async(part,direction)=>{const raw=window.prompt(`${direction>0?"Add to":"Remove from"} ${part.part_name} (${part.size||part.code})`,"1");if(raw===null)return;const amount=Number(raw);if(!Number.isFinite(amount)||amount<0)return;await updateHardware(part.id,{qty_on_hand:Math.max(0,Number(part.qty_on_hand||0)+(direction*amount))})};
+  const saveAllCounts=async()=>{
+    const changed=Object.fromEntries(Object.entries(counts).filter(([id,qty])=>Number(qty)!==Number(hardware.find(p=>p.id===id)?.qty_on_hand||0)));
+    const ok=await saveStocktake?.(changed);
+    if(!ok) return;
+    const missing=Object.entries(newVariantCounts).filter(([,qty])=>Number(qty)>0);
+    for(const [key,qty] of missing){
+      const [baseId,finish]=key.split("::");
+      const base=hardware.find(p=>p.id===baseId);
+      if(!base) continue;
+      const suffix=finish==="Brass Plated"?"-BR":"-BN";
+      await supabase.from("hardware_parts").insert({
+        part_name:base.part_name,
+        category:base.category,
+        code:`${base.code||"LUG"}${suffix}`,
+        finish,
+        size:base.size,
+        qty_on_hand:Number(qty),
+        reorder_level:Number(base.reorder_level||0),
+        landed_cost_aud:Number(base.landed_cost_aud||0),
+        supplier:base.supplier,
+        notes:`Colour variant of ${base.code||base.part_name}`,
+      });
+    }
+    setCounts({});setNewVariantCounts({});setStocktakeMode(false);
+    if(missing.length) window.location.reload();
+  };
   const activeCustom=drums.filter(d=>d.sales_status==="Custom Order"&&!isArchivedStatus(d)&&!isSoldStatus(d)&&!isShippedStatus(d)&&String(d.hardware_option||"Standard Hardware")!=="No Hardware");
   const allocationByDrum=allocations.filter(a=>a.status==="Allocated").reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map},{});
   const byCode=Object.fromEntries(hardware.map(p=>[hardwareLookupKey(p),p]));
@@ -5063,16 +5094,27 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
 
 
   return <section className="panel inventoryModule">
-    <div className="sectionHeader"><div><h2>Inventory</h2><p>{visibleHardware.length} displayed parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={()=>{setCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stock Levels</button></div>:<button className="primary" onClick={()=>setStocktakeMode(true)}>Adjust Stock Levels</button>)}</div>
+    <div className="sectionHeader"><div><h2>Inventory</h2><p>{visibleHardware.length} displayed parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stock Levels</button></div>:<button className="primary" onClick={()=>setStocktakeMode(true)}>Adjust Stock Levels</button>)}</div>
     <nav className="inventoryTabs"><button className={activeTab==="stock"?"active":""} onClick={()=>setActiveTab("stock")}>Stock Levels</button><button className={activeTab==="allocations"?"active":""} onClick={()=>setActiveTab("allocations")}>Drum Hardware</button><button className={activeTab==="capacity"?"active":""} onClick={()=>setActiveTab("capacity")}>Build Capacity</button><button className={activeTab==="reorder"?"active":""} onClick={()=>setActiveTab("reorder")}>Reorder Planner</button><button className={activeTab==="purchasing"?"active":""} onClick={()=>setActiveTab("purchasing")}>Purchase Orders</button></nav>
 
     {activeTab==="stock"&&<><div className="inventorySummaryGrid"><article className="card"><b>On hand</b><strong>{visibleHardware.reduce((s,p)=>s+Number(p.qty_on_hand||0),0)}</strong></article><article className="card"><b>Allocated</b><strong>{visibleHardware.reduce((s,p)=>s+Number(p.qty_allocated||0),0)}</strong></article><article className="card"><b>Available</b><strong>{visibleHardware.reduce((s,p)=>s+Math.max(0,Number(p.qty_available||0)),0)}</strong></article><article className="card"><b>Stock value</b><strong>{money(inventoryValue)}</strong></article></div>
       {stocktakeMode&&<div className="stocktakeNotice"><b>Stocktake mode</b><span>Enter the quantity physically on the shelf. Fitted hardware is not included.</span></div>}
-      <div className="stockLevelHelp"><b>Adjusting stock:</b> use the − and + buttons for quick changes, or select <b>Adjust Stock Levels</b> to enter a full stocktake. Zero-stock brass, gold and black-nickel variants are kept under the matching chrome item.</div>
-      {groups.map(group=>{const parts=visibleHardware.filter(p=>p.category===group).sort(sortParts);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Unit cost</th><th>Minimum</th></tr></thead><tbody>{parts.flatMap(p=>{const variants=variantsFor(p);const open=!!expandedVariants[p.id];const main=<tr key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}{variants.length>0&&<button className="variantToggle" onClick={()=>setExpandedVariants(current=>({...current,[p.id]:!current[p.id]}))}>{open?"▾":"▸"} {variants.length} colour variant{variants.length===1?"":"s"}</button>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" value={counts[p.id]??p.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[p.id]:Number(e.target.value)}))}/>:<div className="qtyAdjust"><button aria-label={`Remove one ${p.part_name}`} onClick={()=>adjustStock(p,-1)}>−</button><b>{p.qty_on_hand}</b><button aria-label={`Add one ${p.part_name}`} onClick={()=>adjustStock(p,1)}>+</button></div>}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td><input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/></td><td><input className="compactInput" type="number" min="0" defaultValue={Number(p.reorder_level||0)} onBlur={e=>Number(e.target.value)!==Number(p.reorder_level||0)&&updateHardware(p.id,{reorder_level:Number(e.target.value||0)})}/></td></tr>;
-        const variantRows=open?variants.sort(sortParts).map(v=><tr className="variantRow" key={v.id}><td><span className="variantIndent">↳ {v.part_name}</span>{v.finish&&<><br/><small>{v.finish}</small></>}</td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" value={counts[v.id]??v.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[v.id]:Number(e.target.value)}))}/>:<div className="qtyAdjust"><button onClick={()=>adjustStock(v,-1)}>−</button><b>{v.qty_on_hand}</b><button onClick={()=>adjustStock(v,1)}>+</button></div>}</td><td>{v.qty_allocated}</td><td><b>{v.qty_available}</b></td><td><input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(v.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(v.landed_cost_aud||0)&&updateHardware(v.id,{landed_cost_aud:Number(e.target.value||0)})}/></td><td><input className="compactInput" type="number" min="0" defaultValue={Number(v.reorder_level||0)} onBlur={e=>Number(e.target.value)!==Number(v.reorder_level||0)&&updateHardware(v.id,{reorder_level:Number(e.target.value||0)})}/></td></tr>):[];
-        return [main,...variantRows];})}</tbody></table></div></section>})}
-      {stocktakeMode&&<div className="stocktakeFooter"><button onClick={()=>{setCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stock Levels</button></div>}</>}
+      <div className="stockLevelHelp"><b>Stock levels:</b> select <b>Adjust Stock Levels</b> when you want to enter physical counts. The normal view stays read-only and shows only useful stock lines.</div>
+      {groups.map(group=>{const parts=visibleHardware.filter(p=>p.category===group).sort(sortParts);if(!parts.length)return null;return <section className="inventoryBlock" key={group}><h3>{group}</h3><div className="tableWrap"><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Unit cost</th><th>Minimum</th></tr></thead><tbody>{parts.flatMap(p=>{
+        const variants=variantsFor(p).sort(sortParts);
+        const main=<tr key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" value={counts[p.id]??p.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[p.id]:Number(e.target.value)}))}/>:<b>{p.qty_on_hand}</b>}</td><td>{p.qty_allocated}</td><td><b>{p.qty_available}</b></td><td><input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/></td><td><input className="compactInput" type="number" min="0" defaultValue={Number(p.reorder_level||0)} onBlur={e=>Number(e.target.value)!==Number(p.reorder_level||0)&&updateHardware(p.id,{reorder_level:Number(e.target.value||0)})}/></td></tr>;
+        if(!stocktakeMode) return [main];
+        const existingRows=variants.map(v=><tr className="variantRow" key={v.id}><td><span className="variantIndent">↳ {v.finish||v.part_name}</span></td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" value={counts[v.id]??v.qty_on_hand??0} onChange={e=>setCounts(c=>({...c,[v.id]:Number(e.target.value)}))}/></td><td>{v.qty_allocated}</td><td><b>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td>{v.reorder_level||0}</td></tr>);
+        const missingRows=[];
+        if(p.category==="Lugs"&&finishFamily(p)==="Chrome"){
+          ["Brass Plated","Black Nickel"].forEach(finish=>{
+            const exists=variants.some(v=>finishFamily(v)===(finish==="Brass Plated"?"Brass / Gold":"Black Nickel"));
+            if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional lug finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" value={newVariantCounts[key]??0} onChange={e=>setNewVariantCounts(c=>({...c,[key]:Number(e.target.value)}))}/></td><td>0</td><td><b>{newVariantCounts[key]??0}</b></td><td>{money(p.landed_cost_aud||0)}</td><td>{p.reorder_level||0}</td></tr>)};
+          });
+        }
+        return [main,...existingRows,...missingRows];
+      })}</tbody></table></div></section>})}
+      {stocktakeMode&&<div className="stocktakeFooter"><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" onClick={saveAllCounts}>Save Stock Levels</button></div>}</>}
 
     {activeTab==="allocations"&&<><section className="inventoryBlock"><h3>Custom Order Hardware Allocation</h3><p>Allocate parts when an order is accepted and physically place them aside. Assembling a drum deducts its selected hardware automatically.</p>{activeCustom.length===0?<p>No active custom snare orders.</p>:<div className="allocationGrid">{activeCustom.map(d=>{const allocated=allocationByDrum[d.id]?.length>0,reqs=drumHardwareRequirements(d),shortages=reqs.filter(req=>Number(byCode[req.code]?.qty_available||0)<req.qty);return <article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.customer||"Customer not entered"} · {d.build_type}</span><span className={allocated?"okText":shortages.length?"dangerText":"warningText"}>{allocated?"Hardware allocated":shortages.length?`${shortages.length} shortages`:"Ready to allocate"}</span>{shortages.length>0&&!allocated&&<small>{shortages.map(x=>x.label).join(", ")}</small>}<div className="buttonRow">{allocated?<button onClick={()=>releaseHardware(d)}>Release allocation</button>:<button className="primary" onClick={()=>allocateHardware(d)}>Allocate hardware</button>}</div></article>})}</div>}</section><section className="inventoryBlock"><h3>Hardware Fitted to Drums</h3><p>Open a Job Card and use <b>Adjust Hardware Used</b> to change this list.</p><div className="allocationGrid">{drums.filter(d=>consumedByDrum[d.id]?.length).map(d=><article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.timber} · {d.build_type}</span><small>{consumedByDrum[d.id].map(a=>`${a.quantity} × ${partById[a.hardware_part_id]?.part_name||"Hardware"}`).join(", ")}</small></article>)}</div>{!drums.some(d=>consumedByDrum[d.id]?.length)&&<p>No fitted hardware has been recorded yet.</p>}</section></>}
 
