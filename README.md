@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.9.8
+# Nowak Workshop OS v7.9.9
 
 Controlled repair release consolidating hardware allocations, shortages, purchase-order calculations and two-decimal AUD currency formatting. Custom drum orders now reserve standard hardware automatically, including reservations that create a shortage.
 
@@ -222,5 +222,5 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - The Production status filter now displays In Production instead of Active.
 - Dashboard wording now says Drums in production.
 
-## v7.9.8 database cleanup
+## v7.9.9 database cleanup
 Run `supabase/v7_9_8_throwoff_and_snare_wire_cleanup.sql` once in Supabase to remove the invalid brass Trick throw-off row and change existing brass snare-wire codes from SE04 to SE06.
