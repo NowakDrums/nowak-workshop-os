@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.9.6
+# Nowak Workshop OS v7.9.7
 
 Controlled repair release consolidating hardware allocations, shortages, purchase-order calculations and two-decimal AUD currency formatting. Custom drum orders now reserve standard hardware automatically, including reservations that create a shortage.
 
@@ -215,7 +215,7 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Unmarking Sold removes the linked sales record and returns the drum to Complete status.
 
 
-## v7.9.6 — simplified completion lifecycle
+## v7.9.7 — simplified completion lifecycle
 
 - Clicking the highlighted Complete button asks whether to move the drum back into production.
 - The separate Back to Production button has been removed.
