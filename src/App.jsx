@@ -492,6 +492,22 @@ function hardwareFinishLabel(value){
 function finishSku(base,finish){
   return `${base}-${hardwareFinishKey(finish)}`;
 }
+function preferredSupplierName(value){
+  const text=String(value||"").trim();
+  if(/rech/i.test(text)) return "Rech";
+  return "Lea Hung";
+}
+function supplierPlanKey(code,supplier){
+  return `${code}@@${preferredSupplierName(supplier).toUpperCase().replace(/\s+/g,"-")}`;
+}
+function splitSupplierPlanKey(value){
+  const [code,supplierToken]=String(value||"").split("@@");
+  return {code,supplier:supplierToken?preferredSupplierName(supplierToken.replace(/-/g," ")):""};
+}
+function requirementUsesFinishSupplier(req){
+  const key=hardwareFinishKey(req?.finish||req?.label||req?.code||"");
+  return key!=="CHROME" || /-(?:BRASS|BLACK-NICKEL)$/i.test(String(req?.code||""));
+}
 function drumHardwareRequirements(drum){
   if(String(drum?.hardware_option||"Standard Hardware").toLowerCase().includes("no hardware")) return [];
   const spec=parseDrumSize(drum?.size);
@@ -2758,18 +2774,23 @@ function App(){
     };
     const {data,error}=await supabase
       .from("work_plan_items")
-      .upsert(row,{onConflict:"repair_id,planned_date",ignoreDuplicates:true})
+      .upsert(row,{onConflict:"repair_id,planned_date"})
       .select("*")
-      .single();
+      .maybeSingle();
     if(error){
       setMessage("Could not schedule repair: "+error.message+". Run the v7.9.10 repair-planning migration if required.");
       return false;
     }
-    setWorkPlan(current=>{
-      const map=new Map(current.map(item=>[item.id,item]));
-      if(data) map.set(data.id,data);
-      return [...map.values()];
-    });
+    if(data){
+      setWorkPlan(current=>{
+        const map=new Map(current.map(item=>[item.id,item]));
+        map.set(data.id,data);
+        return [...map.values()];
+      });
+    }else{
+      const {data:refreshed}=await supabase.from("work_plan_items").select("*").eq("repair_id",repair.id).eq("planned_date",plannedDate).maybeSingle();
+      if(refreshed) setWorkPlan(current=>{const map=new Map(current.map(item=>[item.id,item]));map.set(refreshed.id,refreshed);return [...map.values()]});
+    }
     setMessage(`${repair.job_number||"Repair"} scheduled for ${friendlyPlanDate(plannedDate).toLowerCase()}.`);
     return true;
   }
@@ -3043,7 +3064,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.10 — Stave filtering repaired and repairs added to workshop planning.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.11 — one-off Rech supplier override and reliable repair scheduling.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3620,9 +3641,11 @@ function ScheduleWorkControl({label="Schedule Work",onSchedule,scheduledDates=[]
       return;
     }
     if(!date) return;
-    await onSchedule?.(date);
-    setChoice("");
-    setCustomDate("");
+    const saved=await onSchedule?.(date);
+    if(saved!==false){
+      setChoice("");
+      setCustomDate("");
+    }
   }
 
   return <div className={"scheduleWorkControl "+(compact?"compactScheduleControl":"")}>
@@ -4981,11 +5004,11 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   }
   const openPurchaseOrders=purchaseOrders.filter(order=>!["Draft","Received","Cancelled","Closed"].includes(String(order.status||"Draft")));
     const defaultPlan=[
-    {id:"14-6.5",drumType:"Snare",diameter:"14",depth:"6 1/2",qty:6,buildType:"Stave",hardwareFinish:"Chrome"},
-    {id:"14-5.5",drumType:"Snare",diameter:"14",depth:"5 1/2",qty:4,buildType:"Stave",hardwareFinish:"Chrome"},
-    {id:"13-7",drumType:"Snare",diameter:"13",depth:"7",qty:4,buildType:"Stave",hardwareFinish:"Chrome"},
-    {id:"12-7",drumType:"Snare",diameter:"12",depth:"7",qty:4,buildType:"Stave",hardwareFinish:"Chrome"},
-    {id:"10-5",drumType:"Snare",diameter:"10",depth:"5",qty:4,buildType:"Stave",hardwareFinish:"Chrome"},
+    {id:"14-6.5",drumType:"Snare",diameter:"14",depth:"6 1/2",qty:6,buildType:"Stave",hardwareFinish:"Chrome",preferredSupplier:"Lea Hung"},
+    {id:"14-5.5",drumType:"Snare",diameter:"14",depth:"5 1/2",qty:4,buildType:"Stave",hardwareFinish:"Chrome",preferredSupplier:"Lea Hung"},
+    {id:"13-7",drumType:"Snare",diameter:"13",depth:"7",qty:4,buildType:"Stave",hardwareFinish:"Chrome",preferredSupplier:"Lea Hung"},
+    {id:"12-7",drumType:"Snare",diameter:"12",depth:"7",qty:4,buildType:"Stave",hardwareFinish:"Chrome",preferredSupplier:"Lea Hung"},
+    {id:"10-5",drumType:"Snare",diameter:"10",depth:"5",qty:4,buildType:"Stave",hardwareFinish:"Chrome",preferredSupplier:"Lea Hung"},
   ];
   const [reorderPlan,setReorderPlan]=useState(()=>{
     try{return JSON.parse(localStorage.getItem("nowakReorderPlan")||"null")||defaultPlan}catch{return defaultPlan}
@@ -5196,18 +5219,24 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const plannedRequirements={};
   const plannedRequirementMeta={};
   reorderPlan.forEach(row=>requirementsFor(row.diameter,row.depth,row.buildType,row.drumType||"Snare",row.hardwareFinish||"Chrome").forEach(req=>{
-    plannedRequirements[req.code]=(plannedRequirements[req.code]||0)+(Number(row.qty||0)*req.qty);
-    plannedRequirementMeta[req.code]=req;
+    const override=preferredSupplierName(row.preferredSupplier||"Lea Hung");
+    const planKey=requirementUsesFinishSupplier(req)&&override==="Rech"?supplierPlanKey(req.code,override):req.code;
+    plannedRequirements[planKey]=(plannedRequirements[planKey]||0)+(Number(row.qty||0)*req.qty);
+    plannedRequirementMeta[planKey]={...req,preferredSupplier:planKey.includes("@@")?override:null};
   }));
-  const requirementPart=(code)=>{
+  const requirementPart=(planKey)=>{
+    const parsed=splitSupplierPlanKey(planKey);
+    const code=parsed.code;
+    const meta=plannedRequirementMeta[planKey]||plannedRequirementMeta[code];
+    const preferredSupplier=meta?.preferredSupplier||parsed.supplier||"";
     const direct=byCode[code];
-    if(direct) return direct;
-    const meta=plannedRequirementMeta[code];
-    if(!meta) return undefined;
+    if(direct&&(!preferredSupplier||preferredSupplierName(direct.supplier)===preferredSupplier)) return direct;
+    if(!meta) return direct;
     const wantedFinish=hardwareFinishKey(meta.finish||meta.label||code);
     const wantedName=normaliseHardwareName(meta.partName||meta.label||"");
     const wantedCategory=String(meta.category||"");
     const actual=hardware.find(part=>{
+      if(preferredSupplier&&preferredSupplierName(part.supplier)!==preferredSupplier) return false;
       if(wantedCategory&&String(part.category||"")!==wantedCategory) return false;
       const sameName=!wantedName||normaliseHardwareName(part.part_name)===wantedName;
       return sameName&&hardwareFinishKey(part.finish||part.part_name)===wantedFinish;
@@ -5215,10 +5244,11 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     if(actual) return actual;
     const base=hardware.find(part=>{
       if(wantedCategory&&String(part.category||"")!==wantedCategory) return false;
-      return !wantedName||normaliseHardwareName(part.part_name)===wantedName;
-    });
+      const sameName=!wantedName||normaliseHardwareName(part.part_name)===wantedName;
+      return sameName&&hardwareFinishKey(part.finish||part.part_name)===wantedFinish;
+    })||direct||hardware.find(part=>!wantedCategory||String(part.category||"")===wantedCategory);
     if(!base) return undefined;
-    return {...base,sku_key:code,finish:hardwareFinishLabel(meta.finish||meta.label||code),size:meta.size||base.size,qty_on_hand:0,qty_allocated:0,qty_available:0};
+    return {...base,sku_key:code,code:meta.code||code,supplier:preferredSupplier||base.supplier,finish:hardwareFinishLabel(meta.finish||meta.label||code),size:meta.size||base.size,qty_on_hand:0,qty_allocated:0,qty_available:0};
   };
   const purchaseItemCatalogueKey=item=>{
     const direct=hardware.find(part=>String(part.id)===String(item?.hardware_part_id||""));
@@ -5234,24 +5264,30 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
       const outstanding=Math.max(0,Number(item.quantity||0)-Number(received[receivedKey]||0));
       if(!outstanding)return;
       const key=purchaseItemCatalogueKey(item);
+      const supplierKey=supplierPlanKey(key,order.supplier||"Lea Hung");
+      totals[supplierKey]=(totals[supplierKey]||0)+outstanding;
       totals[key]=(totals[key]||0)+outstanding;
     });
     return totals;
   },{});
   const shortageCodes=displayHardware.filter(part=>Number(part.qty_available||0)<0&&Number(part.qty_allocated||0)>0).map(part=>hardwareLookupKey(part));
   const orderCodes=[...new Set([...Object.keys(plannedRequirements),...shortageCodes])];
-  const orderRows=orderCodes.map(code=>{
-    const part=requirementPart(code);
-    const required=Number(plannedRequirements[code]||0);
+  const orderRows=orderCodes.map(planKey=>{
+    const parsed=splitSupplierPlanKey(planKey);
+    const part=requirementPart(planKey);
+    const required=Number(plannedRequirements[planKey]||0);
     const available=Number(part?.qty_available||0);
     const currentShortage=available<0?Math.abs(available):0;
     const grossNeed=Math.max(currentShortage,Math.max(0,required-available));
-    const onOrder=Number(onOrderByCode[code]||0);
+    const preferredSupplier=plannedRequirementMeta[planKey]?.preferredSupplier||parsed.supplier||"";
+    const onOrderKey=preferredSupplier?supplierPlanKey(parsed.code,preferredSupplier):parsed.code;
+    const onOrder=Number(onOrderByCode[onOrderKey]||0);
     const toOrder=Math.max(0,grossNeed-onOrder);
-    return {code,part,required,available,currentShortage,grossNeed,onOrder,toOrder,cost:Number(part?.landed_cost_aud||0),total:toOrder*Number(part?.landed_cost_aud||0)};
+    return {code:parsed.code,planKey,preferredSupplier,part,required,available,currentShortage,grossNeed,onOrder,toOrder,cost:Number(part?.landed_cost_aud||0),total:toOrder*Number(part?.landed_cost_aud||0)};
   }).filter(row=>row.toOrder>0);
   const orderEstimate=orderRows.reduce((sum,row)=>sum+row.total,0);
-  const supplierBucket=part=>{
+  const supplierBucket=(part,override="")=>{
+    if(override) return preferredSupplierName(override);
     const supplier=String(part?.supplier||"").trim();
     if(/lea\s*hung/i.test(supplier)) return "Lea Hung";
     if(/mega\s*music/i.test(supplier)) return "Mega Music";
@@ -5259,7 +5295,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     return supplier||"Other";
   };
   const supplierOrderGroups=["Lea Hung","Mega Music","Rech"].map(supplier=>{
-    const rows=orderRows.filter(row=>supplierBucket(row.part)===supplier);
+    const rows=orderRows.filter(row=>supplierBucket(row.part,row.preferredSupplier)===supplier);
     return {supplier,rows,estimate:rows.reduce((sum,row)=>sum+Number(row.total||0),0)};
   }).filter(group=>group.rows.length);
   const planTotal=reorderPlan.reduce((sum,row)=>sum+Number(row.qty||0),0);
@@ -5277,9 +5313,11 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   }
   const simultaneousTotal=simultaneousMix.reduce((sum,row)=>sum+row.buildable,0);
 
-  const leaHungRows=orderRows
-    .filter(row=>/lea\s*hung/i.test(String(row.part?.supplier||"")))
+  const rowsForSupplier=supplier=>orderRows
+    .filter(row=>supplierBucket(row.part,row.preferredSupplier)===supplier)
     .sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)||String(a.part?.part_name||"").localeCompare(String(b.part?.part_name||"")));
+  const leaHungRows=rowsForSupplier("Lea Hung");
+  const rechRows=rowsForSupplier("Rech");
   const supplierColour=part=>{
     if(part?.category==="Tension Rods") return "Stainless Steel";
     const finish=String(part?.finish||"").trim();
@@ -5347,17 +5385,24 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     return `${group.category}\n${rows.join("\n")}`;
   }).join("\n\n");
   const leaHungEmailBody=()=>`Hi,\n\nI hope you are going well.\n\nI’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?\n\nShipping Address: 29 Meldrum Loop, Bedfordale, Western Australia, 6112\n\n${leaHungPlainTable()}\n\nMany thanks\n\nKelly Nowak\nNowak Drum Company Australia`;
+  const genericSupplierGroups=(rows)=>{const ordered=["Lugs","Air Vents","Tension Rods","Hoops","Floor Tom Hardware","Bass Drum Hardware","Snare Wires","Hardware"];return ordered.map(category=>({category,rows:rows.filter(row=>(row.part?.category||"Hardware")===category)})).filter(group=>group.rows.length)};
+  const supplierRowsHtml=(rows)=>genericSupplierGroups(rows).map(group=>`<tr><td colspan="5" style="padding:10px 8px;background:#e8e8e8;font-weight:700;border:1px solid #999;">${escapeHtml(group.category)}</td></tr>${group.rows.map(row=>`<tr><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierName(row.part))}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierColour(row.part))}</td><td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierCode(row.part))}</td><td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierSize(row.part))}</td><td style="padding:8px;border:1px solid #aaa;text-align:right;font-weight:700;">${row.toOrder}</td></tr>`).join("")}`).join("");
+  const supplierEmailHtml=(supplier,rows)=>`<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111;line-height:1.45;"><p>Hi,</p><p>I’d like to place a hardware order for the items below. Can you please provide a quote including shipping to Australia?</p><p><strong>Shipping Address:</strong> 29 Meldrum Loop, Bedfordale, Western Australia, 6112</p><table style="border-collapse:collapse;width:100%;max-width:900px;font-size:14px;"><thead><tr style="background:#d8d8d8;"><th style="padding:8px;border:1px solid #888;text-align:left;">Name</th><th style="padding:8px;border:1px solid #888;text-align:left;">Colour</th><th style="padding:8px;border:1px solid #888;text-align:left;">Code</th><th style="padding:8px;border:1px solid #888;text-align:left;">Size</th><th style="padding:8px;border:1px solid #888;text-align:right;">Order Quantity</th></tr></thead><tbody>${supplierRowsHtml(rows)}</tbody></table><p>Many thanks</p><p>Kelly Nowak<br/>Nowak Drum Company Australia</p></body></html>`;
+  const supplierPlainText=(supplier,rows)=>`Supplier: ${supplier}\n\n${rows.map(row=>`${supplierName(row.part)} | ${supplierColour(row.part)} | ${supplierCode(row.part)} | ${supplierSize(row.part)} | Qty ${row.toOrder}`).join("\n")}`;
   const createPoNumber=()=>{const d=new Date(),pad=n=>String(n).padStart(2,"0");return `PO-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`};
-  const poPayload=(status="Draft")=>({
-    po_number:createPoNumber(),supplier:"Lea Hung",supplier_email:"contact@leahung.com",subject:"Hardware Order",
-    order_items:leaHungRows.map(row=>({hardware_part_id:row.part?.id||null,name:supplierName(row.part),colour:supplierColour(row.part),code:supplierCode(row.part),size:supplierSize(row.part),quantity:row.toOrder,unit_cost:row.cost,estimated_total:row.total})),
-    estimated_value:leaHungRows.reduce((sum,row)=>sum+row.total,0),status,sent_at:status==="Sent"?new Date().toISOString():null,
-    notes:"Please quote air and sea freight with approximate delivery times."
-  });
-  const savePurchaseOrder=async(status="Draft")=>{
-    if(!leaHungRows.length)return null;
-    const existingDraft=purchaseOrders.find(order=>String(order.status||"Draft")==="Draft"&&/lea\s*hung/i.test(String(order.supplier||"")));
-    const payload=poPayload(status);
+  const supplierRowsFor=supplier=>supplier==="Rech"?rechRows:leaHungRows;
+  const supplierEmailFor=supplier=>supplier==="Lea Hung"?"contact@leahung.com":"";
+  const poPayload=(supplier="Lea Hung",status="Draft")=>{const rows=supplierRowsFor(supplier);return {
+    po_number:createPoNumber(),supplier,supplier_email:supplierEmailFor(supplier),subject:`${supplier} Hardware Order`,
+    order_items:rows.map(row=>({hardware_part_id:row.part?.id||null,name:supplierName(row.part),colour:supplierColour(row.part),code:supplierCode(row.part),size:supplierSize(row.part),quantity:row.toOrder,unit_cost:row.cost,estimated_total:row.total})),
+    estimated_value:rows.reduce((sum,row)=>sum+row.total,0),status,sent_at:status==="Sent"?new Date().toISOString():null,
+    notes:"Please quote freight with approximate delivery times."
+  }};
+  const saveSupplierPurchaseOrder=async(supplier="Lea Hung",status="Draft")=>{
+    const rows=supplierRowsFor(supplier);
+    if(!rows.length)return null;
+    const existingDraft=purchaseOrders.find(order=>String(order.status||"Draft")==="Draft"&&preferredSupplierName(order.supplier)===supplier);
+    const payload=poPayload(supplier,status);
     let data,error;
     if(status==="Draft"&&existingDraft){
       const updatePayload={...payload,po_number:existingDraft.po_number,sent_at:null};
@@ -5369,15 +5414,17 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     setSelectedPurchaseOrder(data);setPurchaseOrderOpen(true);await loadPurchaseOrders();
     setSupplierOrderMessage(existingDraft&&status==="Draft"?`${data.po_number} draft updated.`:`${data.po_number} saved as ${status}.`);return data;
   };
-  const openSupplierEmail=(order=null)=>{
-    const to=order?.supplier_email||"contact@leahung.com";
-    const subject=order?.subject||"Hardware Order";
+  const savePurchaseOrder=async(status="Draft")=>saveSupplierPurchaseOrder("Lea Hung",status);
+  const openSupplierEmail=(order=null,supplier="Lea Hung")=>{
+    const to=order?.supplier_email??supplierEmailFor(supplier);
+    const subject=order?.subject||`${supplier} Hardware Order`;
     window.location.href=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`;
     setSupplierOrderMessage("Email draft opened with the address and subject. Paste the formatted order into the message body.");
   };
-  const copyFormattedOrder=async(order=null)=>{
-    const html=order?purchaseOrderEmailHtml(order):leaHungEmailHtml();
-    const text=order?purchaseOrderPlainText(order):leaHungEmailBody();
+  const copyFormattedOrder=async(order=null,supplier="Lea Hung")=>{
+    const rows=supplierRowsFor(supplier);
+    const html=order?purchaseOrderEmailHtml(order):(supplier==="Lea Hung"?leaHungEmailHtml():supplierEmailHtml(supplier,rows));
+    const text=order?purchaseOrderPlainText(order):(supplier==="Lea Hung"?leaHungEmailBody():supplierPlainText(supplier,rows));
     try{
       if(navigator.clipboard?.write&&typeof ClipboardItem!=="undefined") await navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([html],{type:"text/html"}),"text/plain":new Blob([text],{type:"text/plain"})})]);
       else await navigator.clipboard.writeText(text);
@@ -5389,10 +5436,10 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const categories=["Lugs","Air Vents","Tension Rods","Hoops","Snare Wires"];
     const categoryFor=item=>{const part=hardware.find(p=>p.id===item.hardware_part_id);return part?.category||"Hardware"};
     const rows=categories.map(category=>{const group=items.filter(item=>categoryFor(item)===category);if(!group.length)return "";return `<tr><td colspan="5" style="padding:10px 8px;background:#e8e8e8;font-weight:700;border:1px solid #999;">${escapeHtml(category)}</td></tr>${group.map(item=>`<tr><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(item.name)}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(item.colour)}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(item.code)}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(item.size)}</td><td style="padding:8px;border:1px solid #aaa;text-align:right;font-weight:700;">${item.quantity}</td></tr>`).join("")}`}).join("");
-    return `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111;line-height:1.45;"><h2 style="margin-bottom:4px;">Nowak Drum Company</h2><p style="margin-top:0;"><strong>Purchase Order:</strong> ${escapeHtml(order.po_number||"")}<br/><strong>Date:</strong> ${new Date(order.created_at||Date.now()).toLocaleDateString("en-AU")}<br/><strong>Supplier:</strong> Lea Hung</p><p>Hi,</p><p>I hope you are going well.</p><p>I’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?</p><p><strong>Shipping Address:</strong> 29 Meldrum Loop, Bedfordale, Western Australia, 6112</p><table style="border-collapse:collapse;width:100%;max-width:900px;font-size:14px;"><thead><tr style="background:#d8d8d8;"><th style="padding:8px;border:1px solid #888;text-align:left;">Name</th><th style="padding:8px;border:1px solid #888;text-align:left;">Colour</th><th style="padding:8px;border:1px solid #888;text-align:left;">Code</th><th style="padding:8px;border:1px solid #888;text-align:left;">Size</th><th style="padding:8px;border:1px solid #888;text-align:right;">Order Quantity</th></tr></thead><tbody>${rows}</tbody></table><p>Many thanks</p><p>Kelly Nowak<br/>Nowak Drum Company Australia</p></body></html>`;
+    return `<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111;line-height:1.45;"><h2 style="margin-bottom:4px;">Nowak Drum Company</h2><p style="margin-top:0;"><strong>Purchase Order:</strong> ${escapeHtml(order.po_number||"")}<br/><strong>Date:</strong> ${new Date(order.created_at||Date.now()).toLocaleDateString("en-AU")}<br/><strong>Supplier:</strong> ${escapeHtml(order.supplier||"Lea Hung")}</p><p>Hi,</p><p>I hope you are going well.</p><p>I’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?</p><p><strong>Shipping Address:</strong> 29 Meldrum Loop, Bedfordale, Western Australia, 6112</p><table style="border-collapse:collapse;width:100%;max-width:900px;font-size:14px;"><thead><tr style="background:#d8d8d8;"><th style="padding:8px;border:1px solid #888;text-align:left;">Name</th><th style="padding:8px;border:1px solid #888;text-align:left;">Colour</th><th style="padding:8px;border:1px solid #888;text-align:left;">Code</th><th style="padding:8px;border:1px solid #888;text-align:left;">Size</th><th style="padding:8px;border:1px solid #888;text-align:right;">Order Quantity</th></tr></thead><tbody>${rows}</tbody></table><p>Many thanks</p><p>Kelly Nowak<br/>Nowak Drum Company Australia</p></body></html>`;
   };
   const purchaseOrderPlainText=order=>`Purchase Order: ${order.po_number}
-Supplier: Lea Hung
+Supplier: ${order.supplier||"Lea Hung"}
 
 ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size} | Qty ${i.quantity}`).join("\n")}`;
   const printPurchaseOrder=order=>{const w=window.open("","_blank");if(!w)return setSupplierOrderMessage("Please allow pop-ups to print or save the purchase order.");w.document.write(purchaseOrderEmailHtml(order));w.document.close();w.focus();setTimeout(()=>w.print(),250)};
@@ -5553,11 +5600,12 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
 
     {activeTab==="capacity"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Right Now?</h3><p>Each card shows the maximum if you built only that option. Rare 12 × 8 and 13 × 8 sizes are excluded.</p></div></div>{buildableOptions.length?<div className="capacityGrid">{buildableOptions.sort((a,b)=>b.qty-a.qty||Number(b.d)-Number(a.d)).map(x=><article className="card" key={`${x.d}-${x.depth}-${x.type}`}><b>{x.d}" × {x.depth}" {x.drumType} · {x.type}</b><strong>{x.qty} complete drum{x.qty===1?"":"s"}</strong></article>)}</div>:<div className="stocktakeNotice"><b>No complete snare combinations currently available.</b><span>Enter your stocktake quantities and this page will update automatically.</span></div>}</section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Together?</h3><p>This checks the editable Reorder Planner mix against the same shared stock, so hardware is not counted twice.</p></div><strong>{simultaneousTotal} drums together</strong></div><div className="capacityGrid">{simultaneousMix.map(row=><article className="card" key={row.id}><b>{row.diameter}" × {row.depth}" {row.drumType||"Snare"} · {row.buildType}</b><strong>{row.buildable} of {row.qty}</strong><span>{row.buildable>=Number(row.qty||0)?"Target covered":"Limited by shared hardware"}</span></article>)}</div></section></>}
 
-    {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Drum type</th><th>Diameter</th><th>Depth</th><th>Build</th><th>Hardware finish</th><th></th></tr></thead><tbody>{reorderPlan.map((row,index)=>{const type=row.drumType||"Snare";const diameterOptions=type==="Tom"?["8","10","12"]:type==="Floor Tom"?["14","16","18"]:type==="Bass Drum"?["18","20","22","24"]:snareInventoryDiameters;return <tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={type} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,drumType:e.target.value,diameter:e.target.value==="Tom"?"10":e.target.value==="Floor Tom"?"16":e.target.value==="Bass Drum"?"20":"14",depth:e.target.value==="Snare"?"6 1/2":e.target.value==="Tom"?"8":e.target.value==="Floor Tom"?"16":"14"}:x))}><option>Snare</option><option>Tom</option><option>Floor Tom</option><option>Bass Drum</option></select></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{diameterOptions.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{drumDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td><td><select value={row.hardwareFinish||"Chrome"} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,hardwareFinish:e.target.value}:x))}><option>Chrome</option><option>Brass</option><option>Black Nickel</option><option>Mixed / Custom</option></select></td><td><button className="dangerButton" onClick={()=>setReorderPlan(current=>current.filter((_,i)=>i!==index))}><Trash2 size={14}/></button></td></tr>})}</tbody></table></div><button onClick={()=>setReorderPlan(current=>[...current,{id:`plan-${Date.now()}`,drumType:"Snare",diameter:"14",depth:"6 1/2",qty:1,buildType:"Stave",hardwareFinish:"Chrome"}])}><Plus size={15}/> Add drum option</button><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Orders</h3><p>Shortages are separated by supplier. The existing Lea Hung purchase-order workflow remains below.</p></div><div><b>{money(orderEstimate)}</b><br/><small>total estimated order value</small></div></div>{supplierOrderGroups.length?<div className="supplierBreakdown">{supplierOrderGroups.map(group=><section className="supplierBreakdownCard" key={group.supplier}><div className="sectionHeader supplierBreakdownHeader"><div><h4>{group.supplier}</h4><p>{group.rows.length} item{group.rows.length===1?"":"s"} to order</p></div><div><b>{money(group.estimate)}</b><br/><small>estimated order value</small></div></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Planned</th><th>Available</th><th>Current shortage</th><th>Already on order</th><th>New order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{group.rows.map(row=><tr className={row.currentShortage>0?"purchaseShortageRow":""} key={`${group.supplier}-${row.code}`}><td>{row.part?.part_name||row.code}<br/><small>{row.part?`${supplierColour(row.part)} · ${row.part?.size||""}`:"Catalogue item missing"}</small>{row.currentShortage>0&&<span className="shortageBadge">ACTIVE DRUM SHORTAGE</span>}</td><td>{row.required}</td><td className={row.available<0?"dangerText":""}>{row.available}</td><td><b className={row.currentShortage>0?"dangerText":""}>{row.currentShortage||0}</b></td><td><b>{row.onOrder||0}</b></td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="7">{group.supplier} estimated order</th><th>{money(group.estimate)}</th></tr></tfoot></table></div></section>)}</div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix and all active drum allocations.</span></div>}<div className="supplierGrandTotal"><span>Total estimated hardware purchase</span><b>{money(orderEstimate)}</b></div><p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section><section className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>Lea Hung Purchase Order</h3><p>Create a professional purchase order from the current Lea Hung shortages.</p></div><div><b>{leaHungRows.length} line item{leaHungRows.length===1?"":"s"}</b></div></div>{leaHungRows.length?<><div className="supplierEmailPreview"><p><b>Supplier:</b> Lea Hung · contact@leahung.com</p><div className="supplierHtmlPreview" dangerouslySetInnerHTML={{__html:leaHungEmailHtml()}}/></div><div className="buttonRow"><button className="primary" onClick={()=>savePurchaseOrder("Draft")}><Save size={16}/> {currentDraftPurchaseOrder?"Update Draft Purchase Order":"Create Draft Purchase Order"}</button>{currentDraftPurchaseOrder&&<button onClick={()=>{setSelectedPurchaseOrder(currentDraftPurchaseOrder);setPurchaseOrderOpen(true)}}><Pencil size={16}/> Open Current Draft</button>}<button onClick={()=>copyFormattedOrder()}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail()}><Mail size={16}/> Open Email</button></div>{currentDraftPurchaseOrder&&<p className="mutedLine">One working draft is retained: <b>{currentDraftPurchaseOrder.po_number}</b>. Updating the draft replaces its item list instead of creating another draft.</p>}{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</>:<div className="stocktakeNotice"><b>No Lea Hung order required.</b><span>The current available stock covers the selected target mix, or the shortages belong to other suppliers.</span></div>}</section></>}
+    {activeTab==="reorder"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Target Drum Stock</h3><p>Set the mix of complete drums you want enough hardware to build. This default is saved on this device and can be changed.</p></div><button onClick={()=>setReorderPlan(defaultPlan)}>Restore default</button></div><div className="tableWrap"><table><thead><tr><th>Quantity</th><th>Drum type</th><th>Diameter</th><th>Depth</th><th>Build</th><th>Hardware finish</th><th>Finish supplier</th><th></th></tr></thead><tbody>{reorderPlan.map((row,index)=>{const type=row.drumType||"Snare";const diameterOptions=type==="Tom"?["8","10","12"]:type==="Floor Tom"?["14","16","18"]:type==="Bass Drum"?["18","20","22","24"]:snareInventoryDiameters;return <tr key={row.id}><td><input className="compactInput" type="number" min="0" value={row.qty} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,qty:Number(e.target.value)}:x))}/></td><td><select value={type} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,drumType:e.target.value,diameter:e.target.value==="Tom"?"10":e.target.value==="Floor Tom"?"16":e.target.value==="Bass Drum"?"20":"14",depth:e.target.value==="Snare"?"6 1/2":e.target.value==="Tom"?"8":e.target.value==="Floor Tom"?"16":"14"}:x))}><option>Snare</option><option>Tom</option><option>Floor Tom</option><option>Bass Drum</option></select></td><td><select value={row.diameter} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,diameter:e.target.value}:x))}>{diameterOptions.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.depth} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,depth:e.target.value}:x))}>{drumDepths.map(x=><option key={x}>{x}</option>)}</select></td><td><select value={row.buildType} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,buildType:e.target.value}:x))}><option>Stave</option><option>Ply</option></select></td><td><select value={row.hardwareFinish||"Chrome"} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,hardwareFinish:e.target.value}:x))}><option>Chrome</option><option>Brass</option><option>Black Nickel</option><option>Mixed / Custom</option></select></td><td><select value={row.preferredSupplier||"Lea Hung"} onChange={e=>setReorderPlan(current=>current.map((x,i)=>i===index?{...x,preferredSupplier:e.target.value}:x))}><option>Lea Hung</option><option>Rech</option></select></td><td><button className="dangerButton" onClick={()=>setReorderPlan(current=>current.filter((_,i)=>i!==index))}><Trash2 size={14}/></button></td></tr>})}</tbody></table></div><button onClick={()=>setReorderPlan(current=>[...current,{id:`plan-${Date.now()}`,drumType:"Snare",diameter:"14",depth:"6 1/2",qty:1,buildType:"Stave",hardwareFinish:"Chrome",preferredSupplier:"Lea Hung"}])}><Plus size={15}/> Add drum option</button><p><b>Target:</b> hardware for {planTotal} complete drums.</p></section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Suggested Purchase Orders</h3><p>Shortages are separated by supplier. The existing Lea Hung purchase-order workflow remains below.</p></div><div><b>{money(orderEstimate)}</b><br/><small>total estimated order value</small></div></div>{supplierOrderGroups.length?<div className="supplierBreakdown">{supplierOrderGroups.map(group=><section className="supplierBreakdownCard" key={group.supplier}><div className="sectionHeader supplierBreakdownHeader"><div><h4>{group.supplier}</h4><p>{group.rows.length} item{group.rows.length===1?"":"s"} to order</p></div><div><b>{money(group.estimate)}</b><br/><small>estimated order value</small></div></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Planned</th><th>Available</th><th>Current shortage</th><th>Already on order</th><th>New order</th><th>Unit cost</th><th>Estimate</th></tr></thead><tbody>{group.rows.map(row=><tr className={row.currentShortage>0?"purchaseShortageRow":""} key={`${group.supplier}-${row.code}`}><td>{row.part?.part_name||row.code}<br/><small>{row.part?`${supplierColour(row.part)} · ${row.part?.size||""}`:"Catalogue item missing"}</small>{row.currentShortage>0&&<span className="shortageBadge">ACTIVE DRUM SHORTAGE</span>}</td><td>{row.required}</td><td className={row.available<0?"dangerText":""}>{row.available}</td><td><b className={row.currentShortage>0?"dangerText":""}>{row.currentShortage||0}</b></td><td><b>{row.onOrder||0}</b></td><td><b>{row.toOrder}</b></td><td>{money(row.cost)}</td><td>{money(row.total)}</td></tr>)}</tbody><tfoot><tr><th colSpan="7">{group.supplier} estimated order</th><th>{money(group.estimate)}</th></tr></tfoot></table></div></section>)}</div>:<div className="stocktakeNotice"><b>No order required.</b><span>Current available stock covers the selected target drum mix and all active drum allocations.</span></div>}<div className="supplierGrandTotal"><span>Total estimated hardware purchase</span><b>{money(orderEstimate)}</b></div><p className="mutedLine">Prices are editable estimates. Freight, exchange-rate changes and supplier minimums are not included.</p></section><section className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>Lea Hung Purchase Order</h3><p>Create a professional purchase order from the current Lea Hung shortages.</p></div><div><b>{leaHungRows.length} line item{leaHungRows.length===1?"":"s"}</b></div></div>{leaHungRows.length?<><div className="supplierEmailPreview"><p><b>Supplier:</b> Lea Hung · contact@leahung.com</p><div className="supplierHtmlPreview" dangerouslySetInnerHTML={{__html:leaHungEmailHtml()}}/></div><div className="buttonRow"><button className="primary" onClick={()=>savePurchaseOrder("Draft")}><Save size={16}/> {currentDraftPurchaseOrder?"Update Draft Purchase Order":"Create Draft Purchase Order"}</button>{currentDraftPurchaseOrder&&<button onClick={()=>{setSelectedPurchaseOrder(currentDraftPurchaseOrder);setPurchaseOrderOpen(true)}}><Pencil size={16}/> Open Current Draft</button>}<button onClick={()=>copyFormattedOrder()}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail()}><Mail size={16}/> Open Email</button></div>{currentDraftPurchaseOrder&&<p className="mutedLine">One working draft is retained: <b>{currentDraftPurchaseOrder.po_number}</b>. Updating the draft replaces its item list instead of creating another draft.</p>}{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</>:<div className="stocktakeNotice"><b>No Lea Hung order required.</b><span>The current available stock covers the selected target mix, or the shortages belong to other suppliers.</span></div>}</section></>}
 
+    {activeTab==="reorder"&&rechRows.length>0&&<section className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>Rech Purchase Order</h3><p>Create a separate one-off purchase order for requirements deliberately assigned to Rech.</p></div><div><b>{rechRows.length} line item{rechRows.length===1?"":"s"}</b></div></div><div className="supplierEmailPreview"><p><b>Supplier:</b> Rech</p><div className="supplierHtmlPreview" dangerouslySetInnerHTML={{__html:supplierEmailHtml("Rech",rechRows)}}/></div><div className="buttonRow"><button className="primary" onClick={()=>saveSupplierPurchaseOrder("Rech","Draft")}><Save size={16}/> Create / Update Rech Draft</button><button onClick={()=>copyFormattedOrder(null,"Rech")}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail(null,"Rech")}><Mail size={16}/> Open Email</button></div></section>}
     {activeTab==="purchasing"&&<section className="inventoryBlock"><div className="sectionHeader"><div><h3>Purchase Orders</h3><p>Open orders are counted as incoming stock, so new suggested orders include only additional quantities still required.</p></div>{selectedReceivingOrderIds.length>1&&<button className="primary" onClick={()=>openCombinedReceiving(purchaseOrders.filter(order=>selectedReceivingOrderIds.includes(order.id)))}><Package size={16}/> Receive Combined Shipment</button>}</div>{confirmedPurchaseOrders.length?<div className="tableWrap"><table><thead><tr><th>Combine</th><th>PO</th><th>Supplier</th><th>Date</th><th>Status</th><th>Outstanding</th><th></th></tr></thead><tbody>{confirmedPurchaseOrders.map(order=>{const canReceive=openPurchaseOrders.some(open=>open.id===order.id);const outstanding=(order.order_items||[]).reduce((sum,item)=>sum+Math.max(0,Number(item.quantity||0)-Number(receivedTotals(order)[item.hardware_part_id||item.code]||0)),0);return <tr key={order.id}><td>{canReceive?<input type="checkbox" checked={selectedReceivingOrderIds.includes(order.id)} onChange={e=>setSelectedReceivingOrderIds(current=>e.target.checked?[...new Set([...current,order.id])]:current.filter(id=>id!==order.id))}/>:"—"}</td><td><b>{order.po_number||"Purchase order"}</b></td><td>{order.supplier}</td><td>{new Date(order.created_at).toLocaleDateString("en-AU")}</td><td><span className={`poStatus ${String(order.status||"Sent").toLowerCase()}`}>{order.status||"Sent"}</span></td><td><b>{outstanding}</b></td><td><button onClick={()=>{setSelectedPurchaseOrder(order);setPurchaseOrderOpen(true)}}>Open</button></td></tr>})}</tbody></table></div>:<div className="stocktakeNotice"><b>No confirmed purchase orders yet.</b><span>Create or update the draft in Reorder Planner, then mark it Sent when the order is placed.</span></div>}{selectedReceivingOrderIds.length===1&&<p className="mutedLine">Select at least two open orders from the same supplier to receive them as one combined shipment.</p>}</section>}
 
-    {purchaseOrderOpen&&selectedPurchaseOrder&&<div className="modalBackdrop"><div className="modal purchaseOrderModal"><div className="modalHeader"><div><h2>{selectedPurchaseOrder.po_number}</h2><p>Lea Hung · {selectedPurchaseOrder.status}</p></div><button onClick={()=>setPurchaseOrderOpen(false)}>Close</button></div><div className="purchaseOrderPreview" dangerouslySetInnerHTML={{__html:purchaseOrderEmailHtml(selectedPurchaseOrder)}}/>{(selectedPurchaseOrder.receiving_history||[]).length>0&&<section className="poReceiptSummary"><h3>Receiving history</h3>{selectedPurchaseOrder.receiving_history.map((receipt,index)=><div key={index}><b>{new Date(receipt.received_at).toLocaleDateString("en-AU")}</b><span>{(receipt.items||[]).reduce((sum,item)=>sum+Number(item.quantity_received||0),0)} pieces received{receipt.supplier_invoice?` · Invoice ${receipt.supplier_invoice}`:""}</span></div>)}</section>}<div className="buttonRow"><button onClick={()=>copyFormattedOrder(selectedPurchaseOrder)}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail(selectedPurchaseOrder)}><Mail size={16}/> Open Email</button><button onClick={()=>printPurchaseOrder(selectedPurchaseOrder)}><Printer size={16}/> Print / Save PDF</button>{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>openPurchaseOrderEditor(selectedPurchaseOrder)}><Pencil size={16}/> Edit Order</button>}{selectedPurchaseOrder.status==="Draft"&&<button className="primary" onClick={()=>updatePurchaseOrderStatus(selectedPurchaseOrder,"Sent")}><CircleCheckBig size={16}/> Mark Sent</button>}{selectedPurchaseOrder.status==="Draft"&&<button className="dangerButton" onClick={()=>deleteDraftPurchaseOrder(selectedPurchaseOrder)}><Trash2 size={16}/> Delete Draft</button>}{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>openReceiving(selectedPurchaseOrder)}><Package size={16}/> Receive Shipment</button>}</div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</div></div>}
+    {purchaseOrderOpen&&selectedPurchaseOrder&&<div className="modalBackdrop"><div className="modal purchaseOrderModal"><div className="modalHeader"><div><h2>{selectedPurchaseOrder.po_number}</h2><p>{selectedPurchaseOrder.supplier||"Supplier"} · {selectedPurchaseOrder.status}</p></div><button onClick={()=>setPurchaseOrderOpen(false)}>Close</button></div><div className="purchaseOrderPreview" dangerouslySetInnerHTML={{__html:purchaseOrderEmailHtml(selectedPurchaseOrder)}}/>{(selectedPurchaseOrder.receiving_history||[]).length>0&&<section className="poReceiptSummary"><h3>Receiving history</h3>{selectedPurchaseOrder.receiving_history.map((receipt,index)=><div key={index}><b>{new Date(receipt.received_at).toLocaleDateString("en-AU")}</b><span>{(receipt.items||[]).reduce((sum,item)=>sum+Number(item.quantity_received||0),0)} pieces received{receipt.supplier_invoice?` · Invoice ${receipt.supplier_invoice}`:""}</span></div>)}</section>}<div className="buttonRow"><button onClick={()=>copyFormattedOrder(selectedPurchaseOrder)}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail(selectedPurchaseOrder)}><Mail size={16}/> Open Email</button><button onClick={()=>printPurchaseOrder(selectedPurchaseOrder)}><Printer size={16}/> Print / Save PDF</button>{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>openPurchaseOrderEditor(selectedPurchaseOrder)}><Pencil size={16}/> Edit Order</button>}{selectedPurchaseOrder.status==="Draft"&&<button className="primary" onClick={()=>updatePurchaseOrderStatus(selectedPurchaseOrder,"Sent")}><CircleCheckBig size={16}/> Mark Sent</button>}{selectedPurchaseOrder.status==="Draft"&&<button className="dangerButton" onClick={()=>deleteDraftPurchaseOrder(selectedPurchaseOrder)}><Trash2 size={16}/> Delete Draft</button>}{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>openReceiving(selectedPurchaseOrder)}><Package size={16}/> Receive Shipment</button>}</div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</div></div>}
 
     {purchaseOrderEditOpen&&purchaseOrderDraft&&<div className="modalBackdrop"><div className="modal purchaseOrderEditModal"><div className="modalHeader"><div><h2>Edit {purchaseOrderDraft.po_number}</h2><p>Adjust the order before sending or receiving it.</p></div><button onClick={()=>setPurchaseOrderEditOpen(false)}>Close</button></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Code / size</th><th>Quantity</th><th></th></tr></thead><tbody>{(purchaseOrderDraft.order_items||[]).map((item,index)=><tr key={`${item.hardware_part_id||item.code}-${index}`}><td>{item.name}<br/><small>{item.colour}</small></td><td>{item.code}<br/><small>{item.size}</small></td><td><input className="compactInput" type="number" min="0" value={item.quantity} onChange={e=>setPurchaseOrderDraft(current=>({...current,order_items:current.order_items.map((x,i)=>i===index?{...x,quantity:Number(e.target.value)}:x)}))}/></td><td><button className="dangerButton" onClick={()=>setPurchaseOrderDraft(current=>({...current,order_items:current.order_items.filter((_,i)=>i!==index)}))}><Trash2 size={14}/> Remove</button></td></tr>)}</tbody></table></div><label>Add another inventory item<select defaultValue="" onChange={e=>{addPurchaseOrderItem(e.target.value);e.target.value=""}}><option value="">Select hardware…</option>{hardware.filter(part=>/lea\s*hung/i.test(String(part.supplier||""))).sort(sortParts).map(part=><option key={part.id} value={part.id}>{part.part_name} · {supplierColour(part)} · {part.size} · {supplierCode(part)}</option>)}</select></label><label>Order notes<textarea value={purchaseOrderDraft.notes||""} onChange={e=>setPurchaseOrderDraft({...purchaseOrderDraft,notes:e.target.value})}/></label><div className="buttonRow"><button onClick={()=>setPurchaseOrderEditOpen(false)}>Cancel</button><button className="primary" onClick={savePurchaseOrderEdits}><Save size={16}/> Save Changes</button></div></div></div>}
 

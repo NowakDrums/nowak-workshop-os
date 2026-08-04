@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.9.10
+# Nowak Workshop OS v7.9.11
 
 Controlled repair release consolidating hardware allocations, shortages, purchase-order calculations and two-decimal AUD currency formatting. Custom drum orders now reserve standard hardware automatically, including reservations that create a shortage.
 
@@ -224,3 +224,15 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 
 ## v7.9.9 database cleanup
 Run `supabase/v7_9_8_throwoff_and_snare_wire_cleanup.sql` once in Supabase to remove the invalid brass Trick throw-off row and change existing brass snare-wire codes from SE04 to SE06.
+
+
+## v7.9.11
+- Reliable Today/Tomorrow/custom-date scheduling for repairs and modifications.
+- Lea Hung remains the default finish supplier.
+- Rech can be selected per Reorder Planner row for one-off Black Nickel finish hardware.
+- Separate Rech draft purchase-order generation.
+
+
+## v7.9.11
+- One-off Rech supplier override by reorder-plan row.
+- Reliable repair scheduling for Today, Tomorrow and chosen dates.
