@@ -1,2 +1,7 @@
 
 .stockSaveToast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2000;max-width:min(560px,calc(100vw - 28px));padding:14px 18px;border-radius:14px;border:1px solid #80652d;background:#201b12;color:#fff;font-weight:800;box-shadow:0 12px 35px rgba(0,0,0,.45);text-align:center}.stockSaveToast.success{background:#16351f;border-color:#4e9a61}.stockSaveToast.notice{background:#3a2a12;border-color:#c29136}.primary:disabled{opacity:.65;cursor:wait}
+
+.supplierOverrideBar{margin:12px 0 16px;padding:14px;border:1px solid var(--gold-border,#735f30);border-radius:14px;background:rgba(219,176,73,.08)}
+.supplierOverrideBar label{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,2fr) minmax(180px,240px);gap:12px;align-items:center}
+.supplierOverrideBar span{color:var(--muted,#aaa);font-size:.9rem}
+@media(max-width:760px){.supplierOverrideBar label{grid-template-columns:1fr}.supplierOverrideBar select{width:100%}}

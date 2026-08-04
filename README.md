@@ -1,3 +1,7 @@
+## v7.9.12
+
+Visible Rech order selection and repair scheduling without ON CONFLICT dependency.
+
 # Nowak Workshop OS v7.9.11
 
 Controlled repair release consolidating hardware allocations, shortages, purchase-order calculations and two-decimal AUD currency formatting. Custom drum orders now reserve standard hardware automatically, including reservations that create a shortage.
