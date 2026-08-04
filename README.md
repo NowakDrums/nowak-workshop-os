@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.9.3
+# Nowak Workshop OS v7.9.4
 
 Controlled repair release consolidating hardware allocations, shortages, purchase-order calculations and two-decimal AUD currency formatting. Custom drum orders now reserve standard hardware automatically, including reservations that create a shortage.
 
@@ -204,3 +204,12 @@ For permanent database cleanup, run `supabase/v7_8_1_remove_legacy_throwoff_dupl
 - Missing customer names or email addresses no longer place drums in Needs Attention.
 - Needs Attention now prioritises overdue, nearly due, cure-ready, outstanding-work and fulfilment issues.
 - Returning a drum to Production clears Complete, Sold and Shipped status and removes its linked sale record so stale sale data cannot reapply Sold status.
+
+
+## v7.9.4 — confirmed lifecycle toggles
+
+- Back to Production now clears lifecycle_status instead of writing an unsupported Production lifecycle value.
+- Back to Production asks for confirmation and clears Complete, Sold and Shipped state.
+- Clicking a highlighted Sold button now asks for confirmation before unmarking the sale.
+- The app asks whether a refund was given and records the answer in the drum notes.
+- Unmarking Sold removes the linked sales record and returns the drum to Complete status.

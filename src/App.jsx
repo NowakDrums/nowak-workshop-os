@@ -2363,7 +2363,7 @@ function App(){
     const history=(Array.isArray(d.stage_history)?d.stage_history:[]).filter(entry=>!["Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].includes(entry.item));
     const cleanNotes=setTrackingNumberInNotes(notes,"");
     const patch={
-      lifecycle_status:"Production",
+      lifecycle_status:null,
       production_status:flow.status,
       next_step:flow.nextStep,
       completion_date:null,
@@ -2390,6 +2390,34 @@ function App(){
   }
 
   async function markSold(d){
+    if(isSoldStatus(d)){
+      if(!window.confirm("Are you sure you want to unmark this drum as sold? It will return to Complete status and the linked sale record will be removed.")) return false;
+      const refundGiven=window.confirm("Was a refund given to the customer?\n\nSelect OK for Yes or Cancel for No.");
+      const refundNote=`${new Date().toISOString()} — Sale removed. Refund ${refundGiven ? "given" : "not recorded as given"}.`;
+      const cleanSalesStatus=d.order_type==="Custom" ? "Custom Order" : "Stock";
+      const updatedNotes=[String(d.notes||"").trim(), refundNote].filter(Boolean).join("\n");
+      const {data,error}=await supabase.from("drums").update({
+        lifecycle_status:"Completed",
+        production_status:"Manufacturing Complete",
+        next_step:"Marketing / launch optional",
+        sales_status:cleanSalesStatus,
+        shipping_cost:0,
+        total_price:0,
+        notes:updatedNotes
+      }).eq("id",d.id).select("*").single();
+      if(error){
+        setMessage("Could not unmark this drum as sold: "+error.message);
+        return false;
+      }
+      const {error:saleError}=await supabase.from("sales").delete().eq("drum_id",d.id);
+      await loadAll();
+      setJobCard(current=>current?.id===d.id ? {...current,...data} : current);
+      setMessage(saleError
+        ? "Drum is no longer marked Sold, but the old sales record could not be removed: "+saleError.message
+        : `Drum unmarked as Sold and returned to Complete status. Refund ${refundGiven ? "recorded as given" : "not recorded as given"}.`);
+      return true;
+    }
+
     const defaultSalePrice=Number(d.custom_price || d.retail_price || 0);
     const saleEntry=prompt("Drum selling price (excluding shipping)?", defaultSalePrice);
     if(saleEntry===null) return false;
@@ -2945,7 +2973,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.3 — operational attention rules and reliable return-to-production status cleanup.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.4 — confirmed Sold toggles and reliable return to Production.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8125,7 +8153,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
             className={isSoldStatus(drum) ? "primary" : ""}
             onClick={()=>markSold(drum)}
           >
-            <DollarSign size={16}/> Sold
+            <DollarSign size={16}/> {isSoldStatus(drum) ? "Undo Sold" : "Sold"}
           </button>
 
           <button
