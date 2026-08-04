@@ -1,3 +1,6 @@
+## v7.9.13
+
+Scheduled repair-date display and flexible purchase-order suppliers. See `RELEASE_NOTES_v7_9_13.md`.
 ## v7.9.12
 
 Visible Rech order selection and repair scheduling without ON CONFLICT dependency.
