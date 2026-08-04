@@ -1722,6 +1722,13 @@ function App(){
     return ()=>clearInterval(timer);
   },[alertPopup]);
 
+  const normalisedConstruction=value=>{
+    const text=String(value||"").trim().toLowerCase();
+    if(text.includes("ply")) return "Ply";
+    if(text.includes("stave") || text.includes("block")) return "Stave";
+    return String(value||"").trim();
+  };
+  const constructionMatches=(drum,filter)=>filter==="All" || normalisedConstruction(drum?.build_type)===filter;
   const operationalDrums=drums.filter(d=>!isSoldStatus(d) && !isShippedStatus(d) && !isArchivedStatus(d));
   const filtered=drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
   const active=operationalDrums;
@@ -1804,19 +1811,32 @@ function App(){
       [...new Set(items.map(item=>item.planned_date))].sort()
     ])
   );
+  const activePlanByRepair=workPlan
+    .filter(item=>item.status!=="Done" && item.repair_id)
+    .reduce((acc,item)=>{
+      acc[item.repair_id] ??=[];
+      acc[item.repair_id].push(item);
+      return acc;
+    },{});
+  const plannedDatesByRepair=Object.fromEntries(
+    Object.entries(activePlanByRepair).map(([repairId,items])=>[
+      repairId,
+      [...new Set(items.map(item=>item.planned_date))].sort()
+    ])
+  );
 
   const todayWorkshopTasks=workshopTasks.filter(task=>workshopTaskDue(task,localISODate(0)));
   const todayWorkshopTaskMinutes=todayWorkshopTasks.reduce((sum,task)=>sum+Number(task.estimated_minutes||0),0);
 
   const staveInProduction=drums.filter(d=>
-    d.build_type==="Stave" &&
+    normalisedConstruction(d.build_type)==="Stave" &&
     !isManufacturingComplete(d) &&
     !isSoldStatus(d) &&
     !isShippedStatus(d) &&
     !isArchivedStatus(d)
   ).length;
   const plyInProduction=drums.filter(d=>
-    d.build_type==="Ply" &&
+    normalisedConstruction(d.build_type)==="Ply" &&
     !isManufacturingComplete(d) &&
     !isSoldStatus(d) &&
     !isShippedStatus(d) &&
@@ -2723,6 +2743,37 @@ function App(){
     return true;
   }
 
+  async function addRepairToPlan(repair,plannedDate=localISODate(0)){
+    const estimatedHours=Math.max(0.25,Number(repair.estimated_hours||1));
+    const row={
+      repair_id:repair.id,
+      drum_id:null,
+      planned_date:plannedDate,
+      task_item:`repair-${repair.id}`,
+      task_label:"Repair / Modification",
+      estimated_hours:estimatedHours,
+      drum_label:`${repair.job_number||"Repair"} · ${repair.customer_name||repair.drum_brand||"Customer repair"}`,
+      batch_name:"Repairs & Modifications",
+      status:"Planned",
+    };
+    const {data,error}=await supabase
+      .from("work_plan_items")
+      .upsert(row,{onConflict:"repair_id,planned_date",ignoreDuplicates:true})
+      .select("*")
+      .single();
+    if(error){
+      setMessage("Could not schedule repair: "+error.message+". Run the v7.9.10 repair-planning migration if required.");
+      return false;
+    }
+    setWorkPlan(current=>{
+      const map=new Map(current.map(item=>[item.id,item]));
+      if(data) map.set(data.id,data);
+      return [...map.values()];
+    });
+    setMessage(`${repair.job_number||"Repair"} scheduled for ${friendlyPlanDate(plannedDate).toLowerCase()}.`);
+    return true;
+  }
+
   async function updatePlanItem(id,patch){
     const {data,error}=await supabase.from("work_plan_items").update(patch).eq("id",id).select("*").single();
     if(error){
@@ -2737,6 +2788,10 @@ function App(){
   async function completePlannedWork(item){
     if(item.status==="Done"){
       return updatePlanItem(item.id,{status:"Planned"});
+    }
+
+    if(item.repair_id){
+      return updatePlanItem(item.id,{status:"Done"});
     }
 
     const drum=drums.find(d=>d.id===item.drum_id);
@@ -2778,7 +2833,8 @@ function App(){
       return;
     }
     const rows=unfinished.map(item=>({
-      drum_id:item.drum_id,
+      drum_id:item.drum_id||null,
+      repair_id:item.repair_id||null,
       planned_date:targetDate,
       task_item:item.task_item,
       task_label:item.task_label,
@@ -2787,17 +2843,24 @@ function App(){
       batch_name:item.batch_name,
       status:"Planned",
     }));
-    const {data,error}=await supabase
-      .from("work_plan_items")
-      .upsert(rows,{onConflict:"drum_id,planned_date,task_item",ignoreDuplicates:true})
-      .select("*");
-    if(error){
-      setMessage("Could not roll work forward: "+error.message);
+    const drumRows=rows.filter(row=>row.drum_id);
+    const repairRows=rows.filter(row=>row.repair_id);
+    const results=[];
+    if(drumRows.length){
+      results.push(await supabase.from("work_plan_items").upsert(drumRows,{onConflict:"drum_id,planned_date,task_item",ignoreDuplicates:true}).select("*"));
+    }
+    if(repairRows.length){
+      results.push(await supabase.from("work_plan_items").upsert(repairRows,{onConflict:"repair_id,planned_date",ignoreDuplicates:true}).select("*"));
+    }
+    const failed=results.find(result=>result.error);
+    if(failed?.error){
+      setMessage("Could not roll work forward: "+failed.error.message);
       return;
     }
+    const data=results.flatMap(result=>result.data||[]);
     setWorkPlan(current=>{
       const map=new Map(current.map(item=>[item.id,item]));
-      (data||[]).forEach(item=>map.set(item.id,item));
+      data.forEach(item=>map.set(item.id,item));
       return [...map.values()];
     });
     setMessage(`${unfinished.length} unfinished task${unfinished.length===1?"":"s"} moved to tomorrow.`);
@@ -2817,6 +2880,7 @@ function App(){
       status:form.status || "Received",
       date_received:form.date_received || new Date().toISOString().slice(0,10),
       due_date:form.due_date || null,
+      estimated_hours:Math.max(0.25,Number(form.estimated_hours||1)),
     };
     const {data,error}=await supabase.from("repair_jobs").insert(payload).select("*").single();
     if(error){
@@ -2979,7 +3043,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.9 — Hardware finish carried through to reorder planning and supplier orders.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.10 — Stave filtering repaired and repairs added to workshop planning.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3112,7 +3176,9 @@ function App(){
       <DailyWorkPlan
         workPlan={workPlan}
         drums={operationalDrums}
+        repairs={activeRepairs}
         openJobCard={setJobCard}
+        openRepair={setRepairJob}
         updatePlanItem={updatePlanItem}
         completePlannedWork={completePlannedWork}
         removePlanItem={removePlanItem}
@@ -3242,7 +3308,7 @@ function App(){
         ? <DrumArchive
             drums={archivedDrums.filter(d=>
               JSON.stringify(d).toLowerCase().includes(search.toLowerCase()) &&
-              (constructionFilter==="All" || d.build_type===constructionFilter)
+              constructionMatches(d,constructionFilter)
             )}
             openJobCard={setJobCard}
             restoreArchivedDrum={restoreArchivedDrum}
@@ -3253,7 +3319,7 @@ function App(){
               .sort(productionPriorityCompare)
               .filter(d=>{
                 if(isArchivedStatus(d)) return false;
-                if(constructionFilter!=="All" && d.build_type!==constructionFilter) return false;
+                if(!constructionMatches(d,constructionFilter)) return false;
 
                 const lifecycle=drumLifecycleStatus(d);
                 if(productionFilter==="Pending") return !hasWorkflowStarted(d) && !["Completed","Sold","Shipped","Archived"].includes(lifecycle);
@@ -3292,7 +3358,7 @@ function App(){
     />}
 
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard} externalOrders={externalOrders} createDrumFromShopify={createDrumFromShopify} updateExternalOrderStatus={updateExternalOrderStatus}/>}
-    {view==="repairs" && <RepairsPage repairs={repairs} openRepair={setRepairJob} addRepair={()=>setShowAddRepair(true)}/>}
+    {view==="repairs" && <RepairsPage repairs={repairs} openRepair={setRepairJob} addRepair={()=>setShowAddRepair(true)} scheduleRepair={addRepairToPlan} plannedDatesByRepair={plannedDatesByRepair}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
     {view==="inventory" && <Inventory hardware={availableHardware} allocations={hardwareAllocations} drums={drums} updateHardware={updateHardware} saveStocktake={saveHardwareStocktake} refreshData={loadAll} allocateHardware={allocateHardwareForDrum} releaseHardware={releaseHardwareForDrum} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
@@ -3578,14 +3644,16 @@ function ScheduleWorkControl({label="Schedule Work",onSchedule,scheduledDates=[]
   </div>;
 }
 
-function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,completePlannedWork,removePlanItem,rollPlanItems}){
+function DailyWorkPlan({workPlan,drums,repairs=[],openJobCard,openRepair,updatePlanItem,completePlannedWork,removePlanItem,rollPlanItems}){
   const drumMap=Object.fromEntries(drums.map(d=>[d.id,d]));
+  const repairMap=Object.fromEntries(repairs.map(r=>[r.id,r]));
   const today=localISODate(0);
   const tomorrow=localISODate(1);
 
   function PlanSection({date,title}){
     const activeDrumIds=new Set(drums.map(drum=>drum.id));
-    const items=workPlan.filter(item=>item.planned_date===date && activeDrumIds.has(item.drum_id));
+    const activeRepairIds=new Set(repairs.map(repair=>repair.id));
+    const items=workPlan.filter(item=>item.planned_date===date && ((item.drum_id && activeDrumIds.has(item.drum_id)) || (item.repair_id && activeRepairIds.has(item.repair_id))));
     const unfinished=items.filter(item=>item.status!=="Done");
     const totalHours=unfinished.reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
     const grouped={};
@@ -3613,11 +3681,12 @@ function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,completePlanne
             const mixCount=groupItems.filter(i=>i.status!=="Done").length;
             const mixRecipe=sprayMixForBatch(group,mixCount);
             return <section className="dailyPlanGroup" key={group}>
-              <header><div><h3>{group}</h3><span>{groupItems.length} drum{groupItems.length===1?"":"s"} · {formatPlanTime(groupHours)}</span></div></header>
+              <header><div><h3>{group}</h3><span>{groupItems.length} task{groupItems.length===1?"":"s"} · {formatPlanTime(groupHours)}</span></div></header>
               {mixRecipe && mixCount>0 && <SprayMixCalculator batchName={group} count={mixCount}/>}
               <div className="planItemList">{groupItems.map(item=>{
                 const drum=drumMap[item.drum_id];
-                return <article className={"planItem "+(item.status==="Done"?"planItemDone":"")} key={item.id}>
+                const repair=repairMap[item.repair_id];
+                return <article className={"planItem "+(repair?"repairPlanItem ":"")+(item.status==="Done"?"planItemDone":"")} key={item.id}>
                   <button className="planCheck" title={item.status==="Done"?"Mark unfinished":"Complete task and progress drum"} onClick={()=>completePlannedWork(item)}>
                     <CircleCheckBig size={20}/>
                   </button>
@@ -3627,6 +3696,7 @@ function DailyWorkPlan({workPlan,drums,openJobCard,updatePlanItem,completePlanne
                   </div>
                   <strong>{formatPlanTime(item.estimated_hours)}</strong>
                   {drum && <button onClick={()=>openJobCard(drum)}>Open Drum</button>}
+                  {repair && <button onClick={()=>openRepair?.(repair)}>Open Repair</button>}
                   <button className="dangerButton" onClick={()=>removePlanItem(item.id)}><Trash2 size={14}/></button>
                 </article>;
               })}</div>
@@ -4583,7 +4653,7 @@ function DrumArchive({drums,openJobCard,restoreArchivedDrum,embedded=false}){
   </section>;
 }
 
-function RepairsPage({repairs,openRepair,addRepair}){
+function RepairsPage({repairs,openRepair,addRepair,scheduleRepair,plannedDatesByRepair={}}){
   const [search,setSearch]=useState("");
   const filtered=repairs.filter(repair=>JSON.stringify(repair).toLowerCase().includes(search.toLowerCase()));
 
@@ -4619,6 +4689,8 @@ function RepairsPage({repairs,openRepair,addRepair}){
                 <p><Users size={14}/> {repair.customer_name || "Customer not entered"}</p>
                 {repair.phone && <p><Phone size={14}/> {repair.phone}</p>}
                 <div className="repairServiceTags">{repairServiceLabels(repair.services||[]).map(label=><span key={label}>{label}</span>)}</div>
+                <p className="repairHours"><Clock size={14}/> Estimated workshop time: {formatPlanTime(Number(repair.estimated_hours||1))}</p>
+                <ScheduleWorkControl label="Schedule Repair" onSchedule={date=>scheduleRepair?.(repair,date)} scheduledDates={plannedDatesByRepair[repair.id]||[]}/>
                 <button onClick={()=>openRepair(repair)}>Open Repair Job</button>
               </article>)}</div>}
         </section>;
@@ -4641,6 +4713,7 @@ function AddRepairModal({repairs,onClose,onCreate}){
     status:"Received",
     date_received:new Date().toISOString().slice(0,10),
     due_date:"",
+    estimated_hours:1,
   });
   const [saving,setSaving]=useState(false);
 
@@ -4682,6 +4755,7 @@ function AddRepairModal({repairs,onClose,onCreate}){
         <label>Drum description</label><input placeholder="e.g. 14 x 6.5 snare" value={form.drum_description} onChange={e=>setForm({...form,drum_description:e.target.value})}/>
         <label>Date received</label><input type="date" value={form.date_received} onChange={e=>setForm({...form,date_received:e.target.value})}/>
         <label>Due date (optional)</label><input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})}/>
+        <label>Estimated workshop hours</label><input type="number" min="0.25" step="0.25" value={form.estimated_hours} onChange={e=>setForm({...form,estimated_hours:Number(e.target.value)})}/>
       </div>
     </section>
 
@@ -4744,6 +4818,7 @@ function RepairJobModal({repair,onClose,updateRepair,deleteRepair,setMessage}){
       status:draft.status,
       date_received:draft.date_received,
       due_date:draft.due_date,
+      estimated_hours:Math.max(0.25,Number(draft.estimated_hours||1)),
     });
     if(saved){
       setSavedMessage("Repair job saved");
@@ -4829,6 +4904,7 @@ function RepairJobModal({repair,onClose,updateRepair,deleteRepair,setMessage}){
         <label>Drum description</label><input value={draft.drum_description||""} onChange={e=>setDraft({...draft,drum_description:e.target.value})}/>
         <label>Date received</label><input type="date" value={draft.date_received||""} onChange={e=>setDraft({...draft,date_received:e.target.value})}/>
         <label>Due date</label><input type="date" value={draft.due_date||""} onChange={e=>setDraft({...draft,due_date:e.target.value})}/>
+        <label>Estimated workshop hours</label><input type="number" min="0.25" step="0.25" value={draft.estimated_hours||1} onChange={e=>setDraft({...draft,estimated_hours:Number(e.target.value)})}/>
       </div>
     </section>
 

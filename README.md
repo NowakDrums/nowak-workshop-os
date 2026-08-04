@@ -1,4 +1,4 @@
-# Nowak Workshop OS v7.9.9
+# Nowak Workshop OS v7.9.10
 
 Controlled repair release consolidating hardware allocations, shortages, purchase-order calculations and two-decimal AUD currency formatting. Custom drum orders now reserve standard hardware automatically, including reservations that create a shortage.
 

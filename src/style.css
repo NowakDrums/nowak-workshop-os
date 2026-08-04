@@ -1867,3 +1867,8 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .supplierBreakdownHeader p{margin:3px 0 0}
 .supplierGrandTotal{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:18px;padding:16px;border:1px solid var(--gold,#e0b858);border-radius:12px;font-size:1.08rem}
 .supplierGrandTotal b{font-size:1.2rem;color:var(--gold,#e0b858)}
+
+/* v7.9.10 repair planning */
+.repairPlanItem{border-left:4px solid #58a6ff;background:rgba(88,166,255,.08)}
+.repairHours{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:.88rem}
+.repairCard .scheduleWorkControl{margin:.65rem 0}
