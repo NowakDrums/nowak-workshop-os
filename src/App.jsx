@@ -451,7 +451,13 @@ function removeLegacyThrowOffDuplicates(parts=[]){
   if(!hasChromeTrick) return normalised;
   return normalised.filter(part=>{
     const name=normaliseHardwareName(part.part_name);
-    return !["throwoffbuttplate","throwoffandbuttplate"].includes(name);
+    const code=String(part.code||"").toUpperCase();
+    const finish=String(part.finish||"").toLowerCase();
+    if(["throwoffbuttplate","throwoffandbuttplate"].includes(name)) return false;
+    // Trick throw-offs are available only in Chrome, Gold and Black Nickel.
+    // Older releases created an invalid Brass Plated row (THROW-TRICK-BR).
+    if(name==="trickthrowoff"&&(code==="THROW-TRICK-BR"||/brass/.test(finish))) return false;
+    return true;
   });
 }
 
@@ -2973,7 +2979,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.7 — clearer stocktake, allocation highlighting and brass throw-offs.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.8 — Reorder Planner repair, Trick finish cleanup and SE06 brass snare wires.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4986,11 +4992,15 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
         const finish=separator>=0?key.slice(separator+2):"";
         const base=hardware.find(p=>String(p.id)===String(baseId));
         if(!base) throw new Error(`Could not find the base hardware item for ${finish}.`);
-        const suffix=(finish==="Brass Plated"||finish==="Brass")?"-BR":"-BN";
+        const isTrickThrowOff=String(base.category||"")==="Throw-Offs"&&normaliseHardwareName(base.part_name)==="trickthrowoff";
+        const suffix=finish==="Gold"?"-G":(finish==="Brass Plated"||finish==="Brass")?"-BR":"-BN";
+        const variantCode=isTrickThrowOff
+          ? (finish==="Gold"?"THROW-TRICK-G":finish==="Black Nickel"?"THROW-TRICK-BN":base.code)
+          : `${base.code||(base.category==="Tension Rods"?"TROD":"LUG")}${suffix}`;
         const {error}=await supabase.from("hardware_parts").insert({
           part_name:base.part_name,
           category:base.category,
-          code:`${base.code||(base.category==="Tension Rods"?"TROD":"LUG")}${suffix}`,
+          code:variantCode,
           finish,
           size:base.size,
           qty_on_hand:Number(qty),
@@ -5050,7 +5060,8 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const finish=String(part.finish||"").toLowerCase();
     const combined=`${part.part_name||""} ${finish}`.toLowerCase();
     if(/black\s*nickel/.test(combined)) return "Black Nickel";
-    if(/brass|gold/.test(combined)) return "Brass / Gold";
+    if(/gold/.test(combined)) return "Gold";
+    if(/brass/.test(combined)) return "Brass";
     if(/chrome/.test(combined)) return "Chrome";
     if(/stainless/.test(combined)) return "Stainless Steel";
     return finish.trim()?part.finish:"Chrome";
@@ -5059,8 +5070,11 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const clean=value=>String(value||"").toLowerCase()
       .replace(/black\s*nickel|chrome\s*plated|chrome|brass\s*plated|brass|gold|stainless\s*steel/g,"")
       .replace(/[^a-z0-9]+/g," ").trim();
+    const category=String(part.category||"");
+    if(category==="Snare Wires") return [category,"snare-wire",clean(part.size)].join("|");
+    if(category==="Throw-Offs"&&normaliseHardwareName(part.part_name)==="trickthrowoff") return [category,"throw-trick",clean(part.size)].join("|");
     const code=String(part.code||"").toUpperCase().replace(/-(?:BR|BN)$/i,"").trim();
-    return [part.category,code||clean(part.part_name),clean(part.size)].join("|");
+    return [category,code||clean(part.part_name),clean(part.size)].join("|");
   };
   // Collapse duplicate catalogue rows for display. Repeated records created by older
   // finish-variant releases represent the same physical stock, so use the highest
@@ -5086,7 +5100,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const standardFinish=["Chrome","Stainless Steel"].includes(family);
     // In adjustment mode, brass snare wires are grouped beneath the stainless
     // parent. In the normal inventory view, brass appears only when stock exists.
-    if(String(part.category||"")==="Snare Wires") return family==="Stainless Steel"||(!stocktakeMode&&family==="Brass / Gold");
+    if(String(part.category||"")==="Snare Wires") return family==="Stainless Steel"||(!stocktakeMode&&family==="Brass");
     // Normal stock view always shows the main Chrome/Stainless catalogue line.
     // Brass and Black Nickel hardware is hidden whenever its physical quantity is zero.
     if(standardFinish) return true;
@@ -5098,7 +5112,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     if(candidate.id===part.id||variantBaseKey(candidate)!==variantBaseKey(part)||finishFamily(candidate)===finishFamily(part)) return false;
     if(["Chrome","Stainless Steel"].includes(finishFamily(candidate))) return false;
     // Snare wires are manufactured only in stainless steel or brass.
-    if(String(part.category||"")==="Snare Wires") return finishFamily(candidate)==="Brass / Gold";
+    if(String(part.category||"")==="Snare Wires") return finishFamily(candidate)==="Brass";
     return true;
   });
   const consumed=allocations.filter(a=>a.status==="Consumed"),consumedByDrum=consumed.reduce((map,a)=>{(map[a.drum_id]??=[]).push(a);return map},{}),partById=Object.fromEntries(hardware.map(p=>[p.id,p]));
@@ -5136,6 +5150,17 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     return {code,part,required,available,currentShortage,grossNeed,onOrder,toOrder,cost:Number(part?.landed_cost_aud||0),total:toOrder*Number(part?.landed_cost_aud||0)};
   }).filter(row=>row.toOrder>0);
   const orderEstimate=orderRows.reduce((sum,row)=>sum+row.total,0);
+  const supplierBucket=part=>{
+    const supplier=String(part?.supplier||"").trim();
+    if(/lea\s*hung/i.test(supplier)) return "Lea Hung";
+    if(/mega\s*music/i.test(supplier)) return "Mega Music";
+    if(/rech/i.test(supplier)) return "Rech";
+    return supplier||"Other";
+  };
+  const supplierOrderGroups=["Lea Hung","Mega Music","Rech"].map(supplier=>{
+    const rows=orderRows.filter(row=>supplierBucket(row.part)===supplier);
+    return {supplier,rows,estimate:rows.reduce((sum,row)=>sum+Number(row.total||0),0)};
+  }).filter(group=>group.rows.length);
   const planTotal=reorderPlan.reduce((sum,row)=>sum+Number(row.qty||0),0);
   const mixRemaining=Object.fromEntries(hardware.map(part=>[hardwareLookupKey(part),Math.max(0,Number(part.qty_available||0))]));
   const simultaneousMix=reorderPlan.map(row=>({...row,buildable:0}));
@@ -5159,7 +5184,8 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const finish=String(part?.finish||"").trim();
     if(!finish) return "Chrome";
     if(/black\s*nickel/i.test(finish)) return "Black Nickel";
-    if(/gold|brass/i.test(finish)) return "Brass";
+    if(/gold/i.test(finish)) return "Gold";
+    if(/brass/i.test(finish)) return "Brass";
     if(/chrome/i.test(finish)) return "Chrome";
     if(/stainless/i.test(finish)) return "Stainless Steel";
     return finish;
@@ -5176,7 +5202,8 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const size=sizeNumber(part?.size||part?.part_name);
     if(category==="Tension Rods") return "TR01";
     if(category==="Snare Wires"){
-      const codes={10:"SE04-1020CI",12:"SE04-1220CI",13:"SE04-1320CI",14:"SE04-1420CI"};
+      const prefix=finishFamily(part)==="Brass"?"SE06":"SE04";
+      const codes={10:`${prefix}-1020CI`,12:`${prefix}-1220CI`,13:`${prefix}-1320CI`,14:`${prefix}-1420CI`};
       return codes[size]||String(part?.code||"").trim();
     }
     return String(part?.code||"").trim();
@@ -5405,12 +5432,14 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
         const missingRows=[];
         const optionalFinishes=(p.category==="Snare Wires"&&finishFamily(p)==="Stainless Steel")
           ?["Brass"]
-          :(((p.category==="Lugs"||p.category==="Floor Tom Hardware"||p.category==="Bass Drum Hardware"||p.category==="Throw-Offs")&&finishFamily(p)==="Chrome")||(p.category==="Tension Rods"&&["Chrome","Stainless Steel"].includes(finishFamily(p))))
+          :(p.category==="Throw-Offs"&&finishFamily(p)==="Chrome"&&normaliseHardwareName(p.part_name)==="trickthrowoff")
+            ?["Gold","Black Nickel"]
+          :(((p.category==="Lugs"||p.category==="Floor Tom Hardware"||p.category==="Bass Drum Hardware")&&finishFamily(p)==="Chrome")||(p.category==="Tension Rods"&&["Chrome","Stainless Steel"].includes(finishFamily(p))))
             ?["Brass Plated","Black Nickel"]
             :[];
         if(optionalFinishes.length){
           optionalFinishes.forEach(finish=>{
-            const wantedFamily=finish==="Black Nickel"?"Black Nickel":"Brass / Gold";
+            const wantedFamily=finish==="Black Nickel"?"Black Nickel":finish==="Gold"?"Gold":"Brass";
             const exists=variants.some(v=>finishFamily(v)===wantedFamily);
             if(!exists){const key=`${p.id}::${finish}`;missingRows.push(<tr className="variantRow newVariantRow" key={key}><td><span className="variantIndent">↳ {finish}</span><br/><small>Optional hardware finish</small></td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-new-variant-key={key} defaultValue={0}/></td><td>0</td><td><b>—</b></td><td>{money(p.landed_cost_aud||0)}</td><td>{String(p.category||"")==="Snare Wires"?<input className="compactInput" type="number" min="0" data-new-variant-min-key={key} defaultValue={Number(p.reorder_level||0)}/>:<b>—</b>}</td></tr>)};
           });
