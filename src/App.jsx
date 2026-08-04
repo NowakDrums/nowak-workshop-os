@@ -510,6 +510,21 @@ function requirementUsesFinishSupplier(req){
   const key=hardwareFinishKey(req?.finish||req?.label||req?.code||"");
   return key!=="CHROME" || /-(?:BRASS|BLACK-NICKEL)$/i.test(String(req?.code||""));
 }
+function tensionRodRequirement(length,qty,finish){
+  const finishLabel=hardwareFinishLabel(finish);
+  const code=hardwareFinishKey(finish)==="CHROME" ? `TROD-${length}` : finishSku(`TROD-${length}`,finish);
+  const material=finishLabel==="Chrome" ? "Stainless Steel" : finishLabel;
+  return {
+    code,
+    qty,
+    label:`${length}mm ${material.toLowerCase()} tension rod`,
+    partName:length===110?"Bass Drum Tension Rod":"Tension Rods (stainless steel)",
+    category:"Tension Rods",
+    finish:material,
+    size:`${length}mm`,
+  };
+}
+
 function drumHardwareRequirements(drum){
   if(String(drum?.hardware_option||"Standard Hardware").toLowerCase().includes("no hardware")) return [];
   const spec=parseDrumSize(drum?.size);
@@ -526,7 +541,7 @@ function drumHardwareRequirements(drum){
     const ventSize=drum?.build_type==="Ply" ? "20mm" : "30mm";
     return [
       {code:finishSku(`LUG-${lugLength.replace("mm","")}`,finish),qty:lugCount,label:`${lugLength} Agile Tube Lug — ${finishLabel}`},
-      {code:"TROD-45",qty:rodCount,label:"45mm stainless steel tension rod"},
+      tensionRodRequirement(45,rodCount,finish),
       {code:diameter==="10" ? finishSku("TOM-HOOP-10-6",finish) : finishSku(`HOOP-${diameter}-${lugCount}-BAT`,finish),qty:1,label:diameter==="10" ? `10\" 6-lug 2.3mm top/tom hoop — ${finishLabel}` : `${diameter}\" ${lugCount}-lug 2.3mm hoop — ${finishLabel}`},
       {code:finishSku(`HOOP-${diameter}-${lugCount}-SNR`,finish),qty:1,label:`${diameter}\" ${lugCount}-lug 2.3mm snare-side hoop — ${finishLabel}`},
       {code:`HEAD-${diameter}-BAT`,qty:1,label:`${diameter}\" Remo batter head`},
@@ -537,12 +552,12 @@ function drumHardwareRequirements(drum){
     ].filter(item=>!item.code.includes("--"));
   }
   if(type==="tom"){
-    if(!["8","10","12"].includes(diameter)) return [];
+    if(!["8","10","12","13"].includes(diameter)) return [];
     return [
       {code:finishSku(`TOM-HOOP-${diameter}-6`,finish),qty:2,label:`${diameter}\" 6-lug 2.3mm tom hoop — ${finishLabel}`},
       {code:finishSku("BALL-LUG",finish),qty:12,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`},
       {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
-      {code:"TROD-45",qty:12,label:"45mm stainless steel tension rod"},
+      tensionRodRequirement(45,12,finish),
     ];
   }
   if(type==="floor tom"){
@@ -551,20 +566,22 @@ function drumHardwareRequirements(drum){
       {code:finishSku(`FLOOR-HOOP-${diameter}-8`,finish),qty:2,label:`${diameter}\" 8-lug 2.3mm floor-tom hoop — ${finishLabel}`},
       {code:finishSku("BALL-LUG",finish),qty:16,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`},
       {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
-      {code:"TROD-45",qty:16,label:"45mm stainless steel tension rod"},
+      tensionRodRequirement(45,16,finish),
       {code:"FLOOR-LEG-SET",qty:1,label:"FL05-120540 floor-tom leg set (3 piece)"},
       {code:"TOM-MOUNT",qty:3,label:"TM001 tom mount"},
     ];
   }
   if(type==="bass drum"){
     if(!["18","20","22","24"].includes(diameter)) return [];
+    const clawCount=["22","24"].includes(diameter)?10:8;
+    const bassRodCount=clawCount*2;
     return [
-      {code:"TROD-110",qty:16,label:"TR02 110mm stainless steel bass-drum tension rod"},
-      {code:finishSku("BASS-CLAW",finish),qty:16,label:`BC-010CR bass-drum claw — ${finishLabel}`,partName:"Bass Drum Claw",category:"Bass Drum Hardware",finish:finishLabel,size:"Bass drum claw"},
+      tensionRodRequirement(110,bassRodCount,finish),
+      {code:finishSku("BASS-CLAW",finish),qty:bassRodCount,label:`BC-010CR bass-drum claw — ${finishLabel}`,partName:"Bass Drum Claw",category:"Bass Drum Hardware",finish:finishLabel,size:"Bass drum claw"},
       {code:finishSku("BASS-SPUR",finish),qty:1,label:`BDS008CR bass-drum spur set — ${finishLabel}`,partName:"Bass Drum Spur",category:"Bass Drum Hardware",finish:finishLabel,size:"Spur set"},
       {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`,partName:"Air Vent",category:"Air Vents",finish:finishLabel,size:"20mm"},
-      {code:finishSku("BALL-LUG",finish),qty:16,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`,partName:"Agile Tube Lug – Ball",category:"Lugs",finish:finishLabel,size:"Ball lug"},
-      {code:finishSku("BASS-LUG-GASKET",finish),qty:16,label:`ATL01-01 ball-lug gasket — ${finishLabel}`,partName:"Ball Lug Gasket",category:"Bass Drum Hardware",finish:finishLabel,size:"ATL01-01 gasket"},
+      {code:finishSku("BALL-LUG",finish),qty:bassRodCount,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`,partName:"Agile Tube Lug – Ball",category:"Lugs",finish:finishLabel,size:"Ball lug"},
+      {code:finishSku("BASS-LUG-GASKET",finish),qty:bassRodCount,label:`ATL01-01 ball-lug gasket — ${finishLabel}`,partName:"Ball Lug Gasket",category:"Bass Drum Hardware",finish:finishLabel,size:"ATL01-01 gasket"},
       {code:`BASS-HOOP-${diameter}`,qty:2,label:`${diameter}\" HA06 maple bass-drum hoop`},
     ];
   }
@@ -3086,7 +3103,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.15 — stable supplier switching and domestic purchase-order wording.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.16 — tension rods follow drum type, lug count and hardware finish.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5316,6 +5333,11 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const direct=hardware.find(part=>String(part.id)===String(item?.hardware_part_id||""));
     if(direct)return hardwareLookupKey(direct);
     const code=String(item?.code||"").trim().toUpperCase();
+    const rodCodeMap={
+      "TR01":"TROD-45","TR01-BR":"TROD-45-BRASS","TR01-BN":"TROD-45-BLACK-NICKEL",
+      "TR02":"TROD-110","TR02-BR":"TROD-110-BRASS","TR02-BN":"TROD-110-BLACK-NICKEL",
+    };
+    if(rodCodeMap[code]) return rodCodeMap[code];
     const matched=hardware.find(part=>String(part.code||"").trim().toUpperCase()===code||hardwareLookupKey(part)===code);
     return matched?hardwareLookupKey(matched):code;
   };
@@ -5377,7 +5399,6 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const leaHungRows=rowsForSupplier(purchaseOrderSupplier);
   const otherSupplierGroups=[];
   const supplierColour=part=>{
-    if(part?.category==="Tension Rods") return "Stainless Steel";
     const finish=String(part?.finish||"").trim();
     if(!finish) return "Chrome";
     if(/black\s*nickel/i.test(finish)) return "Black Nickel";
@@ -5389,7 +5410,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   };
   const supplierName=part=>{
     if(part?.category==="Hoops") return "Steel Hoop";
-    if(part?.category==="Tension Rods") return "Tension Rods (stainless steel)";
+    if(part?.category==="Tension Rods") return Number(String(part?.size||"").match(/\d+/)?.[0]||45)===110?"Bass Drum Tension Rod":"Tension Rods";
     if(part?.category==="Air Vents") return "Air Vent";
     if(part?.category==="Snare Wires") return "Snare Wire";
     return part?.part_name||"Hardware";
@@ -5397,7 +5418,12 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const supplierCode=part=>{
     const category=String(part?.category||"");
     const size=sizeNumber(part?.size||part?.part_name);
-    if(category==="Tension Rods") return "TR01";
+    if(category==="Tension Rods"){
+      const length=Number(String(part?.size||"").match(/\d+/)?.[0]||45);
+      const finish=hardwareFinishKey(part?.finish||part?.part_name||"");
+      const base=length===110?"TR02":"TR01";
+      return finish==="BRASS"?`${base}-BR`:finish==="BLACK-NICKEL"?`${base}-BN`:base;
+    }
     if(category==="Snare Wires"){
       const prefix=finishFamily(part)==="Brass"?"SE06":"SE04";
       const codes={10:`${prefix}-1020CI`,12:`${prefix}-1220CI`,13:`${prefix}-1320CI`,14:`${prefix}-1420CI`};
