@@ -2973,7 +2973,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.4 — confirmed Sold toggles and reliable return to Production.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.5 — Complete toggles back to production and clearer production labels.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3014,7 +3014,7 @@ function App(){
 
       <section className="stats dashboardStats">
         <button className="dashboardStatCard" onClick={()=>openProductionView()}>
-          <b>{active.length}</b><span>Active drums</span>
+          <b>{active.length}</b><span>Drums in production</span>
         </button>
         <button className="dashboardStatCard" onClick={()=>{setSearch("");setView("orders");}}>
           <b>{active.filter(d=>d.sales_status==="Custom Order").length}</b><span>Custom orders</span>
@@ -3226,7 +3226,7 @@ function App(){
           <span className="filterLabel">Status</span>
           <div className="filterRow">
             {["All","Pending","Active","Completed","Sold","Shipped","Archived"].map(f=>
-              <button key={f} className={productionFilter===f?"primary":""} onClick={()=>setProductionFilter(f)}>{f}</button>
+              <button key={f} className={productionFilter===f?"primary":""} onClick={()=>setProductionFilter(f)}>{f==="Active" ? "In Production" : f}</button>
             )}
           </div>
         </div>
@@ -7800,6 +7800,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   }
 
   async function markManufacturingComplete(){
+    if(["Completed","Sold","Shipped"].includes(drumLifecycleStatus(drum))){
+      return await returnDrumToProduction(drum);
+    }
+
     if(String(drum.drum_type||"Snare").toLowerCase()==="snare" && !checked.has("Assembled")){
       const consumed=await consumeHardwareForDrum(drum);
       if(!consumed){setSavedMessage("Could not complete — check hardware stock");return;}
@@ -8170,13 +8174,6 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           >
             <Truck size={16}/> {isShippedStatus(drum) ? "Undo Shipped" : "Mark Shipped"}
           </button>
-
-          {["Completed","Sold","Shipped"].includes(drumLifecycleStatus(drum)) && <button
-            className="secondary"
-            onClick={()=>returnDrumToProduction(drum)}
-          >
-            <Hammer size={16}/> Back to Production
-          </button>}
 
           {!isArchivedStatus(drum) && <button
             className="archiveDrumButton"
