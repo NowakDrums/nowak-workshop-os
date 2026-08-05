@@ -3131,7 +3131,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.23 — recovery to stable v7.9.21 hardware and purchase-order mappings.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.24 — purchase orders show Black Nickel for Black Nickel drum orders.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5475,6 +5475,10 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     if(/stainless/i.test(finish)) return "Stainless Steel";
     return finish;
   };
+  const purchaseOrderColour=row=>{
+    const requestedFinish=hardwareFinishKey(plannedRequirementMeta[row?.planKey]?.finish||"");
+    return requestedFinish==="BLACK-NICKEL"?"Black Nickel":supplierColour(row?.part);
+  };
   const isRechOrder=/rech/i.test(preferredSupplierName(purchaseOrderSupplier));
   const supplierName=part=>{
     const key=String(part?.sku_key||part?.code||"");
@@ -5533,7 +5537,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     <tr><td colspan="5" style="padding:10px 8px;background:#e8e8e8;font-weight:700;border:1px solid #999;">${escapeHtml(group.category)}</td></tr>
     ${group.rows.map(row=>`<tr>
       <td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierName({...row.part,rechLugUse:row.rechLugUse}))}</td>
-      <td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierColour(row.part))}</td>
+      <td style="padding:8px;border:1px solid #aaa;">${escapeHtml(purchaseOrderColour(row))}</td>
       <td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierCode(row.part))}</td>
       <td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierSize({...row.part,rechLugUse:row.rechLugUse}))}</td>
       <td style="padding:8px;border:1px solid #aaa;text-align:right;font-weight:700;">${row.toOrder}</td>
@@ -5557,24 +5561,24 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     <p>Kelly Nowak<br/>Nowak Drum Company Australia</p>
   </body></html>`;
   const leaHungPlainTable=()=>groupedLeaHungRows().map(group=>{
-    const rows=group.rows.map(row=>`- ${supplierName({...row.part,rechLugUse:row.rechLugUse})} | ${supplierColour(row.part)} | ${supplierCode(row.part)} | ${supplierSize({...row.part,rechLugUse:row.rechLugUse})} | Qty ${row.toOrder}`);
+    const rows=group.rows.map(row=>`- ${supplierName({...row.part,rechLugUse:row.rechLugUse})} | ${purchaseOrderColour(row)} | ${supplierCode(row.part)} | ${supplierSize({...row.part,rechLugUse:row.rechLugUse})} | Qty ${row.toOrder}`);
     return `${group.category}\n${rows.join("\n")}`;
   }).join("\n\n");
   const leaHungEmailBody=()=>`Hi,\n\nI hope you are going well.\n\nI’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?\n\nShipping Address: 29 Meldrum Loop, Bedfordale, Western Australia, 6112\n\n${leaHungPlainTable()}\n\nMany thanks\n\nKelly Nowak\nNowak Drum Company Australia`;
   const genericSupplierGroups=(rows)=>{const ordered=["Lugs","Air Vents","Tension Rods","Hoops","Floor Tom Hardware","Bass Drum Hardware","Snare Wires","Hardware"];return ordered.map(category=>({category,rows:rows.filter(row=>(row.part?.category||"Hardware")===category)})).filter(group=>group.rows.length)};
-  const supplierRowsHtml=(rows)=>genericSupplierGroups(rows).map(group=>`<tr><td colspan="5" style="padding:10px 8px;background:#e8e8e8;font-weight:700;border:1px solid #999;">${escapeHtml(group.category)}</td></tr>${group.rows.map(row=>`<tr><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierName({...row.part,rechLugUse:row.rechLugUse}))}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierColour(row.part))}</td><td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierCode(row.part))}</td><td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierSize({...row.part,rechLugUse:row.rechLugUse}))}</td><td style="padding:8px;border:1px solid #aaa;text-align:right;font-weight:700;">${row.toOrder}</td></tr>`).join("")}`).join("");
+  const supplierRowsHtml=(rows)=>genericSupplierGroups(rows).map(group=>`<tr><td colspan="5" style="padding:10px 8px;background:#e8e8e8;font-weight:700;border:1px solid #999;">${escapeHtml(group.category)}</td></tr>${group.rows.map(row=>`<tr><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierName({...row.part,rechLugUse:row.rechLugUse}))}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(purchaseOrderColour(row))}</td><td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierCode(row.part))}</td><td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierSize({...row.part,rechLugUse:row.rechLugUse}))}</td><td style="padding:8px;border:1px solid #aaa;text-align:right;font-weight:700;">${row.toOrder}</td></tr>`).join("")}`).join("");
   const isDomesticPurchaseSupplier=supplier=>/^(rech|mega music)$/i.test(String(supplier||"").trim());
   const supplierQuoteRequest=supplier=>isDomesticPurchaseSupplier(supplier)
     ? "I’d like to place a hardware order for the items below. Can you please provide a quote including shipping?"
     : "I’d like to place a hardware order for the items below. Can you please provide a quote including shipping to Australia?";
   const supplierEmailHtml=(supplier,rows)=>`<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111;line-height:1.45;"><p>Hi,</p><p>${supplierQuoteRequest(supplier)}</p><p><strong>Shipping Address:</strong> 29 Meldrum Loop, Bedfordale, Western Australia, 6112</p><table style="border-collapse:collapse;width:100%;max-width:900px;font-size:14px;"><thead><tr style="background:#d8d8d8;"><th style="padding:8px;border:1px solid #888;text-align:left;">Name</th><th style="padding:8px;border:1px solid #888;text-align:left;">Colour</th><th style="padding:8px;border:1px solid #888;text-align:left;">Code</th><th style="padding:8px;border:1px solid #888;text-align:left;">Size</th><th style="padding:8px;border:1px solid #888;text-align:right;">Order Quantity</th></tr></thead><tbody>${supplierRowsHtml(rows)}</tbody></table><p>Many thanks</p><p>Kelly Nowak<br/>Nowak Drum Company Australia</p></body></html>`;
-  const supplierPlainText=(supplier,rows)=>`Supplier: ${supplier}\n\n${rows.map(row=>`${supplierName({...row.part,rechLugUse:row.rechLugUse})} | ${supplierColour(row.part)} | ${supplierCode(row.part)} | ${supplierSize({...row.part,rechLugUse:row.rechLugUse})} | Qty ${row.toOrder}`).join("\n")}`;
+  const supplierPlainText=(supplier,rows)=>`Supplier: ${supplier}\n\n${rows.map(row=>`${supplierName({...row.part,rechLugUse:row.rechLugUse})} | ${purchaseOrderColour(row)} | ${supplierCode(row.part)} | ${supplierSize({...row.part,rechLugUse:row.rechLugUse})} | Qty ${row.toOrder}`).join("\n")}`;
   const createPoNumber=()=>{const d=new Date(),pad=n=>String(n).padStart(2,"0");return `PO-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`};
   const supplierRowsFor=supplier=>rowsForSupplier(supplier);
   const supplierEmailFor=supplier=>supplierEmailByName(supplier);
   const poPayload=(supplier="Lea Hung",status="Draft")=>{const rows=supplierRowsFor(supplier);return {
     po_number:createPoNumber(),supplier,supplier_email:supplierEmailFor(supplier),subject:`${supplier} Hardware Order`,
-    order_items:rows.map(row=>({hardware_part_id:row.part?.id||null,name:supplierName({...row.part,rechLugUse:row.rechLugUse}),colour:supplierColour(row.part),code:supplierCode(row.part),size:supplierSize({...row.part,rechLugUse:row.rechLugUse}),quantity:row.toOrder,unit_cost:row.cost,estimated_total:row.total})),
+    order_items:rows.map(row=>({hardware_part_id:row.part?.id||null,name:supplierName({...row.part,rechLugUse:row.rechLugUse}),colour:purchaseOrderColour(row),code:supplierCode(row.part),size:supplierSize({...row.part,rechLugUse:row.rechLugUse}),quantity:row.toOrder,unit_cost:row.cost,estimated_total:row.total})),
     estimated_value:rows.reduce((sum,row)=>sum+row.total,0),status,sent_at:status==="Sent"?new Date().toISOString():null,
     notes:"Please quote freight with approximate delivery times."
   }};

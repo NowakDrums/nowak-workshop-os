@@ -1,5 +1,9 @@
 # Nowak Workshop OS Changelog
 
+## v7.9.24
+- Purchase-order colour now displays `Black Nickel` when the selected drum hardware finish is Black Nickel.
+- No supplier names, codes, sizes, quantities, mappings, inventory logic or Rech/Lea Hung formatting were changed.
+
 ## v7.9.23
 - Recovery release restoring the complete v7.9.21 hardware and purchase-order mapping logic.
 - Removes all v7.9.22 finish-remapping changes for both Lea Hung and Rech.
