@@ -595,8 +595,8 @@ function drumHardwareRequirements(drum){
       {code:finishSku("BALL-LUG",finish),qty:16,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`},
       {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
       tensionRodRequirement(45,16,finish),
-      {code:"FLOOR-LEG-SET",qty:1,label:"FL05-120540 floor-tom leg set (3 piece)"},
-      {code:"TOM-MOUNT",qty:3,label:"TM001 tom mount"},
+      {code:"FLOOR-LEG-SET",qty:1,label:`Floor tom leg set (3 pack) — ${finishLabel}`,partName:"Floor Tom Leg Set",category:"Floor Tom Hardware",finish:finishLabel,size:"3 pack"},
+      {code:"TOM-MOUNT",qty:3,label:`TM001 tom mount — ${finishLabel}`,partName:"Tom Mount",category:"Floor Tom Hardware",finish:finishLabel,size:"Tom mount"},
     ];
   }
   if(type==="bass drum"){
@@ -3131,7 +3131,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.18 — corrected Brass and Black Nickel tension-rod codes and sizes.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.19 — Rech hardware naming and complete floor-tom requirements.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5428,7 +5428,18 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   }
   const simultaneousTotal=simultaneousMix.reduce((sum,row)=>sum+row.buildable,0);
 
-  const rowsForSupplier=supplier=>preferredSupplierName(supplier)===preferredSupplierName(purchaseOrderSupplier)?orderRows.slice().sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)||String(a.part?.part_name||"").localeCompare(String(b.part?.part_name||""))):[];
+  const rowsForSupplier=supplier=>{
+    if(preferredSupplierName(supplier)!==preferredSupplierName(purchaseOrderSupplier)) return [];
+    const isRech=/rech/i.test(preferredSupplierName(supplier));
+    return orderRows.filter(row=>{
+      const key=String(row.part?.sku_key||row.part?.code||"");
+      if(!isRech) return true;
+      // Rech supplies the finished hardware directly: no separate lug gaskets and no Lea Hung TM001 mounts.
+      if(/BASS-LUG-GASKET/i.test(key)) return false;
+      if(/TOM-MOUNT/i.test(key)||/TM001/i.test(String(row.part?.code||""))) return false;
+      return true;
+    }).slice().sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)||String(a.part?.part_name||"").localeCompare(String(b.part?.part_name||"")));
+  };
   const leaHungRows=rowsForSupplier(purchaseOrderSupplier);
   const otherSupplierGroups=[];
   const supplierColour=part=>{
@@ -5441,8 +5452,21 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     if(/stainless/i.test(finish)) return "Stainless Steel";
     return finish;
   };
+  const isRechOrder=/rech/i.test(preferredSupplierName(purchaseOrderSupplier));
   const supplierName=part=>{
-    if(/BASS-LUG-GASKET/i.test(String(part?.sku_key||""))) return "Bass Lug Gasket";
+    const key=String(part?.sku_key||part?.code||"");
+    const name=String(part?.part_name||"");
+    if(isRechOrder){
+      if(part?.category==="Lugs"&&/ball/i.test(`${name} ${key}`)) return "Chunky Drum Lug Single Point (Tom / Bass)";
+      if(part?.category==="Lugs") return "Chunky Tube Drum Lug";
+      if(part?.category==="Hoops") return "2.3mm Triple Flange Drum Hoop";
+      if(part?.category==="Air Vents") return "Air Vent";
+      if(part?.category==="Tension Rods") return Number(String(part?.size||"").match(/\d+/)?.[0]||52)>=100?"Bass Drum Tension Rod":"Tension Rods";
+      if(/FLOOR-LEG-SET/i.test(key)||/floor tom leg/i.test(name)) return "Floor Tom Legs";
+      if(/BASS-CLAW/i.test(key)||/bass drum claw/i.test(name)) return "Grand Bass Drum Claw";
+      if(/BASS-SPUR/i.test(key)||/bass drum spur/i.test(name)) return "Grand Bass Drum Spurs";
+    }
+    if(/BASS-LUG-GASKET/i.test(key)) return "Bass Lug Gasket";
     if(part?.category==="Hoops") return "Steel Hoop";
     if(part?.category==="Tension Rods") return Number(String(part?.size||"").match(/\d+/)?.[0]||45)>=100?"Bass Drum Tension Rod":"Tension Rods";
     if(part?.category==="Air Vents") return "Air Vent";
@@ -5450,13 +5474,14 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     return part?.part_name||"Hardware";
   };
   const supplierCode=part=>{
+    // Rech descriptions are ordered by name, finish and size. Lea Hung catalogue codes must not be shown.
+    if(isRechOrder) return "";
     if(/BASS-LUG-GASKET/i.test(String(part?.sku_key||""))) return "ATL01-01-GASKET";
     const category=String(part?.category||"");
     const size=sizeNumber(part?.size||part?.part_name);
     if(category==="Tension Rods"){
       const length=Number(String(part?.size||"").match(/\d+/)?.[0]||45);
       const finish=hardwareFinishKey(part?.finish||part?.part_name||"");
-      // Rech uses TR01 for both 52mm and 115mm Brass/Black Nickel rods; size and colour distinguish them.
       if(finish==="BRASS"||finish==="BLACK-NICKEL") return "TR01";
       return length>=100?"TR02":"TR01";
     }
@@ -5467,7 +5492,12 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     }
     return String(part?.code||"").trim();
   };
-  const supplierSize=part=>String(part?.size||"").replace(/\s*x\s*/gi," × ").trim();
+  const supplierSize=part=>{
+    const key=String(part?.sku_key||part?.code||"");
+    if(isRechOrder&&(/FLOOR-LEG-SET/i.test(key)||/floor tom leg/i.test(String(part?.part_name||"")))) return "3 pack";
+    if(isRechOrder&&part?.category==="Lugs"&&/ball/i.test(`${part?.part_name||""} ${key}`)) return "Specify Tom or Bass";
+    return String(part?.size||"").replace(/\s*x\s*/gi," × ").trim();
+  };
   const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[char]));
   const groupedLeaHungRows=()=>{
     const ordered=["Lugs","Air Vents","Tension Rods","Hoops","Floor Tom Hardware","Bass Drum Hardware","Snare Wires"];
