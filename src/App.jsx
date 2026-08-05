@@ -3131,7 +3131,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.22 — selected hardware finish now carries through to lugs and purchase orders.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.23 — recovery to stable v7.9.21 hardware and purchase-order mappings.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5337,20 +5337,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const meta=plannedRequirementMeta[planKey]||plannedRequirementMeta[code];
     const preferredSupplier=meta?.preferredSupplier||parsed.supplier||"";
     const direct=byCode[code];
-    const applyRequirementFinish=part=>{
-      if(!part||!meta) return part;
-      return {
-        ...part,
-        sku_key:code,
-        part_name:meta.partName||part.part_name,
-        category:meta.category||part.category,
-        code:meta.code||part.code||code,
-        supplier:preferredSupplier||part.supplier,
-        finish:hardwareFinishLabel(meta.finish||meta.label||code),
-        size:meta.size||part.size,
-      };
-    };
-    if(direct&&(!preferredSupplier||preferredSupplierName(direct.supplier)===preferredSupplier)) return applyRequirementFinish(direct);
+    if(direct&&(!preferredSupplier||preferredSupplierName(direct.supplier)===preferredSupplier)) return direct;
     if(!meta) return direct;
     const wantedFinish=hardwareFinishKey(meta.finish||meta.label||code);
     const wantedName=normaliseHardwareName(meta.partName||meta.label||"");
@@ -5361,7 +5348,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
       const sameName=!wantedName||normaliseHardwareName(part.part_name)===wantedName;
       return sameName&&hardwareFinishKey(part.finish||part.part_name)===wantedFinish;
     });
-    if(actual) return applyRequirementFinish(actual);
+    if(actual) return actual;
     const base=hardware.find(part=>{
       if(wantedCategory&&String(part.category||"")!==wantedCategory) return false;
       const sameName=!wantedName||normaliseHardwareName(part.part_name)===wantedName;

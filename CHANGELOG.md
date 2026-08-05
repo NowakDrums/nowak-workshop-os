@@ -1,9 +1,9 @@
 # Nowak Workshop OS Changelog
 
-## v7.9.22
-- Fixed lugs defaulting to Chrome when the target drum hardware finish is Black Nickel or Brass.
-- The selected finish now carries through to the Reorder Planner, Lea Hung purchase order and Rech purchase order.
-- Rech product naming remains supplier-specific while using the selected finish.
+## v7.9.23
+- Recovery release restoring the complete v7.9.21 hardware and purchase-order mapping logic.
+- Removes all v7.9.22 finish-remapping changes for both Lea Hung and Rech.
+- Lea Hung and Rech order output returns to the last stable v7.9.21 behaviour.
 
 ## v7.9.20
 - Rech Black Nickel ball-lug orders are split and labelled as Tom or Bass automatically.
