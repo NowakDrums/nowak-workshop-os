@@ -5499,6 +5499,9 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const supplierCode=part=>{
     // Rech descriptions are ordered by name, finish and size. Lea Hung catalogue codes must not be shown.
     if(isRechOrder) return "";
+    const supplierKey=String(part?.sku_key||part?.code||"");
+    const supplierPartName=String(part?.part_name||"");
+    if(/FLOOR-LEG-SET/i.test(supplierKey)||/floor tom leg/i.test(supplierPartName)) return "FL05-120540";
     if(/BASS-LUG-GASKET/i.test(String(part?.sku_key||""))) return "ATL01-01-GASKET";
     const category=String(part?.category||"");
     const size=sizeNumber(part?.size||part?.part_name);
@@ -5517,7 +5520,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   };
   const supplierSize=part=>{
     const key=String(part?.sku_key||part?.code||"");
-    if(isRechOrder&&(/FLOOR-LEG-SET/i.test(key)||/floor tom leg/i.test(String(part?.part_name||"")))) return "3 pack";
+    if(/FLOOR-LEG-SET/i.test(key)||/floor tom leg/i.test(String(part?.part_name||""))) return isRechOrder?"3 pack":"3 piece set";
     if(isRechOrder&&part?.category==="Lugs"&&/ball/i.test(`${part?.part_name||""} ${key}`)) return part?.rechLugUse?`${part.rechLugUse} lug`:"";
     return String(part?.size||"").replace(/\s*x\s*/gi," × ").trim();
   };
