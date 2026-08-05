@@ -1,6 +1,6 @@
 {
   "name": "nowak-workshop-os-webapp",
-  "version": "7.9.16",
+  "version": "7.9.17",
   "private": true,
   "type": "module",
   "scripts": {

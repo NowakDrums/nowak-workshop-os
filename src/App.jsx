@@ -395,8 +395,8 @@ function sprayMixForBatch(name,count){
     recipe={label:"Sealer coat",product:"Polyurethane",basePerDrum:30,hardenerPerDrum:15,hardener:"Standard hardener",thinnerPercent:20};
   }else if(batchName.includes("satin")){
     recipe={label:"Final satin coat",product:"Satin",basePerDrum:30,hardenerPerDrum:15,hardener:"Rapid hardener",thinnerPercent:10};
-  }else if(batchName.includes("polyurethane coat")){
-    recipe={label:"High-gloss polyurethane coat",product:"Polyurethane",basePerDrum:40,hardenerPerDrum:20,hardener:"Standard hardener",thinnerPercent:0};
+  }else if(batchName.includes("polyurethane")){
+    recipe={label:"High-gloss polyurethane spray session",product:"Polyurethane",basePerDrum:40,hardenerPerDrum:20,hardener:"Standard hardener",thinnerPercent:0};
   }
 
   if(!recipe || !drums) return null;
@@ -410,6 +410,30 @@ function sprayMixForBatch(name,count){
 function formatMixMl(value){
   const number=Number(value||0);
   return Number.isInteger(number) ? `${number} ml` : `${number.toFixed(1)} ml`;
+}
+
+function plannedWorkGroupKey(item){
+  const taskText=`${item?.task_item||""} ${item?.task_label||""}`.toLowerCase();
+  // All high-gloss polyurethane coats use the same gun setup and mixture,
+  // so group them into one spray session even when coat numbers differ.
+  if(taskText.includes("poly") && taskText.includes("coat")) return "Spray Polyurethane";
+  return item?.batch_name || item?.task_label || "Planned Work";
+}
+
+function polyurethaneBatchHours(count){
+  const drums=Math.max(0,Number(count||0));
+  if(!drums) return 0;
+  // Workshop measurements: approximately 40 min for 2 drums and 48 min for 4,
+  // including setup and cleanup. This retains that batching efficiency.
+  return (32+(4*drums))/60;
+}
+
+function plannedGroupHours(group,items){
+  const unfinished=items.filter(item=>item.status!=="Done");
+  if(String(group||"").toLowerCase()==="spray polyurethane"){
+    return polyurethaneBatchHours(unfinished.length);
+  }
+  return unfinished.reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
 }
 
 const drumDiameters = ["8","10","12","13","14","16","18","20","22","24"];
@@ -3103,7 +3127,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.16 — tension rods follow drum type, lug count and hardware finish.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.17 — polyurethane spray sessions batch across coat numbers.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3725,13 +3749,13 @@ function DailyWorkPlan({workPlan,drums,repairs=[],openJobCard,openRepair,updateP
     const activeRepairIds=new Set(repairs.map(repair=>repair.id));
     const items=workPlan.filter(item=>item.planned_date===date && ((item.drum_id && activeDrumIds.has(item.drum_id)) || (item.repair_id && activeRepairIds.has(item.repair_id))));
     const unfinished=items.filter(item=>item.status!=="Done");
-    const totalHours=unfinished.reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
     const grouped={};
     items.forEach(item=>{
-      const key=item.batch_name || item.task_label || "Planned Work";
+      const key=plannedWorkGroupKey(item);
       grouped[key] ??=[];
       grouped[key].push(item);
     });
+    const totalHours=Object.entries(grouped).reduce((sum,[group,groupItems])=>sum+plannedGroupHours(group,groupItems),0);
 
     return <section className="panel dailyPlanPanel">
       <header className="dailyPlanHeader">
@@ -3747,7 +3771,7 @@ function DailyWorkPlan({workPlan,drums,repairs=[],openJobCard,openRepair,updateP
       {items.length===0
         ? <div className="emptyPlan"><CalendarDays size={24}/><p>No work deliberately planned for this day yet.</p></div>
         : <div className="dailyPlanGroups">{Object.entries(grouped).map(([group,groupItems])=>{
-            const groupHours=groupItems.filter(i=>i.status!=="Done").reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
+            const groupHours=plannedGroupHours(group,groupItems);
             const mixCount=groupItems.filter(i=>i.status!=="Done").length;
             const mixRecipe=sprayMixForBatch(group,mixCount);
             return <section className="dailyPlanGroup" key={group}>
