@@ -534,15 +534,19 @@ function requirementUsesFinishSupplier(req){
   const key=hardwareFinishKey(req?.finish||req?.label||req?.code||"");
   return key!=="CHROME" || /-(?:BRASS|BLACK-NICKEL)$/i.test(String(req?.code||""));
 }
-function tensionRodRequirement(length,qty,finish){
+function tensionRodRequirement(baseLength,qty,finish){
   const finishLabel=hardwareFinishLabel(finish);
-  const code=hardwareFinishKey(finish)==="CHROME" ? `TROD-${length}` : finishSku(`TROD-${length}`,finish);
-  const material=finishLabel==="Chrome" ? "Stainless Steel" : finishLabel;
+  const isChrome=hardwareFinishKey(finish)==="CHROME";
+  const isBass=Number(baseLength)>=100;
+  // Chrome uses the existing stainless-steel sizes. Brass and Black Nickel use Rech TR01 rods.
+  const length=isChrome?Number(baseLength):(isBass?115:52);
+  const material=isChrome?"Stainless Steel":finishLabel;
+  const code=isChrome?`TROD-${length}`:finishSku(`TROD-${length}`,finish);
   return {
     code,
     qty,
     label:`${length}mm ${material.toLowerCase()} tension rod`,
-    partName:length===110?"Bass Drum Tension Rod":"Tension Rods (stainless steel)",
+    partName:isBass?"Bass Drum Tension Rod":(isChrome?"Tension Rods (stainless steel)":"Tension Rods"),
     category:"Tension Rods",
     finish:material,
     size:`${length}mm`,
@@ -3127,7 +3131,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.17 — polyurethane spray sessions batch across coat numbers.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.18 — corrected Brass and Black Nickel tension-rod codes and sizes.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5351,15 +5355,20 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
       return sameName&&hardwareFinishKey(part.finish||part.part_name)===wantedFinish;
     })||direct||hardware.find(part=>!wantedCategory||String(part.category||"")===wantedCategory);
     if(!base) return undefined;
-    return {...base,sku_key:code,code:meta.code||code,supplier:preferredSupplier||base.supplier,finish:hardwareFinishLabel(meta.finish||meta.label||code),size:meta.size||base.size,qty_on_hand:0,qty_allocated:0,qty_available:0};
+    return {...base,sku_key:code,part_name:meta.partName||base.part_name,category:meta.category||base.category,code:meta.code||code,supplier:preferredSupplier||base.supplier,finish:hardwareFinishLabel(meta.finish||meta.label||code),size:meta.size||base.size,qty_on_hand:0,qty_allocated:0,qty_available:0};
   };
   const purchaseItemCatalogueKey=item=>{
     const direct=hardware.find(part=>String(part.id)===String(item?.hardware_part_id||""));
     if(direct)return hardwareLookupKey(direct);
     const code=String(item?.code||"").trim().toUpperCase();
+    const itemFinish=hardwareFinishKey(item?.finish||item?.colour||item?.part_name||"");
+    const itemLength=Number(String(item?.size||item?.part_name||"").match(/\d+/)?.[0]||0);
+    if(code==="TR01"&&itemFinish!=="CHROME"&&[52,115].includes(itemLength)){
+      return `TROD-${itemLength}-${itemFinish}`;
+    }
     const rodCodeMap={
-      "TR01":"TROD-45","TR01-BR":"TROD-45-BRASS","TR01-BN":"TROD-45-BLACK-NICKEL",
-      "TR02":"TROD-110","TR02-BR":"TROD-110-BRASS","TR02-BN":"TROD-110-BLACK-NICKEL",
+      "TR01":"TROD-45","TR01-BR":"TROD-52-BRASS","TR01-BN":"TROD-52-BLACK-NICKEL",
+      "TR02":"TROD-110","TR02-BR":"TROD-115-BRASS","TR02-BN":"TROD-115-BLACK-NICKEL",
     };
     if(rodCodeMap[code]) return rodCodeMap[code];
     const matched=hardware.find(part=>String(part.code||"").trim().toUpperCase()===code||hardwareLookupKey(part)===code);
@@ -5433,20 +5442,23 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     return finish;
   };
   const supplierName=part=>{
+    if(/BASS-LUG-GASKET/i.test(String(part?.sku_key||""))) return "Bass Lug Gasket";
     if(part?.category==="Hoops") return "Steel Hoop";
-    if(part?.category==="Tension Rods") return Number(String(part?.size||"").match(/\d+/)?.[0]||45)===110?"Bass Drum Tension Rod":"Tension Rods";
+    if(part?.category==="Tension Rods") return Number(String(part?.size||"").match(/\d+/)?.[0]||45)>=100?"Bass Drum Tension Rod":"Tension Rods";
     if(part?.category==="Air Vents") return "Air Vent";
     if(part?.category==="Snare Wires") return "Snare Wire";
     return part?.part_name||"Hardware";
   };
   const supplierCode=part=>{
+    if(/BASS-LUG-GASKET/i.test(String(part?.sku_key||""))) return "ATL01-01-GASKET";
     const category=String(part?.category||"");
     const size=sizeNumber(part?.size||part?.part_name);
     if(category==="Tension Rods"){
       const length=Number(String(part?.size||"").match(/\d+/)?.[0]||45);
       const finish=hardwareFinishKey(part?.finish||part?.part_name||"");
-      const base=length===110?"TR02":"TR01";
-      return finish==="BRASS"?`${base}-BR`:finish==="BLACK-NICKEL"?`${base}-BN`:base;
+      // Rech uses TR01 for both 52mm and 115mm Brass/Black Nickel rods; size and colour distinguish them.
+      if(finish==="BRASS"||finish==="BLACK-NICKEL") return "TR01";
+      return length>=100?"TR02":"TR01";
     }
     if(category==="Snare Wires"){
       const prefix=finishFamily(part)==="Brass"?"SE06":"SE04";
