@@ -1,5 +1,11 @@
 # Nowak Workshop OS Changelog
 
+## v7.9.25
+- Chrome purchase orders now display the bass lug gasket colour as Chrome rather than Black.
+- Brass bass drum claw code corrected from `BC-010CR-BR` to `BC-010-BR`.
+- Brass bass drum spur code corrected from `BDS008CR-BR` to `BDS008-BR`.
+- No supplier, quantity, inventory, allocation or other purchase-order mappings were changed.
+
 ## v7.9.24
 - Purchase-order colour now displays `Black Nickel` when the selected drum hardware finish is Black Nickel.
 - No supplier names, codes, sizes, quantities, mappings, inventory logic or Rech/Lea Hung formatting were changed.

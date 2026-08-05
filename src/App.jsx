@@ -3131,7 +3131,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.24 — purchase orders show Black Nickel for Black Nickel drum orders.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.25 — corrected Brass bass-drum codes and Chrome bass-lug gasket colour.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5477,6 +5477,8 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   };
   const purchaseOrderColour=row=>{
     const requestedFinish=hardwareFinishKey(plannedRequirementMeta[row?.planKey]?.finish||"");
+    const key=String(row?.part?.sku_key||row?.part?.code||"");
+    if(/BASS-LUG-GASKET/i.test(key)&&requestedFinish==="CHROME") return "Chrome";
     return requestedFinish==="BLACK-NICKEL"?"Black Nickel":supplierColour(row?.part);
   };
   const isRechOrder=/rech/i.test(preferredSupplierName(purchaseOrderSupplier));
@@ -5507,6 +5509,11 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const supplierPartName=String(part?.part_name||"");
     if(/FLOOR-LEG-SET/i.test(supplierKey)||/floor tom leg/i.test(supplierPartName)) return "FL05-120540";
     if(/BASS-LUG-GASKET/i.test(String(part?.sku_key||""))) return "ATL01-01-GASKET";
+    const rawCode=String(part?.code||"").trim();
+    if(/brass/i.test(String(part?.finish||""))){
+      if(/^BC-010CR-BR$/i.test(rawCode)) return "BC-010-BR";
+      if(/^BDS008CR-BR$/i.test(rawCode)) return "BDS008-BR";
+    }
     const category=String(part?.category||"");
     const size=sizeNumber(part?.size||part?.part_name);
     if(category==="Tension Rods"){
