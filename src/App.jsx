@@ -595,8 +595,8 @@ function drumHardwareRequirements(drum){
       {code:finishSku("BALL-LUG",finish),qty:16,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`},
       {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
       tensionRodRequirement(45,16,finish),
-      {code:"FLOOR-LEG-SET",qty:1,label:`Floor tom leg set (3 pack) — ${finishLabel}`,partName:"Floor Tom Leg Set",category:"Floor Tom Hardware",finish:finishLabel,size:"3 pack"},
-      {code:"TOM-MOUNT",qty:3,label:`TM001 tom mount — ${finishLabel}`,partName:"Tom Mount",category:"Floor Tom Hardware",finish:finishLabel,size:"Tom mount"},
+      {code:finishSku("FLOOR-LEG-SET",finish),qty:1,label:`Floor tom leg set (3 pack) — ${finishLabel}`,partName:"Floor Tom Leg Set",category:"Floor Tom Hardware",finish:finishLabel,size:"3 pack"},
+      {code:finishSku("TOM-MOUNT",finish),qty:3,label:`TM001 tom mount — ${finishLabel}`,partName:"Tom Mount",category:"Floor Tom Hardware",finish:finishLabel,size:"Tom mount"},
     ];
   }
   if(type==="bass drum"){
@@ -3131,7 +3131,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.19 — Rech hardware naming and complete floor-tom requirements.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.20 — Rech lug types and floor-tom hardware allocation fix.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5428,17 +5428,40 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   }
   const simultaneousTotal=simultaneousMix.reduce((sum,row)=>sum+row.buildable,0);
 
+  const rechBallLugPlanned=reorderPlan.reduce((totals,row)=>{
+    const type=String(row.drumType||"Snare").toLowerCase();
+    const diameter=String(row.diameter||"");
+    const drums=Number(row.qty||0);
+    if(type==="tom") totals.tom+=drums*12;
+    if(type==="floor tom") totals.tom+=drums*16;
+    if(type==="bass drum") totals.bass+=drums*((diameter==="22"||diameter==="24")?20:16);
+    return totals;
+  },{tom:0,bass:0});
   const rowsForSupplier=supplier=>{
     if(preferredSupplierName(supplier)!==preferredSupplierName(purchaseOrderSupplier)) return [];
     const isRech=/rech/i.test(preferredSupplierName(supplier));
-    return orderRows.filter(row=>{
+    const filtered=orderRows.filter(row=>{
       const key=String(row.part?.sku_key||row.part?.code||"");
       if(!isRech) return true;
       // Rech supplies the finished hardware directly: no separate lug gaskets and no Lea Hung TM001 mounts.
       if(/BASS-LUG-GASKET/i.test(key)) return false;
       if(/TOM-MOUNT/i.test(key)||/TM001/i.test(String(row.part?.code||""))) return false;
       return true;
-    }).slice().sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)||String(a.part?.part_name||"").localeCompare(String(b.part?.part_name||"")));
+    });
+    const expanded=isRech?filtered.flatMap(row=>{
+      const key=String(row.part?.sku_key||row.part?.code||"");
+      const isBallLug=row.part?.category==="Lugs"&&/ball/i.test(`${row.part?.part_name||""} ${key}`);
+      if(!isBallLug) return [row];
+      const totalPlanned=rechBallLugPlanned.tom+rechBallLugPlanned.bass;
+      if(!totalPlanned) return [row];
+      const tomQty=Math.min(Number(row.toOrder||0),Math.round(Number(row.toOrder||0)*(rechBallLugPlanned.tom/totalPlanned)));
+      const bassQty=Math.max(0,Number(row.toOrder||0)-tomQty);
+      return [
+        tomQty>0?{...row,toOrder:tomQty,rechLugUse:"Tom",total:tomQty*Number(row.cost||0)}:null,
+        bassQty>0?{...row,toOrder:bassQty,rechLugUse:"Bass",total:bassQty*Number(row.cost||0)}:null,
+      ].filter(Boolean);
+    }):filtered;
+    return expanded.slice().sort((a,b)=>(categorySort[a.part?.category]||99)-(categorySort[b.part?.category]||99)||String(a.part?.part_name||"").localeCompare(String(b.part?.part_name||""))||String(a.rechLugUse||"").localeCompare(String(b.rechLugUse||"")));
   };
   const leaHungRows=rowsForSupplier(purchaseOrderSupplier);
   const otherSupplierGroups=[];
@@ -5457,7 +5480,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     const key=String(part?.sku_key||part?.code||"");
     const name=String(part?.part_name||"");
     if(isRechOrder){
-      if(part?.category==="Lugs"&&/ball/i.test(`${name} ${key}`)) return "Chunky Drum Lug Single Point (Tom / Bass)";
+      if(part?.category==="Lugs"&&/ball/i.test(`${name} ${key}`)) return `Chunky Drum Lug Single Point — ${part?.rechLugUse||"Tom"}`;
       if(part?.category==="Lugs") return "Chunky Tube Drum Lug";
       if(part?.category==="Hoops") return "2.3mm Triple Flange Drum Hoop";
       if(part?.category==="Air Vents") return "Air Vent";
@@ -5495,7 +5518,7 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const supplierSize=part=>{
     const key=String(part?.sku_key||part?.code||"");
     if(isRechOrder&&(/FLOOR-LEG-SET/i.test(key)||/floor tom leg/i.test(String(part?.part_name||"")))) return "3 pack";
-    if(isRechOrder&&part?.category==="Lugs"&&/ball/i.test(`${part?.part_name||""} ${key}`)) return "Specify Tom or Bass";
+    if(isRechOrder&&part?.category==="Lugs"&&/ball/i.test(`${part?.part_name||""} ${key}`)) return part?.rechLugUse?`${part.rechLugUse} lug`:"";
     return String(part?.size||"").replace(/\s*x\s*/gi," × ").trim();
   };
   const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[char]));
@@ -5506,10 +5529,10 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
   const leaHungHtmlTable=()=>groupedLeaHungRows().map(group=>`
     <tr><td colspan="5" style="padding:10px 8px;background:#e8e8e8;font-weight:700;border:1px solid #999;">${escapeHtml(group.category)}</td></tr>
     ${group.rows.map(row=>`<tr>
-      <td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierName(row.part))}</td>
+      <td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierName({...row.part,rechLugUse:row.rechLugUse}))}</td>
       <td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierColour(row.part))}</td>
       <td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierCode(row.part))}</td>
-      <td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierSize(row.part))}</td>
+      <td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierSize({...row.part,rechLugUse:row.rechLugUse}))}</td>
       <td style="padding:8px;border:1px solid #aaa;text-align:right;font-weight:700;">${row.toOrder}</td>
     </tr>`).join("")}
   `).join("");
@@ -5531,24 +5554,24 @@ function Inventory({hardware, allocations=[], drums=[], updateHardware, saveStoc
     <p>Kelly Nowak<br/>Nowak Drum Company Australia</p>
   </body></html>`;
   const leaHungPlainTable=()=>groupedLeaHungRows().map(group=>{
-    const rows=group.rows.map(row=>`- ${supplierName(row.part)} | ${supplierColour(row.part)} | ${supplierCode(row.part)} | ${supplierSize(row.part)} | Qty ${row.toOrder}`);
+    const rows=group.rows.map(row=>`- ${supplierName({...row.part,rechLugUse:row.rechLugUse})} | ${supplierColour(row.part)} | ${supplierCode(row.part)} | ${supplierSize({...row.part,rechLugUse:row.rechLugUse})} | Qty ${row.toOrder}`);
     return `${group.category}\n${rows.join("\n")}`;
   }).join("\n\n");
   const leaHungEmailBody=()=>`Hi,\n\nI hope you are going well.\n\nI’d like to place a hardware order for the items below. Can you please provide me with a quote, including shipping to Australia? If possible, could you provide shipping quotations for both air and sea freight, along with approximate delivery times?\n\nShipping Address: 29 Meldrum Loop, Bedfordale, Western Australia, 6112\n\n${leaHungPlainTable()}\n\nMany thanks\n\nKelly Nowak\nNowak Drum Company Australia`;
   const genericSupplierGroups=(rows)=>{const ordered=["Lugs","Air Vents","Tension Rods","Hoops","Floor Tom Hardware","Bass Drum Hardware","Snare Wires","Hardware"];return ordered.map(category=>({category,rows:rows.filter(row=>(row.part?.category||"Hardware")===category)})).filter(group=>group.rows.length)};
-  const supplierRowsHtml=(rows)=>genericSupplierGroups(rows).map(group=>`<tr><td colspan="5" style="padding:10px 8px;background:#e8e8e8;font-weight:700;border:1px solid #999;">${escapeHtml(group.category)}</td></tr>${group.rows.map(row=>`<tr><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierName(row.part))}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierColour(row.part))}</td><td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierCode(row.part))}</td><td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierSize(row.part))}</td><td style="padding:8px;border:1px solid #aaa;text-align:right;font-weight:700;">${row.toOrder}</td></tr>`).join("")}`).join("");
+  const supplierRowsHtml=(rows)=>genericSupplierGroups(rows).map(group=>`<tr><td colspan="5" style="padding:10px 8px;background:#e8e8e8;font-weight:700;border:1px solid #999;">${escapeHtml(group.category)}</td></tr>${group.rows.map(row=>`<tr><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierName({...row.part,rechLugUse:row.rechLugUse}))}</td><td style="padding:8px;border:1px solid #aaa;">${escapeHtml(supplierColour(row.part))}</td><td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierCode(row.part))}</td><td style="padding:8px;border:1px solid #aaa;white-space:nowrap;">${escapeHtml(supplierSize({...row.part,rechLugUse:row.rechLugUse}))}</td><td style="padding:8px;border:1px solid #aaa;text-align:right;font-weight:700;">${row.toOrder}</td></tr>`).join("")}`).join("");
   const isDomesticPurchaseSupplier=supplier=>/^(rech|mega music)$/i.test(String(supplier||"").trim());
   const supplierQuoteRequest=supplier=>isDomesticPurchaseSupplier(supplier)
     ? "I’d like to place a hardware order for the items below. Can you please provide a quote including shipping?"
     : "I’d like to place a hardware order for the items below. Can you please provide a quote including shipping to Australia?";
   const supplierEmailHtml=(supplier,rows)=>`<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111;line-height:1.45;"><p>Hi,</p><p>${supplierQuoteRequest(supplier)}</p><p><strong>Shipping Address:</strong> 29 Meldrum Loop, Bedfordale, Western Australia, 6112</p><table style="border-collapse:collapse;width:100%;max-width:900px;font-size:14px;"><thead><tr style="background:#d8d8d8;"><th style="padding:8px;border:1px solid #888;text-align:left;">Name</th><th style="padding:8px;border:1px solid #888;text-align:left;">Colour</th><th style="padding:8px;border:1px solid #888;text-align:left;">Code</th><th style="padding:8px;border:1px solid #888;text-align:left;">Size</th><th style="padding:8px;border:1px solid #888;text-align:right;">Order Quantity</th></tr></thead><tbody>${supplierRowsHtml(rows)}</tbody></table><p>Many thanks</p><p>Kelly Nowak<br/>Nowak Drum Company Australia</p></body></html>`;
-  const supplierPlainText=(supplier,rows)=>`Supplier: ${supplier}\n\n${rows.map(row=>`${supplierName(row.part)} | ${supplierColour(row.part)} | ${supplierCode(row.part)} | ${supplierSize(row.part)} | Qty ${row.toOrder}`).join("\n")}`;
+  const supplierPlainText=(supplier,rows)=>`Supplier: ${supplier}\n\n${rows.map(row=>`${supplierName({...row.part,rechLugUse:row.rechLugUse})} | ${supplierColour(row.part)} | ${supplierCode(row.part)} | ${supplierSize({...row.part,rechLugUse:row.rechLugUse})} | Qty ${row.toOrder}`).join("\n")}`;
   const createPoNumber=()=>{const d=new Date(),pad=n=>String(n).padStart(2,"0");return `PO-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`};
   const supplierRowsFor=supplier=>rowsForSupplier(supplier);
   const supplierEmailFor=supplier=>supplierEmailByName(supplier);
   const poPayload=(supplier="Lea Hung",status="Draft")=>{const rows=supplierRowsFor(supplier);return {
     po_number:createPoNumber(),supplier,supplier_email:supplierEmailFor(supplier),subject:`${supplier} Hardware Order`,
-    order_items:rows.map(row=>({hardware_part_id:row.part?.id||null,name:supplierName(row.part),colour:supplierColour(row.part),code:supplierCode(row.part),size:supplierSize(row.part),quantity:row.toOrder,unit_cost:row.cost,estimated_total:row.total})),
+    order_items:rows.map(row=>({hardware_part_id:row.part?.id||null,name:supplierName({...row.part,rechLugUse:row.rechLugUse}),colour:supplierColour(row.part),code:supplierCode(row.part),size:supplierSize({...row.part,rechLugUse:row.rechLugUse}),quantity:row.toOrder,unit_cost:row.cost,estimated_total:row.total})),
     estimated_value:rows.reduce((sum,row)=>sum+row.total,0),status,sent_at:status==="Sent"?new Date().toISOString():null,
     notes:"Please quote freight with approximate delivery times."
   }};
