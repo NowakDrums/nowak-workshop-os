@@ -38,3 +38,19 @@
 - Retains the v7.9.26 printable stocktake and purchase-order features.
 - No inventory, supplier, purchase-order, pricing or allocation calculations were changed.
 
+## v7.9.28
+- Added 14-inch as a selectable Tom diameter in the Reorder Planner.
+- A 14-inch Tom uses 8 lugs per hoop, 16 ball lugs and 16 tension rods in total.
+- A 14-inch Tom does not add floor-tom legs or the three floor-tom mounts.
+- The existing 14-inch Floor Tom option remains unchanged.
+- No supplier, purchase-order, pricing, stock or allocation mappings were changed.
+
+
+## v7.9.29
+- Moved the printable kit hardware breakdown from Target Drum Stock into the selected supplier purchase-order section.
+- The report now recalculates and labels hardware using the selected supplier's rules.
+- Rech reports separate Tom and Bass single-point ball lugs and exclude separate lug gaskets and Lea Hung-only TM001 mounts.
+- Lea Hung reports retain separate bass-lug gaskets and floor-tom TM001 mounts.
+- Combined totals at the bottom are supplier-specific.
+- All snare drums now require one 30mm air vent, including ply snares.
+- Every tom, floor tom and bass drum continues to require one air vent; every floor tom requires one three-piece leg set and three mounts under Lea Hung rules.
