@@ -25,3 +25,16 @@
 - Corrected the Lea Hung Floor Tom Leg Set catalogue code to `FL05-120540`.
 - Lea Hung purchase orders now show the size as `3 piece set`.
 - Rech orders continue to show the supplier-neutral description `Floor Tom Legs — 3 pack` with no Lea Hung code.
+
+## v7.9.26
+- Added a printable A4 landscape inventory stocktake with a blank physical-count column.
+- Added Print / Save PDF controls to current purchase-order previews before a draft is saved.
+- Existing saved and draft purchase orders remain printable from the purchase-order window.
+- No inventory, supplier, pricing, quantity or purchase-order mapping logic was changed.
+## v7.9.27
+- Added **Print Kit Breakdown** to the Reorder Planner.
+- The printout lists the hardware required for each drum in the kit, including per-drum quantity and line total.
+- Added a combined totals section for lugs, hoops, tension rods, air vents, floor-tom hardware, bass-drum hardware, heads, snare wires and throw-offs.
+- Retains the v7.9.26 printable stocktake and purchase-order features.
+- No inventory, supplier, purchase-order, pricing or allocation calculations were changed.
+
