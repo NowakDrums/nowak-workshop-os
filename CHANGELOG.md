@@ -1,3 +1,9 @@
+## v7.9.30
+- Complete status is now independent from final hardware work. Marking a drum Complete no longer auto-completes Prepare hardware / heads or Assembled, does not deduct hardware, and does not count those stages in estimated completed time.
+- If a drum is marked Complete before assembly, Final assembly required is shown as outstanding work.
+- Adjust Hardware Used now records only parts physically fitted to the drum. Deselecting a previously fitted part returns it to on-hand stock while keeping it allocated to the drum for later fitting.
+- Hardware fitted / used controls are available for any drum with a standard hardware recipe, not only snares.
+
 # Nowak Workshop OS Changelog
 
 ## v7.9.25

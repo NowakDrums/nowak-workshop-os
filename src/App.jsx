@@ -2084,7 +2084,7 @@ function App(){
 
   async function consumeHardwareForDrum(drum){
     const requirements=drumHardwareRequirements(drum);
-    if(!requirements.length){setMessage("Standard hardware is available for 10, 12, 13 and 14-inch snare drums only.");return false;}
+    if(!requirements.length){setMessage("No standard hardware recipe is available for this drum.");return false;}
     return await syncHardwareUsed(drum,requirements,true);
   }
 
@@ -2134,36 +2134,90 @@ function App(){
   }
 
   async function syncHardwareUsed(drum,selectedRequirements,consumeNow=false){
-    // While a drum is in production, changing its hardware only updates reservations.
-    // Physical stock is deducted only when the drum is actually assembled.
-    if(!consumeNow) return await syncHardwareReservation(drum,selectedRequirements);
+    // "Hardware used" records what is physically fitted to the drum. Reservations stay
+    // separate so a drum can be Complete while its hardware is still waiting to be fitted.
+    // Deselecting a previously fitted part returns it to physical stock and leaves it
+    // allocated to the drum for later fitting.
+    const byCode=Object.fromEntries(hardware.flatMap(part=>[
+      [hardwareLookupKey(part),part],
+      [String(part.code||""),part],
+      [String(part.sku_key||""),part]
+    ]).filter(([key])=>key));
 
-    const reserved=await syncHardwareReservation(drum,selectedRequirements);
-    if(!reserved) return false;
+    const missing=selectedRequirements.filter(req=>!byCode[req.code]);
+    if(missing.length){
+      setMessage("These catalogue items are missing and could not be recorded as fitted: "+missing.map(req=>req.label).join("; "));
+      return false;
+    }
 
-    // Reloaded allocation state is not immediately available in this closure, so fetch the
-    // current active reservations directly before consuming them.
-    const {data:activeRows,error:loadError}=await supabase.from("hardware_allocations")
+    // When assembly is being completed, first make sure the full selected set is reserved.
+    if(consumeNow){
+      const reserved=await syncHardwareReservation(drum,selectedRequirements);
+      if(!reserved) return false;
+    }
+
+    const {data:rows,error:loadError}=await supabase.from("hardware_allocations")
       .select("*, hardware_part:hardware_parts(*)")
-      .eq("drum_id",drum.id)
-      .ilike("status","allocated");
-    if(loadError){setMessage("Could not load reserved hardware: "+loadError.message);return false;}
+      .eq("drum_id",drum.id);
+    if(loadError){setMessage("Could not load drum hardware: "+loadError.message);return false;}
 
-    for(const allocation of (activeRows||[])){
+    const desiredByPartId=new Map(selectedRequirements.map(req=>{
+      const part=byCode[req.code];
+      return [part.id,{req,part}];
+    }));
+    const consumedRows=(rows||[]).filter(row=>String(row.status||"").toLowerCase()==="consumed");
+    const allocatedRows=(rows||[]).filter(row=>String(row.status||"").toLowerCase()==="allocated");
+
+    // Return anything that is currently recorded as fitted but has now been deselected.
+    for(const allocation of consumedRows){
+      if(desiredByPartId.has(allocation.hardware_part_id)) continue;
       const part=allocation.hardware_part||hardware.find(p=>p.id===allocation.hardware_part_id);
       if(!part) continue;
-      const newQty=Number(part.qty_on_hand||0)-Number(allocation.quantity||0);
+      const returnedQty=Number(part.qty_on_hand||0)+Number(allocation.quantity||0);
       const {error:stockError}=await supabase.from("hardware_parts")
-        .update({qty_on_hand:newQty})
+        .update({qty_on_hand:returnedQty})
         .eq("id",part.id);
-      if(stockError){setMessage("Could not deduct fitted hardware: "+stockError.message);return false;}
+      if(stockError){setMessage("Could not return deselected hardware to stock: "+stockError.message);return false;}
       const {error:updateError}=await supabase.from("hardware_allocations")
-        .update({status:"Consumed",consumed_at:new Date().toISOString()})
+        .update({status:"Allocated",consumed_at:null})
         .eq("id",allocation.id);
       if(updateError){setMessage(updateError.message);return false;}
     }
+
+    // Fit any selected parts that are not already recorded as consumed.
+    for(const {req,part} of desiredByPartId.values()){
+      const existingConsumed=consumedRows.find(row=>row.hardware_part_id===part.id);
+      if(existingConsumed) continue;
+
+      const allocation=allocatedRows.find(row=>row.hardware_part_id===part.id);
+      const qty=Number(req.qty||0);
+      const latestOnHand=Number((allocation?.hardware_part||part).qty_on_hand||0);
+      const {error:stockError}=await supabase.from("hardware_parts")
+        .update({qty_on_hand:latestOnHand-qty})
+        .eq("id",part.id);
+      if(stockError){setMessage("Could not deduct fitted hardware: "+stockError.message);return false;}
+
+      if(allocation){
+        const {error:updateError}=await supabase.from("hardware_allocations")
+          .update({quantity:qty,status:"Consumed",consumed_at:new Date().toISOString()})
+          .eq("id",allocation.id);
+        if(updateError){setMessage(updateError.message);return false;}
+      }else{
+        const {error:insertError}=await supabase.from("hardware_allocations").insert({
+          drum_id:drum.id,
+          hardware_part_id:part.id,
+          quantity:qty,
+          status:"Consumed",
+          consumed_at:new Date().toISOString()
+        });
+        if(insertError){setMessage(insertError.message);return false;}
+      }
+    }
+
     await loadAll();
-    setMessage("Hardware fitted to the drum. Physical stock has now been deducted.");
+    setMessage(selectedRequirements.length
+      ? "Hardware used updated. Only physically fitted parts are deducted from stock."
+      : "No hardware is recorded as fitted. Reserved parts remain allocated for later use.");
     return true;
   }
 
@@ -2178,7 +2232,7 @@ function App(){
       const nextItem=flow.steps[flow.completedCount];
       if(!nextItem) return false;
 
-      if(nextItem==="Assembled" && String(d.drum_type||"Snare").toLowerCase()==="snare"){
+      if(nextItem==="Assembled" && drumHardwareRequirements(d).length){
         const consumed=await consumeHardwareForDrum(d);
         if(!consumed) return false;
       }
@@ -3133,7 +3187,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.29 — supplier-specific printable kit hardware breakdowns.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.30 — Complete status separated from hardware fitting and assembly.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8101,7 +8155,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     const initial={};
     standardHardware.forEach(req=>{
       const part=partByCode[req.code];
-      initial[req.code]=part ? Number(consumedByPart[part.id]||0)>0 : true;
+      const isCurrentlyFitted=part ? Number(consumedByPart[part.id]||0)>0 : false;
+      // When progressing to Assembled, start with the standard set selected. At all
+      // other times, show exactly what is currently recorded as physically fitted.
+      initial[req.code]=forAssembly ? true : isCurrentlyFitted;
     });
     setHardwareSelection(initial);
     setAssemblyShortages(shortages);
@@ -8123,7 +8180,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       if(pendingAssembly){
         const next=new Set(checked);next.add("Assembled");setChecked(next);await saveWorkflow(next,"Assembled",true);
         setSavedMessage(assemblyShortages.length?"Saved as assembled — hardware shortage highlighted in inventory":"Saved as assembled");
-      }else setSavedMessage("Hardware reservation updated");
+      }else setSavedMessage("Hardware used updated");
       setPendingAssembly(false);setAssemblyShortages([]);setTimeout(()=>setSavedMessage(""),3000);
     }
   }
@@ -8296,34 +8353,26 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       return await returnDrumToProduction(drum);
     }
 
-    if(String(drum.drum_type||"Snare").toLowerCase()==="snare" && !checked.has("Assembled")){
-      const consumed=await consumeHardwareForDrum(drum);
-      if(!consumed){setSavedMessage("Could not complete — check hardware stock");return;}
-    }
-    const steps=applicableChecklist(localBuildType,draft.finish);
-    const assembledIndex=steps.indexOf("Assembled");
-    if(assembledIndex<0) return;
-
-    const nextChecked=new Set(checked);
-    steps.slice(0,assembledIndex+1).forEach(item=>nextChecked.add(item));
-
+    // Completion is a business/lifecycle status only. Do not automatically mark
+    // Prepare hardware / heads or Assembled as complete, do not deduct hardware,
+    // and do not add their estimated time. Those stages are recorded later when
+    // the work actually happens.
     setSavedMessage("Marking drum complete...");
+    const needsAssembly=!checked.has("Assembled");
+    const currentOutstanding=draft.outstanding_work==="Other"
+      ? draft.outstanding_work_custom
+      : draft.outstanding_work;
+    const outstanding=needsAssembly && (!currentOutstanding || currentOutstanding==="No outstanding work")
+      ? "Final assembly required"
+      : (currentOutstanding || "No outstanding work");
     const completedNotes=setChecklistInNotes(
-      setOutstandingWorkInNotes(draft.notes,"No outstanding work"),
-      nextChecked
+      setOutstandingWorkInNotes(draft.notes,outstanding),
+      checked
     );
-    const history=Array.isArray(drum.stage_history) ? [...drum.stage_history] : [];
-    const now=new Date().toISOString();
-
-    steps.slice(0,assembledIndex+1).forEach(item=>{
-      if(!history.some(entry=>entry.item===item && entry.completed)){
-        history.push({item,completed:true,completed_at:now});
-      }
-    });
 
     const saved=await setDrumLifecycle(drum,"Completed",{
       notes:completedNotes,
-      stage_history:history
+      stage_history:Array.isArray(drum.stage_history) ? drum.stage_history : []
     });
 
     if(!saved){
@@ -8331,9 +8380,15 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       return;
     }
 
-    setChecked(nextChecked);
-    setDraft(current=>({...current,notes:completedNotes}));
-    setSavedMessage("Saved — drum marked Complete");
+    setDraft(current=>({
+      ...current,
+      notes:completedNotes,
+      outstanding_work:outstandingWorkOptions.includes(outstanding) ? outstanding : "Other",
+      outstanding_work_custom:outstandingWorkOptions.includes(outstanding) ? "" : outstanding
+    }));
+    setSavedMessage(needsAssembly
+      ? "Saved — drum marked Complete. Hardware preparation and assembly remain outstanding."
+      : "Saved — drum marked Complete");
     setTimeout(()=>setSavedMessage(""),3000);
   }
 
@@ -8408,7 +8463,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   async function toggle(item){
     const next=new Set(checked);
     const isCompleting=!next.has(item);
-    if(item==="Assembled" && isCompleting && String(drum.drum_type||"Snare").toLowerCase()==="snare"){
+    if(item==="Assembled" && isCompleting && standardHardware.length){
       const shortages=standardHardware.filter(req=>{const part=partByCode[req.code];return !part||Number(part.qty_on_hand||0)<req.qty;});
       if(shortages.length){
         setSavedMessage("Hardware shortage — review fitted parts before saving as assembled");
@@ -8462,8 +8517,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       <div><b>{Number(drum.hours_logged||0).toFixed(2)}</b><span>Actual hours logged</span></div>
     </section>
 
-    {String(drum.drum_type||"Snare").toLowerCase()==="snare" && <section className="hardwareUsedBar">
-      <div><b>Hardware used</b><span>{checked.has("Assembled") ? "Standard hardware was deducted automatically when assembled." : "Standard hardware will be deducted automatically when assembled."}</span></div>
+    {standardHardware.length>0 && <section className="hardwareUsedBar">
+      <div><b>Hardware fitted / used</b><span>{consumedForDrum.length
+        ? `${consumedForDrum.reduce((sum,row)=>sum+Number(row.quantity||0),0)} pieces currently recorded as fitted. Deselect a part to return it to stock while keeping it allocated to this drum.`
+        : "No hardware is currently recorded as fitted. The drum can still be marked Complete and hardware can be fitted later."}</span></div>
       <button onClick={()=>openHardwareUsed()}>Adjust Hardware Used</button>
     </section>}
 
