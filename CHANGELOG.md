@@ -81,3 +81,10 @@
 - Added an editable suggested caption, Copy Caption, Download Post Image and device Share Post controls.
 - The generated artwork uses the existing Nowak Drum Company logo and Western Australian brand wording.
 - No production, inventory, purchasing, costing, workflow or Supabase schema logic changed.
+
+## v7.9.34
+- Social Post creator now uses an asymmetrical editorial collage layout inspired by native Facebook multi-photo posts.
+- The first selected photo is the large hero image; selected photos can be reordered with left/right controls to change collage placement.
+- Selected photo order is shown directly in the picker.
+- Share Post now copies the suggested caption before opening the device share sheet, while still passing the caption to browsers/apps that support shared text with files.
+- No production, inventory, purchasing, timing or costing logic changed.

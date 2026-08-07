@@ -3187,7 +3187,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.33 — Social Post Suggestion creator added to Comms & Marketing.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.34 — Social Post creator collage layout, ordering and caption sharing improvements.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -6324,7 +6324,7 @@ function SocialPostCreator({drum,media,onClose,setMessage}){
   const canvasRef=useRef(null);
   const captionDefault=`From timber to tone.\n\n${drum.timber||"Australian hardwood"} · ${drum.size||"Custom drum"} ${drum.drum_type||""}\n\nA look through the build process in the Nowak workshop — handcrafted in Western Australia.\n\n#NowakDrums #AustralianMade #AustralianTimber #HandcraftedDrums #CustomDrums #DrumBuilding #MadeInWA`;
   const [caption,setCaption]=useState(captionDefault);
-  const selected=photos.filter(item=>selectedIds.includes(item.id)).slice(0,6);
+  const selected=selectedIds.map(id=>photos.find(item=>item.id===id)).filter(Boolean).slice(0,6);
 
   useEffect(()=>{
     setSelectedIds(defaultIds);
@@ -6335,6 +6335,18 @@ function SocialPostCreator({drum,media,onClose,setMessage}){
       if(current.includes(id)) return current.filter(value=>value!==id);
       if(current.length>=6){setMessage?.("Choose up to 6 photos for one collage.");return current;}
       return [...current,id];
+    });
+  }
+
+  function moveSelected(id,direction){
+    setSelectedIds(current=>{
+      const index=current.indexOf(id);
+      if(index<0) return current;
+      const next=index+direction;
+      if(next<0 || next>=current.length) return current;
+      const copy=[...current];
+      [copy[index],copy[next]]=[copy[next],copy[index]];
+      return copy;
     });
   }
 
@@ -6391,24 +6403,30 @@ function SocialPostCreator({drum,media,onClose,setMessage}){
     const top=headerH+18;
     const availableH=H-top-footerH-18;
     const n=Math.max(1,selected.length);
-    let cols=n===1?1:2;
-    let rows=Math.ceil(n/cols);
-    if(format==="story" && n>=5){cols=2;rows=3;}
-    const cellW=(W-pad*2-gap*(cols-1))/cols;
-    const cellH=(availableH-gap*(rows-1))/rows;
+    function collageRects(count){
+      const x=pad,y=top,w=W-pad*2,h=availableH;
+      if(count<=1) return [{x,y,w,h}];
+      if(count===2){const left=Math.round(w*.62);return [{x,y,w:left-gap/2,h},{x:x+left+gap/2,y,w:w-left-gap/2,h}];}
+      if(count===3){const left=Math.round(w*.64),right=w-left-gap;return [{x,y,w:left,h},{x:x+left+gap,y,w:right,h:(h-gap)/2},{x:x+left+gap,y:y+(h+gap)/2,w:right,h:(h-gap)/2}];}
+      if(count===4){const left=Math.round(w*.64),right=w-left-gap,small=(h-gap*2)/3;return [{x,y,w:left,h},{x:x+left+gap,y,w:right,h:small},{x:x+left+gap,y:y+small+gap,w:right,h:small},{x:x+left+gap,y:y+(small+gap)*2,w:right,h:small}];}
+      if(count===5){const left=Math.round(w*.58),right=w-left-gap,halfW=(right-gap)/2,halfH=(h-gap)/2;return [{x,y,w:left,h},{x:x+left+gap,y,w:halfW,h:halfH},{x:x+left+gap+halfW+gap,y,w:halfW,h:halfH},{x:x+left+gap,y:y+halfH+gap,w:halfW,h:halfH},{x:x+left+gap+halfW+gap,y:y+halfH+gap,w:halfW,h:halfH}];}
+      const left=Math.round(w*.54),right=w-left-gap,smallH=(h-gap*2)/3,halfW=(right-gap)/2;
+      return [{x,y,w:left,h},{x:x+left+gap,y,w:halfW,h:smallH},{x:x+left+gap+halfW+gap,y,w:halfW,h:smallH},{x:x+left+gap,y:y+smallH+gap,w:right,h:smallH},{x:x+left+gap,y:y+(smallH+gap)*2,w:halfW,h:smallH},{x:x+left+gap+halfW+gap,y:y+(smallH+gap)*2,w:halfW,h:smallH}];
+    }
+    const rects=collageRects(n);
     const loaded=await Promise.all(selected.map(item=>loadCanvasImage(item.public_url).catch(()=>null)));
     loaded.forEach((img,index)=>{
       if(!img) return;
-      const col=index%cols,row=Math.floor(index/cols);
-      const x=pad+col*(cellW+gap),y=top+row*(cellH+gap);
+      const r=rects[index]||rects[rects.length-1];
+      const {x,y,w:cellW,h:cellH}=r;
       ctx.save();
       ctx.beginPath(); ctx.roundRect(x,y,cellW,cellH,8); ctx.clip();
       drawCover(ctx,img,x,y,cellW,cellH);
-      const shade=ctx.createLinearGradient(0,y+cellH*0.58,0,y+cellH);
+      const shade=ctx.createLinearGradient(0,y+cellH*0.62,0,y+cellH);
       shade.addColorStop(0,"rgba(0,0,0,0)"); shade.addColorStop(1,"rgba(0,0,0,.72)");
       ctx.fillStyle=shade;ctx.fillRect(x,y,cellW,cellH);
-      ctx.fillStyle="#fff";ctx.font="600 19px Arial";
-      ctx.fillText(marketingMilestoneLabel(selected[index]?.milestone,drum).toUpperCase(),x+18,y+cellH-20);
+      ctx.fillStyle="#fff";ctx.font=`600 ${index===0?20:17}px Arial`;
+      ctx.fillText(marketingMilestoneLabel(selected[index]?.milestone,drum).toUpperCase(),x+16,y+cellH-18);
       ctx.restore();
     });
     if(!selected.length){
@@ -6444,11 +6462,15 @@ function SocialPostCreator({drum,media,onClose,setMessage}){
   async function sharePost(){
     const blob=await canvasBlob(); if(!blob) return;
     const file=new File([blob],"Nowak-Social-Post.png",{type:"image/png"});
+    try{await navigator.clipboard?.writeText(caption);}catch(e){}
     if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
-      try{await navigator.share({title:`${drum.timber||"Nowak Drum"} ${drum.size||""}`,text:caption,files:[file]});}catch(e){}
+      try{
+        await navigator.share({title:`${drum.timber||"Nowak Drum"} ${drum.size||""}`,text:caption,files:[file]});
+        setMessage?.("Post shared. The caption was also copied so you can paste it if Facebook or Instagram does not pre-fill shared text.");
+      }catch(e){}
     }else{
       await downloadPost();
-      setMessage?.("Direct sharing is not supported on this browser, so the post image was downloaded instead.");
+      setMessage?.("Post image downloaded and caption copied. Paste the caption into Facebook or Instagram when you upload the image.");
     }
   }
 
@@ -6461,7 +6483,7 @@ function SocialPostCreator({drum,media,onClose,setMessage}){
       .socialPostCreatorBody{display:grid;grid-template-columns:minmax(340px,520px) 1fr;gap:24px;padding:24px}
       .socialPostControls{display:flex;flex-direction:column;gap:20px}.socialPostBlock{background:#18191b;border:1px solid #303135;border-radius:14px;padding:18px}
       .socialPostBlock h3{margin:0 0 12px}.socialPhotoPicker{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-      .socialPhotoChoice{position:relative;aspect-ratio:1/1;border:2px solid transparent;border-radius:10px;overflow:hidden;background:#080808;cursor:pointer}.socialPhotoChoice.selected{border-color:#fff}.socialPhotoChoice img{width:100%;height:100%;object-fit:cover;display:block}.socialPhotoChoice input{position:absolute;top:8px;right:8px;width:20px;height:20px;z-index:2}.socialPhotoChoice span{position:absolute;left:0;right:0;bottom:0;padding:18px 7px 6px;background:linear-gradient(transparent,rgba(0,0,0,.8));font-size:10px;color:#fff}
+      .socialPhotoChoice{position:relative;aspect-ratio:1/1;border:2px solid transparent;border-radius:10px;overflow:hidden;background:#080808;cursor:pointer}.socialPhotoChoice.selected{border-color:#fff}.socialPhotoChoice img{width:100%;height:100%;object-fit:cover;display:block}.socialPhotoChoice input{position:absolute;top:8px;right:8px;width:20px;height:20px;z-index:3}.socialPhotoOrder{position:absolute;top:7px;left:7px;z-index:3;background:#fff;color:#111;border-radius:999px;min-width:27px;height:27px;display:grid;place-items:center;font-size:13px}.socialPhotoChoice span{position:absolute;left:0;right:0;bottom:0;padding:18px 7px 6px;background:linear-gradient(transparent,rgba(0,0,0,.8));font-size:10px;color:#fff}.socialSelectedOrder{margin-top:14px;display:grid;gap:7px}.socialOrderHint{display:flex;justify-content:space-between;gap:10px;align-items:baseline;color:#ddd}.socialOrderHint small{color:#999}.socialOrderItem{display:grid;grid-template-columns:44px 1fr auto;gap:9px;align-items:center;padding:7px;background:#101113;border:1px solid #2d2e31;border-radius:9px}.socialOrderItem img{width:44px;height:44px;object-fit:cover;border-radius:6px}.socialOrderItem span{font-size:12px}.socialOrderItem div{display:flex;gap:5px}.socialOrderItem button{padding:5px 9px;min-width:34px}.socialOrderItem button:disabled{opacity:.3}
       .socialFormatRow{display:flex;gap:8px;flex-wrap:wrap}.socialFormatRow button.active{background:#fff;color:#111}.socialCaption{width:100%;min-height:190px;background:#0d0e0f;color:#eee;border:1px solid #38393c;border-radius:10px;padding:12px;resize:vertical}
       .socialCreatorActions{display:flex;gap:9px;flex-wrap:wrap}.socialCreatorActions button.primaryShare{background:#fff;color:#111;font-weight:700}
       .socialPostPreview{display:flex;align-items:flex-start;justify-content:center;background:#090a0b;border-radius:14px;padding:18px;min-height:600px}.socialPostPreview canvas{max-width:100%;height:auto;max-height:78vh;box-shadow:0 16px 55px rgba(0,0,0,.55)}
@@ -6475,10 +6497,14 @@ function SocialPostCreator({drum,media,onClose,setMessage}){
       <div className="socialPostCreatorBody">
         <section className="socialPostControls">
           <div className="socialPostBlock"><h3>1. Choose photos <small>({selected.length}/6)</small></h3>
-            <div className="socialPhotoPicker">{photos.map(photo=><label className={`socialPhotoChoice ${selectedIds.includes(photo.id)?"selected":""}`} key={photo.id}>
-              <input type="checkbox" checked={selectedIds.includes(photo.id)} onChange={()=>togglePhoto(photo.id)}/>
+            <div className="socialPhotoPicker">{photos.map(photo=>{const order=selectedIds.indexOf(photo.id);return <label className={`socialPhotoChoice ${order>=0?"selected":""}`} key={photo.id}>
+              <input type="checkbox" checked={order>=0} onChange={()=>togglePhoto(photo.id)}/>
+              {order>=0&&<b className="socialPhotoOrder">{order+1}</b>}
               <img src={photo.public_url} alt={marketingMilestoneLabel(photo.milestone,drum)}/><span>{marketingMilestoneLabel(photo.milestone,drum)}</span>
-            </label>)}</div>
+            </label>})}</div>
+            {!!selected.length&&<div className="socialSelectedOrder"><div className="socialOrderHint"><strong>Arrange collage</strong><small>Photo 1 is the large hero image. Move photos left/right to change their position.</small></div>{selected.map((photo,index)=><div className="socialOrderItem" key={photo.id}>
+              <img src={photo.public_url} alt=""/><span>{index+1}. {marketingMilestoneLabel(photo.milestone,drum)}</span><div><button disabled={index===0} onClick={()=>moveSelected(photo.id,-1)}>←</button><button disabled={index===selected.length-1} onClick={()=>moveSelected(photo.id,1)}>→</button></div>
+            </div>)}</div>}
             {!photos.length&&<p>No still photos are stored for this drum yet.</p>}
           </div>
           <div className="socialPostBlock"><h3>2. Post format</h3><div className="socialFormatRow">
