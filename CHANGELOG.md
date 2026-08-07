@@ -1,3 +1,9 @@
+# Nowak Workshop OS Changelog
+
+## v7.9.31
+- Comms & Marketing **Open Media** now displays every stored photo and video attached to that drum, regardless of the production milestone where it was captured.
+- Marketing queue status, milestone grouping, drum records, inventory, purchasing, scheduling and all other app behaviour are unchanged.
+
 ## v7.9.30
 - Complete status is now independent from final hardware work. Marking a drum Complete no longer auto-completes Prepare hardware / heads or Assembled, does not deduct hardware, and does not count those stages in estimated completed time.
 - If a drum is marked Complete before assembly, Final assembly required is shown as outstanding work.

@@ -3187,7 +3187,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.30 — Complete status separated from hardware fitting and assembly.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.31 — Open Media now shows all stored media for each drum.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -6425,6 +6425,7 @@ function MarketingContentQueue({drums,openJobCard,setMessage}){
       : <section className="marketingQueueList">{filtered.map(item=>{
           const open=expanded===item.key;
           const drum=item.drum;
+          const allDrumMedia=photos.filter(photo=>photo.drum_id===drum.id);
           return <article className="panel marketingQueueCard" key={item.key}>
             <header className="marketingQueueCardHeader">
               <div>
@@ -6447,7 +6448,7 @@ function MarketingContentQueue({drums,openJobCard,setMessage}){
             </div>
 
             {open && <section className="marketingQueueMedia">
-              {item.photos.map(photo=><a href={photo.public_url} target="_blank" rel="noreferrer" key={photo.id} className="marketingMediaItem">
+              {allDrumMedia.map(photo=><a href={photo.public_url} target="_blank" rel="noreferrer" key={photo.id} className="marketingMediaItem">
                 {photo.media_type==="video"
                   ? <video src={photo.public_url} controls preload="metadata"/>
                   : <img src={photo.public_url} alt={marketingMilestoneLabel(item.milestone,drum)}/>}
