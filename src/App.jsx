@@ -3187,7 +3187,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.32 — Job Card now shows the same complete drum media set as Open Media.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.33 — Social Post Suggestion creator added to Comms & Marketing.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -6315,12 +6315,197 @@ function CommsMarketingCentre({filteredDrums,allDrums,openJobCard,setMessage,onA
   </section>
 }
 
+
+function SocialPostCreator({drum,media,onClose,setMessage}){
+  const photos=useMemo(()=>media.filter(item=>item.media_type!=="video" && item.public_url),[media]);
+  const defaultIds=useMemo(()=>photos.slice(0,Math.min(6,photos.length)).map(item=>item.id),[photos]);
+  const [selectedIds,setSelectedIds]=useState(defaultIds);
+  const [format,setFormat]=useState("portrait");
+  const canvasRef=useRef(null);
+  const captionDefault=`From timber to tone.\n\n${drum.timber||"Australian hardwood"} · ${drum.size||"Custom drum"} ${drum.drum_type||""}\n\nA look through the build process in the Nowak workshop — handcrafted in Western Australia.\n\n#NowakDrums #AustralianMade #AustralianTimber #HandcraftedDrums #CustomDrums #DrumBuilding #MadeInWA`;
+  const [caption,setCaption]=useState(captionDefault);
+  const selected=photos.filter(item=>selectedIds.includes(item.id)).slice(0,6);
+
+  useEffect(()=>{
+    setSelectedIds(defaultIds);
+  },[drum.id,defaultIds.join("|")]);
+
+  function togglePhoto(id){
+    setSelectedIds(current=>{
+      if(current.includes(id)) return current.filter(value=>value!==id);
+      if(current.length>=6){setMessage?.("Choose up to 6 photos for one collage.");return current;}
+      return [...current,id];
+    });
+  }
+
+  function canvasSize(){
+    if(format==="square") return [1080,1080];
+    if(format==="story") return [1080,1920];
+    return [1080,1350];
+  }
+
+  function loadCanvasImage(src){
+    return new Promise((resolve,reject)=>{
+      const img=new Image();
+      img.crossOrigin="anonymous";
+      img.onload=()=>resolve(img);
+      img.onerror=reject;
+      img.src=src;
+    });
+  }
+
+  function drawCover(ctx,img,x,y,w,h){
+    const scale=Math.max(w/img.width,h/img.height);
+    const sw=w/scale, sh=h/scale;
+    const sx=(img.width-sw)/2, sy=(img.height-sh)/2;
+    ctx.drawImage(img,sx,sy,sw,sh,x,y,w,h);
+  }
+
+  async function renderCanvas(){
+    const canvas=canvasRef.current;
+    if(!canvas) return;
+    const [W,H]=canvasSize();
+    canvas.width=W; canvas.height=H;
+    const ctx=canvas.getContext("2d");
+    ctx.fillStyle="#0b0b0c"; ctx.fillRect(0,0,W,H);
+
+    // Premium dark header.
+    const headerH=format==="story"?250:205;
+    ctx.fillStyle="#111214"; ctx.fillRect(0,0,W,headerH);
+    ctx.fillStyle="#d6d6d6"; ctx.font="600 23px Arial"; ctx.letterSpacing="4px";
+    ctx.fillText("NOWAK DRUM COMPANY",58,58);
+    ctx.fillStyle="#ffffff"; ctx.font="700 58px Arial";
+    ctx.fillText(String(drum.timber||"CUSTOM DRUM").toUpperCase(),58,126);
+    ctx.fillStyle="#c8c8c8"; ctx.font="400 30px Arial";
+    const detail=[drum.size,drum.drum_type,drum.build_type].filter(Boolean).join("  ·  ");
+    ctx.fillText(detail,58,174);
+    try{
+      const logo=await loadCanvasImage(nowakLogo);
+      const maxW=220,maxH=105,scale=Math.min(maxW/logo.width,maxH/logo.height);
+      const lw=logo.width*scale,lh=logo.height*scale;
+      ctx.drawImage(logo,W-lw-55,45,lw,lh);
+    }catch(e){}
+
+    const footerH=format==="story"?150:120;
+    const gap=12,pad=28;
+    const top=headerH+18;
+    const availableH=H-top-footerH-18;
+    const n=Math.max(1,selected.length);
+    let cols=n===1?1:2;
+    let rows=Math.ceil(n/cols);
+    if(format==="story" && n>=5){cols=2;rows=3;}
+    const cellW=(W-pad*2-gap*(cols-1))/cols;
+    const cellH=(availableH-gap*(rows-1))/rows;
+    const loaded=await Promise.all(selected.map(item=>loadCanvasImage(item.public_url).catch(()=>null)));
+    loaded.forEach((img,index)=>{
+      if(!img) return;
+      const col=index%cols,row=Math.floor(index/cols);
+      const x=pad+col*(cellW+gap),y=top+row*(cellH+gap);
+      ctx.save();
+      ctx.beginPath(); ctx.roundRect(x,y,cellW,cellH,8); ctx.clip();
+      drawCover(ctx,img,x,y,cellW,cellH);
+      const shade=ctx.createLinearGradient(0,y+cellH*0.58,0,y+cellH);
+      shade.addColorStop(0,"rgba(0,0,0,0)"); shade.addColorStop(1,"rgba(0,0,0,.72)");
+      ctx.fillStyle=shade;ctx.fillRect(x,y,cellW,cellH);
+      ctx.fillStyle="#fff";ctx.font="600 19px Arial";
+      ctx.fillText(marketingMilestoneLabel(selected[index]?.milestone,drum).toUpperCase(),x+18,y+cellH-20);
+      ctx.restore();
+    });
+    if(!selected.length){
+      ctx.strokeStyle="#444";ctx.lineWidth=3;ctx.setLineDash([12,12]);ctx.strokeRect(70,top+40,W-140,availableH-80);ctx.setLineDash([]);
+      ctx.fillStyle="#999";ctx.font="600 32px Arial";ctx.textAlign="center";ctx.fillText("SELECT PHOTOS TO BUILD YOUR POST",W/2,top+availableH/2);ctx.textAlign="left";
+    }
+
+    const fy=H-footerH;
+    ctx.fillStyle="#111214";ctx.fillRect(0,fy,W,footerH);
+    ctx.fillStyle="#fff";ctx.font="700 25px Arial";ctx.fillText("HANDCRAFTED IN WESTERN AUSTRALIA",58,fy+47);
+    ctx.fillStyle="#aaa";ctx.font="400 20px Arial";ctx.fillText("Built with precision. Played with passion.",58,fy+82);
+    ctx.fillStyle="#fff";ctx.font="600 20px Arial";ctx.textAlign="right";ctx.fillText("nowakdrums.com.au",W-58,fy+66);ctx.textAlign="left";
+  }
+
+  useEffect(()=>{renderCanvas();},[selectedIds.join("|"),format,drum.id]);
+
+  async function canvasBlob(){
+    await renderCanvas();
+    return await new Promise(resolve=>canvasRef.current?.toBlob(resolve,"image/png",1));
+  }
+
+  async function downloadPost(){
+    const blob=await canvasBlob(); if(!blob) return;
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");
+    a.href=url;a.download=`Nowak-${String(drum.timber||"Drum").replace(/[^a-z0-9]+/gi,"-")}-${String(drum.size||"").replace(/[^a-z0-9]+/gi,"-")}-Social-Post.png`;a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+
+  async function copyCaption(){
+    await navigator.clipboard?.writeText(caption);setMessage?.("Social caption copied.");
+  }
+
+  async function sharePost(){
+    const blob=await canvasBlob(); if(!blob) return;
+    const file=new File([blob],"Nowak-Social-Post.png",{type:"image/png"});
+    if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
+      try{await navigator.share({title:`${drum.timber||"Nowak Drum"} ${drum.size||""}`,text:caption,files:[file]});}catch(e){}
+    }else{
+      await downloadPost();
+      setMessage?.("Direct sharing is not supported on this browser, so the post image was downloaded instead.");
+    }
+  }
+
+  return <div className="socialPostCreatorOverlay">
+    <style>{`
+      .socialPostCreatorOverlay{position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.88);overflow:auto;padding:24px}
+      .socialPostCreator{max-width:1500px;margin:0 auto;background:#111214;color:#fff;border:1px solid #333;border-radius:18px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.6)}
+      .socialPostCreatorHeader{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;padding:24px 28px;border-bottom:1px solid #2c2d30;background:linear-gradient(135deg,#18191b,#0c0d0e)}
+      .socialPostCreatorHeader h2{margin:4px 0 6px;font-size:30px}.socialPostCreatorHeader p{margin:0;color:#bbb}
+      .socialPostCreatorBody{display:grid;grid-template-columns:minmax(340px,520px) 1fr;gap:24px;padding:24px}
+      .socialPostControls{display:flex;flex-direction:column;gap:20px}.socialPostBlock{background:#18191b;border:1px solid #303135;border-radius:14px;padding:18px}
+      .socialPostBlock h3{margin:0 0 12px}.socialPhotoPicker{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+      .socialPhotoChoice{position:relative;aspect-ratio:1/1;border:2px solid transparent;border-radius:10px;overflow:hidden;background:#080808;cursor:pointer}.socialPhotoChoice.selected{border-color:#fff}.socialPhotoChoice img{width:100%;height:100%;object-fit:cover;display:block}.socialPhotoChoice input{position:absolute;top:8px;right:8px;width:20px;height:20px;z-index:2}.socialPhotoChoice span{position:absolute;left:0;right:0;bottom:0;padding:18px 7px 6px;background:linear-gradient(transparent,rgba(0,0,0,.8));font-size:10px;color:#fff}
+      .socialFormatRow{display:flex;gap:8px;flex-wrap:wrap}.socialFormatRow button.active{background:#fff;color:#111}.socialCaption{width:100%;min-height:190px;background:#0d0e0f;color:#eee;border:1px solid #38393c;border-radius:10px;padding:12px;resize:vertical}
+      .socialCreatorActions{display:flex;gap:9px;flex-wrap:wrap}.socialCreatorActions button.primaryShare{background:#fff;color:#111;font-weight:700}
+      .socialPostPreview{display:flex;align-items:flex-start;justify-content:center;background:#090a0b;border-radius:14px;padding:18px;min-height:600px}.socialPostPreview canvas{max-width:100%;height:auto;max-height:78vh;box-shadow:0 16px 55px rgba(0,0,0,.55)}
+      @media(max-width:900px){.socialPostCreatorOverlay{padding:8px}.socialPostCreatorBody{grid-template-columns:1fr}.socialPhotoPicker{grid-template-columns:repeat(3,1fr)}.socialPostCreatorHeader{padding:18px}.socialPostPreview{min-height:auto;padding:8px}}
+    `}</style>
+    <section className="socialPostCreator">
+      <header className="socialPostCreatorHeader">
+        <div><span className="launchPackEyebrow">NOWAK SOCIAL POST CREATOR</span><h2>Social Post Suggestion</h2><p>{drum.timber} · {drum.size} · Choose the photos you want and the collage updates automatically.</p></div>
+        <button onClick={onClose}>Close</button>
+      </header>
+      <div className="socialPostCreatorBody">
+        <section className="socialPostControls">
+          <div className="socialPostBlock"><h3>1. Choose photos <small>({selected.length}/6)</small></h3>
+            <div className="socialPhotoPicker">{photos.map(photo=><label className={`socialPhotoChoice ${selectedIds.includes(photo.id)?"selected":""}`} key={photo.id}>
+              <input type="checkbox" checked={selectedIds.includes(photo.id)} onChange={()=>togglePhoto(photo.id)}/>
+              <img src={photo.public_url} alt={marketingMilestoneLabel(photo.milestone,drum)}/><span>{marketingMilestoneLabel(photo.milestone,drum)}</span>
+            </label>)}</div>
+            {!photos.length&&<p>No still photos are stored for this drum yet.</p>}
+          </div>
+          <div className="socialPostBlock"><h3>2. Post format</h3><div className="socialFormatRow">
+            <button className={format==="portrait"?"active":""} onClick={()=>setFormat("portrait")}>Instagram 4:5</button>
+            <button className={format==="square"?"active":""} onClick={()=>setFormat("square")}>Square 1:1</button>
+            <button className={format==="story"?"active":""} onClick={()=>setFormat("story")}>Story 9:16</button>
+          </div></div>
+          <div className="socialPostBlock"><h3>3. Suggested caption</h3><textarea className="socialCaption" value={caption} onChange={e=>setCaption(e.target.value)}/></div>
+          <div className="socialCreatorActions">
+            <button onClick={copyCaption}><Copy size={15}/> Copy Caption</button>
+            <button onClick={downloadPost}><Download size={15}/> Download Post Image</button>
+            <button className="primaryShare" onClick={sharePost}><Share2 size={15}/> Share Post</button>
+          </div>
+        </section>
+        <section className="socialPostPreview"><canvas ref={canvasRef}/></section>
+      </div>
+    </section>
+  </div>;
+}
+
 function MarketingContentQueue({drums,openJobCard,setMessage}){
   const [photos,setPhotos]=useState([]);
   const [statusRows,setStatusRows]=useState([]);
   const [tab,setTab]=useState("To Review");
   const [loading,setLoading]=useState(false);
   const [expanded,setExpanded]=useState("");
+  const [creatorDrum,setCreatorDrum]=useState(null);
 
   const eligibleDrums=drums.filter(d=>d.build_client!=="Brady");
   const drumMap=Object.fromEntries(eligibleDrums.map(d=>[d.id,d]));
@@ -6440,6 +6625,7 @@ function MarketingContentQueue({drums,openJobCard,setMessage}){
 
             <div className="marketingQueueActions">
               <button onClick={()=>setExpanded(open?"":item.key)}><Camera size={15}/> {open?"Hide Media":"Open Media"}</button>
+              <button className="primary" onClick={()=>setCreatorDrum(drum)}><Share2 size={15}/> Social Post Suggestion</button>
               <button onClick={()=>openJobCard(drum)}>Open Drum</button>
               {item.status!=="Held for Final Post" && <button onClick={()=>setStatus(item,"Held for Final Post")}>Hold for Final</button>}
               {item.status!=="Completed" && <button className="primary" onClick={()=>setStatus(item,"Completed")}><CheckCircle2 size={15}/> Complete</button>}
@@ -6456,6 +6642,12 @@ function MarketingContentQueue({drums,openJobCard,setMessage}){
             </section>}
           </article>;
         })}</section>}
+    {creatorDrum && <SocialPostCreator
+      drum={creatorDrum}
+      media={photos.filter(photo=>photo.drum_id===creatorDrum.id)}
+      onClose={()=>setCreatorDrum(null)}
+      setMessage={setMessage}
+    />}
   </section>;
 }
 

@@ -71,3 +71,13 @@
 - Job Card media now uses the same complete stored media set as Comms & Marketing → Open Media.
 - Launch Pack aliases such as `launch_machined` are grouped into their matching Job Card stage (for example, Machined), so previously hidden machining media appears on the drum Job Card.
 - No workflow, inventory, production, purchase-order, marketing-status, or calculation logic changed.
+
+
+## v7.9.33
+- Added a Social Post Suggestion creator to Comms & Marketing content cards.
+- The creator shows all still production photos for the selected drum with tick boxes and allows up to six photos in one branded collage.
+- Automatically uses the drum timber, size, drum type and build type in the post artwork.
+- Added Instagram 4:5, square 1:1 and story 9:16 layouts.
+- Added an editable suggested caption, Copy Caption, Download Post Image and device Share Post controls.
+- The generated artwork uses the existing Nowak Drum Company logo and Western Australian brand wording.
+- No production, inventory, purchasing, costing, workflow or Supabase schema logic changed.
