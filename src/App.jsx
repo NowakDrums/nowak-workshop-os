@@ -3187,7 +3187,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.31 — Open Media now shows all stored media for each drum.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.32 — Job Card now shows the same complete drum media set as Open Media.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -7812,7 +7812,10 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
   useEffect(()=>{ load(); },[drum.id]);
 
   const grouped=photos.reduce((acc,photo)=>{
-    const key=photo.milestone || "general";
+    // Use the same complete drum-media set as Comms & Marketing.
+    // Launch Pack milestone aliases are folded into their matching production stage
+    // so media such as launch_machined also appears on the Job Card under Machined.
+    const key=communicationMilestoneKey(photo.milestone || "general");
     if(!acc[key]) acc[key]=[];
     acc[key].push(photo);
     return acc;
@@ -7821,7 +7824,7 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
   const stageOrder=["wood","blank","machined","sealer","shellcomplete","drumcomplete","general"];
   const stageKeys=[
     ...stageOrder.filter(key=>grouped[key]?.length),
-    ...Object.keys(grouped).filter(key=>!stageOrder.includes(key) && !key.startsWith("launch_"))
+    ...Object.keys(grouped).filter(key=>!stageOrder.includes(key))
   ];
 
   function stageLabel(key){

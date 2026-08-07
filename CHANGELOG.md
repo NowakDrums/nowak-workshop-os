@@ -66,3 +66,8 @@
 - Combined totals at the bottom are supplier-specific.
 - All snare drums now require one 30mm air vent, including ply snares.
 - Every tom, floor tom and bass drum continues to require one air vent; every floor tom requires one three-piece leg set and three mounts under Lea Hung rules.
+
+## v7.9.32
+- Job Card media now uses the same complete stored media set as Comms & Marketing → Open Media.
+- Launch Pack aliases such as `launch_machined` are grouped into their matching Job Card stage (for example, Machined), so previously hidden machining media appears on the drum Job Card.
+- No workflow, inventory, production, purchase-order, marketing-status, or calculation logic changed.
