@@ -2222,10 +2222,37 @@ function App(){
       }
     }
 
+    // If every fitted part has been deselected, the stock quantities have already
+    // been returned above. Now deal with the reservation separately. This query is
+    // deliberately fresh because consumed rows may just have changed to Allocated.
+    if(selectedRequirements.length===0){
+      const {data:remainingAllocations,error:remainingError}=await supabase.from("hardware_allocations")
+        .select("id,status")
+        .eq("drum_id",drum.id)
+        .eq("status","Allocated");
+      if(remainingError){setMessage("Hardware was returned to stock, but the reservation could not be checked: "+remainingError.message);return false;}
+
+      if((remainingAllocations||[]).length){
+        const isCustom=String(drum.order_type||"").toLowerCase()==="custom";
+        const releaseReservation=window.confirm(
+          isCustom
+            ? "All fitted hardware has been returned to stock.\n\nRelease the hardware reservation from this custom drum as well?\n\nOK = release it to general available stock.\nCancel = keep it reserved for this custom order."
+            : "All fitted hardware has been returned to stock.\n\nRelease the hardware allocation from this drum as well?\n\nOK = release it to general available stock.\nCancel = keep it reserved for this drum."
+        );
+        if(releaseReservation){
+          const {error:releaseError}=await supabase.from("hardware_allocations")
+            .update({status:"Released",released_at:new Date().toISOString()})
+            .eq("drum_id",drum.id)
+            .eq("status","Allocated");
+          if(releaseError){setMessage("Hardware was returned to stock, but the allocation could not be released: "+releaseError.message);return false;}
+        }
+      }
+    }
+
     await loadAll();
     setMessage(selectedRequirements.length
       ? "Hardware used updated. Only physically fitted parts are deducted from stock."
-      : "No hardware is recorded as fitted. Reserved parts remain allocated for later use.");
+      : "No hardware is recorded as fitted. Returned parts are back in stock; any reservation was handled separately.");
     return true;
   }
 
@@ -2535,11 +2562,14 @@ function App(){
     }
 
     await loadAll();
+    // Return the freshly saved row as well as updating the parent Job Card state.
+    // The Job Card uses this returned row to reset its local draft/checklist state,
+    // preventing a stale Complete flag from immediately reappearing.
     setJobCard(current=>current?.id===d.id?{...current,...data}:current);
     setMessage(saleError
       ? "Drum returned to Production. Please review the old sale record warning."
       : "Drum returned to Production. Complete, Sold and Shipped status were removed.");
-    return true;
+    return data;
   }
 
   async function markSold(d){
@@ -8605,17 +8635,20 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     if(["Completed","Sold","Shipped"].includes(drumLifecycleStatus(drum)) || drum?.production_status==="Manufacturing Complete"){
       const returned=await returnDrumToProduction(drum);
       if(returned){
-        // Keep the open Job Card in sync with the database immediately. Without this,
-        // old local checklist values can make Complete appear to switch itself back on.
-        const reopened=new Set(checked);
-        ["Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].forEach(step=>reopened.delete(step));
-        const reopenedNotes=setChecklistInNotes(draft.notes,reopened);
+        // Reset local Job Card state from the database row that was just saved.
+        // This avoids the stale Complete lifecycle/checklist state winning on the
+        // next render and makes Undo Complete take effect immediately.
+        const reopened=new Set(parseChecked(returned.notes));
         setChecked(reopened);
-        setDraft(current=>({...current,notes:reopenedNotes}));
+        setDraft(current=>({
+          ...current,
+          notes:returned.notes||current.notes,
+          sales_status:returned.sales_status||current.sales_status
+        }));
         setSavedMessage("Drum returned to Production.");
         setTimeout(()=>setSavedMessage(""),3000);
       }
-      return returned;
+      return Boolean(returned);
     }
 
     // Completion and hardware fitting are deliberately separate. Ask what has

@@ -15,3 +15,9 @@ Small Production-page filter patch only.
 - Owner filtering works alongside the existing Construction and Status filters.
 - Archived drums also respect the selected Owner filter.
 - No production workflow, completion, inventory, purchasing, media, marketing, timing or costing logic was changed.
+
+## v7.9.38
+- Fixed Undo Complete so the open Job Card resets from the freshly saved Production row instead of retaining stale Complete state.
+- Fixed returned hardware so deselecting all fitted parts can genuinely release the remaining allocation after the quantities are returned to on-hand stock.
+- Kept custom-order reservations optional: returned hardware can remain reserved or be fully released.
+- No other workflow, inventory recipe, purchasing, media, timing or costing changes.
