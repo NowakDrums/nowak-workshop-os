@@ -1,10 +1,15 @@
-# Nowak Workshop OS v7.9.43
+# Nowak Workshop OS v7.9.44
 
-Focused Undo Complete repair only.
+Focused Undo Complete restoration.
 
-- Undo Complete now runs directly from the button.
-- Undo Complete clears the lifecycle Complete state and returns the drum to In Production.
-- Assembly history is preserved; Assembled no longer recreates lifecycle Complete.
-- Normal Job Card Save no longer derives Complete from the Assembled checklist item.
-- Existing v7.9.41 hardware release behaviour is unchanged.
-- No Supabase SQL, schema, RLS, inventory, purchase-order or hardware-rule changes.
+- Restores the exact return-to-production routine used in v7.9.8, which previously worked in the live app.
+- Clicking Undo Complete:
+  - asks for confirmation;
+  - clears lifecycle Complete/Sold/Shipped;
+  - returns the drum to its calculated production stage;
+  - clears completion date;
+  - removes late completion/marketing/shipping checklist states;
+  - removes a linked sale record if one exists;
+  - reloads live data and refreshes the open Job Card.
+- The working v7.9.41 stock-hardware release behaviour is unchanged.
+- No Supabase SQL, schema, RLS, inventory recipe, purchase-order, costing or media changes.

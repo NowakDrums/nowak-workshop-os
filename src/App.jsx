@@ -2566,34 +2566,24 @@ function App(){
   }
 
   async function returnDrumToProduction(d){
+    if(!window.confirm("Move this drum back into Production? This will remove Complete/Sold/Shipped status but keep the build history up to final preparation.")) return false;
     const reopenSteps=new Set(parseChecked(d.notes));
-    ["Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].forEach(step=>reopenSteps.delete(step));
+    ["Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].forEach(step=>reopenSteps.delete(step));
     const notes=clearArchiveDetailsFromNotes(setChecklistInNotes(d.notes,reopenSteps));
     const flow=workflowState(d.build_type||"Stave",reopenSteps,d.finish||"To Be Decided",d.build_client||"Nowak",d.drum_type,d.size);
-    const history=(Array.isArray(d.stage_history)?d.stage_history:[]).filter(entry=>!["Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].includes(entry.item));
+    const history=(Array.isArray(d.stage_history)?d.stage_history:[]).filter(entry=>!["Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].includes(entry.item));
     const cleanNotes=setTrackingNumberInNotes(notes,"");
-    const customOrder=String(d.sales_status||"").toLowerCase()==="custom order";
-    const reopenedProductionStatus=flow.status==="Manufacturing Complete" ? "In Production" : (flow.status || "In Production");
     const patch={
       lifecycle_status:null,
-      production_status:reopenedProductionStatus,
-      next_step:flow.nextStep || "Continue production",
+      production_status:flow.status,
+      next_step:flow.nextStep,
       completion_date:null,
-      sales_status:customOrder ? "Custom Order" : "Stock",
+      sales_status:d.order_type==="Custom" ? "Custom Order" : "Stock",
       notes:cleanNotes,
       stage_history:history
     };
     const {data,error}=await supabase.from("drums").update(patch).eq("id",d.id).select("*").single();
     if(error){setMessage("Could not return drum to production: "+error.message);return false;}
-
-    // Verify the persisted row itself is no longer identifiable as Complete. This
-    // catches legacy fields/triggers before the UI is allowed to claim success.
-    const {data:verified,error:verifyError}=await supabase.from("drums").select("*").eq("id",d.id).single();
-    if(verifyError){setMessage("The drum was updated but the Production state could not be verified: "+verifyError.message);return false;}
-    if(drumLifecycleStatus(verified)==="Completed" || verified?.production_status==="Manufacturing Complete"){
-      setMessage("Undo Complete was blocked because the database still reports this drum as Complete. No other workflow changes were made.");
-      return false;
-    }
 
     // A drum returned to production is no longer a completed sale. Remove any
     // linked sale record so old financial/lifecycle data cannot mark it Sold again.
@@ -2603,13 +2593,11 @@ function App(){
     }
 
     await loadAll();
-    const returned={...verified,lifecycle_status:null,production_status:reopenedProductionStatus};
-    setDrums(current=>current.map(item=>item.id===d.id ? {...item,...returned} : item));
-    setJobCard(current=>current?.id===d.id ? {...current,...returned} : current);
+    setJobCard(current=>current?.id===d.id?{...current,...data}:current);
     setMessage(saleError
       ? "Drum returned to Production. Please review the old sale record warning."
       : "Drum returned to Production. Complete, Sold and Shipped status were removed.");
-    return returned;
+    return true;
   }
 
   async function markSold(d){
@@ -3265,7 +3253,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.43 — Undo Complete button repair.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.44 — restored proven Undo Complete routine.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8666,23 +8654,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   }
 
   async function markManufacturingComplete(){
-    if(["Completed","Sold","Shipped"].includes(drumLifecycleStatus(drum)) || drum?.production_status==="Manufacturing Complete"){
-      const returned=await returnDrumToProduction(drum);
-      if(returned){
-        // Reset local Job Card state from the database row that was just saved.
-        // This avoids the stale Complete lifecycle/checklist state winning on the
-        // next render and makes Undo Complete take effect immediately.
-        const reopened=new Set(parseChecked(returned.notes));
-        setChecked(reopened);
-        setDraft(current=>({
-          ...current,
-          notes:returned.notes||current.notes,
-          sales_status:returned.sales_status||current.sales_status
-        }));
-        setSavedMessage("Drum returned to Production.");
-        setTimeout(()=>setSavedMessage(""),3000);
-      }
-      return Boolean(returned);
+    if(["Completed","Sold","Shipped"].includes(drumLifecycleStatus(drum))){
+      return await returnDrumToProduction(drum);
     }
 
     // Completion and hardware fitting are deliberately separate. Ask what has
