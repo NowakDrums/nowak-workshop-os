@@ -2086,8 +2086,31 @@ function App(){
   }
 
   async function releaseHardwareForDrum(drum){
-    const {error}=await supabase.from("hardware_allocations").update({status:"Released",released_at:new Date().toISOString()}).eq("drum_id",drum.id).eq("status","Allocated");
-    if(error){setMessage(error.message);return false;} await loadAll(); setMessage("Hardware allocation released back to available stock."); return true;
+    // Allocation status has existed in mixed case in older records. Inventory treats
+    // it case-insensitively, so release must do the same or a row can continue to
+    // appear allocated after the physical stock has already been returned.
+    const {data:rows,error:loadError}=await supabase.from("hardware_allocations")
+      .select("id,status")
+      .eq("drum_id",drum.id);
+    if(loadError){setMessage("Could not check hardware allocation: "+loadError.message);return false;}
+    const activeIds=(rows||[])
+      .filter(row=>String(row.status||"").toLowerCase()==="allocated")
+      .map(row=>row.id);
+    if(activeIds.length){
+      const {error}=await supabase.from("hardware_allocations")
+        .update({status:"Released",released_at:new Date().toISOString()})
+        .in("id",activeIds);
+      if(error){setMessage("Could not release hardware allocation: "+error.message);return false;}
+    }
+    const {data:verifyRows,error:verifyError}=await supabase.from("hardware_allocations")
+      .select("id,status")
+      .eq("drum_id",drum.id);
+    if(verifyError){setMessage("Hardware release could not be verified: "+verifyError.message);return false;}
+    const stillAllocated=(verifyRows||[]).some(row=>String(row.status||"").toLowerCase()==="allocated");
+    if(stillAllocated){setMessage("Hardware is still recorded as allocated to this drum. Nothing else was changed.");return false;}
+    await loadAll();
+    setMessage("Hardware allocation released back to available stock.");
+    return true;
   }
 
   async function consumeHardwareForDrum(drum){
@@ -2228,12 +2251,14 @@ function App(){
     if(selectedRequirements.length===0){
       const {data:remainingAllocations,error:remainingError}=await supabase.from("hardware_allocations")
         .select("id,status")
-        .eq("drum_id",drum.id)
-        .eq("status","Allocated");
+        .eq("drum_id",drum.id);
       if(remainingError){setMessage("Hardware was returned to stock, but the reservation could not be checked: "+remainingError.message);return false;}
 
-      if((remainingAllocations||[]).length){
-        const isCustom=String(drum.order_type||"").toLowerCase()==="custom";
+      const activeReservationIds=(remainingAllocations||[])
+        .filter(row=>String(row.status||"").toLowerCase()==="allocated")
+        .map(row=>row.id);
+      if(activeReservationIds.length){
+        const isCustom=String(drum.sales_status||"").toLowerCase()==="custom order";
         const releaseReservation=window.confirm(
           isCustom
             ? "All fitted hardware has been returned to stock.\n\nRelease the hardware reservation from this custom drum as well?\n\nOK = release it to general available stock.\nCancel = keep it reserved for this custom order."
@@ -2242,8 +2267,7 @@ function App(){
         if(releaseReservation){
           const {error:releaseError}=await supabase.from("hardware_allocations")
             .update({status:"Released",released_at:new Date().toISOString()})
-            .eq("drum_id",drum.id)
-            .eq("status","Allocated");
+            .in("id",activeReservationIds);
           if(releaseError){setMessage("Hardware was returned to stock, but the allocation could not be released: "+releaseError.message);return false;}
         }
       }
@@ -2542,17 +2566,28 @@ function App(){
     const flow=workflowState(d.build_type||"Stave",reopenSteps,d.finish||"To Be Decided",d.build_client||"Nowak",d.drum_type,d.size);
     const history=(Array.isArray(d.stage_history)?d.stage_history:[]).filter(entry=>!["Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].includes(entry.item));
     const cleanNotes=setTrackingNumberInNotes(notes,"");
+    const customOrder=String(d.sales_status||"").toLowerCase()==="custom order";
+    const reopenedProductionStatus=flow.status==="Manufacturing Complete" ? "In Production" : (flow.status || "In Production");
     const patch={
       lifecycle_status:null,
-      production_status:flow.status,
-      next_step:flow.nextStep,
+      production_status:reopenedProductionStatus,
+      next_step:flow.nextStep || "Continue production",
       completion_date:null,
-      sales_status:d.order_type==="Custom" ? "Custom Order" : "Stock",
+      sales_status:customOrder ? "Custom Order" : "Stock",
       notes:cleanNotes,
       stage_history:history
     };
     const {data,error}=await supabase.from("drums").update(patch).eq("id",d.id).select("*").single();
     if(error){setMessage("Could not return drum to production: "+error.message);return false;}
+
+    // Verify the persisted row itself is no longer identifiable as Complete. This
+    // catches legacy fields/triggers before the UI is allowed to claim success.
+    const {data:verified,error:verifyError}=await supabase.from("drums").select("*").eq("id",d.id).single();
+    if(verifyError){setMessage("The drum was updated but the Production state could not be verified: "+verifyError.message);return false;}
+    if(drumLifecycleStatus(verified)==="Completed" || verified?.production_status==="Manufacturing Complete"){
+      setMessage("Undo Complete was blocked because the database still reports this drum as Complete. No other workflow changes were made.");
+      return false;
+    }
 
     // A drum returned to production is no longer a completed sale. Remove any
     // linked sale record so old financial/lifecycle data cannot mark it Sold again.
@@ -2562,14 +2597,13 @@ function App(){
     }
 
     await loadAll();
-    // Return the freshly saved row as well as updating the parent Job Card state.
-    // The Job Card uses this returned row to reset its local draft/checklist state,
-    // preventing a stale Complete flag from immediately reappearing.
-    setJobCard(current=>current?.id===d.id?{...current,...data}:current);
+    const returned={...verified,lifecycle_status:null,production_status:reopenedProductionStatus};
+    setDrums(current=>current.map(item=>item.id===d.id ? {...item,...returned} : item));
+    setJobCard(current=>current?.id===d.id ? {...current,...returned} : current);
     setMessage(saleError
       ? "Drum returned to Production. Please review the old sale record warning."
       : "Drum returned to Production. Complete, Sold and Shipped status were removed.");
-    return data;
+    return returned;
   }
 
   async function markSold(d){
@@ -3225,7 +3259,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.37 — completed-drum hardware release fix.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.39 — Undo Complete and allocation state repair.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8446,17 +8480,8 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         ? {...req,code:"THROW-TRICK-GOLD",label:"Trick throw-off — Gold"}
         : req);
     const ok=await syncHardwareUsed(drum,selected,pendingAssembly);
-    if(ok && !pendingAssembly && selected.length===0 && (allocatedForDrum.length>0 || consumedForDrum.length>0)){
-      const release=window.confirm("No hardware is selected as fitted.\n\nDo you also want to release the reserved hardware allocation from this drum?\n\nOK = release it back to general available stock.\nCancel = keep it reserved for this drum for later.");
-      if(release){
-        const released=await releaseHardwareForDrum(drum);
-        if(!released){
-          setSavingHardware(false);
-          setSavedMessage("Hardware was unfitted, but the reservation could not be released.");
-          return;
-        }
-      }
-    }
+    // syncHardwareUsed now handles any reservation release from a fresh database
+    // read. Do not run a second prompt against stale Job Card allocation state.
     setSavingHardware(false);
     if(ok){
       setShowHardwareUsed(false);

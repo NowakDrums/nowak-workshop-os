@@ -1,23 +1,13 @@
-# Nowak Workshop OS v7.9.37
+# Nowak Workshop OS — v7.9.39
 
-- Fixes deselecting hardware from completed drums.
-- Hardware checkboxes now save only explicitly selected parts.
-- When all fitted hardware is deselected, the release-allocation prompt now appears even when the parts were Consumed before saving.
-- Choosing to release returns those reservations to general available stock instead of leaving them attached to the completed drum.
-- No other production, inventory, purchase-order, media, timing or social-post logic changed.
+Small corrective patch built from v7.9.38.
 
-# Nowak Workshop OS v7.9.36
+## Fixed
+- Undo Complete now verifies the saved database row is genuinely back in Production before reporting success.
+- Reopened drums are explicitly prevented from falling back to legacy `Manufacturing Complete` state.
+- Returned hardware allocations are released case-insensitively, so older `allocated` / mixed-case rows cannot remain attached to a drum.
+- Hardware release is verified after saving before the app reports success.
+- Removed the duplicate second hardware-release prompt that was using stale Job Card allocation state.
+- Custom-order detection for reservation prompts now uses the saved sales status rather than a non-persisted `order_type` field.
 
-Small Production-page filter patch only.
-
-- Added an Owner filter to Production: All, Nowak, Brady, Unallocated.
-- The filter only changes which drum cards are displayed; it does not alter assignments or drum data.
-- Owner filtering works alongside the existing Construction and Status filters.
-- Archived drums also respect the selected Owner filter.
-- No production workflow, completion, inventory, purchasing, media, marketing, timing or costing logic was changed.
-
-## v7.9.38
-- Fixed Undo Complete so the open Job Card resets from the freshly saved Production row instead of retaining stale Complete state.
-- Fixed returned hardware so deselecting all fitted parts can genuinely release the remaining allocation after the quantities are returned to on-hand stock.
-- Kept custom-order reservations optional: returned hardware can remain reserved or be fully released.
-- No other workflow, inventory recipe, purchasing, media, timing or costing changes.
+No inventory recipes, purchase-order mappings, pricing, timing, media, social-post, or production-filter logic was changed.
