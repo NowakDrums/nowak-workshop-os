@@ -1696,6 +1696,7 @@ function App(){
   const [search,setSearch]=useState("");
   const [productionFilter,setProductionFilter]=useState("All");
   const [constructionFilter,setConstructionFilter]=useState("All");
+  const [ownerFilter,setOwnerFilter]=useState("All");
   const [globalPhotoPrompt,setGlobalPhotoPrompt]=useState(null);
   const [progressingDrumId,setProgressingDrumId]=useState(null);
   const [externalOrders,setExternalOrders]=useState([]);
@@ -1794,6 +1795,13 @@ function App(){
     return String(value||"").trim();
   };
   const constructionMatches=(drum,filter)=>filter==="All" || normalisedConstruction(drum?.build_type)===filter;
+  const productionOwnerFor=drum=>{
+    const owner=String(drum?.build_client||"").trim();
+    if(owner==="Nowak") return "Nowak";
+    if(owner==="Brady") return "Brady";
+    return "Unallocated";
+  };
+  const ownerMatches=(drum,filter)=>filter==="All" || productionOwnerFor(drum)===filter;
   const operationalDrums=drums.filter(d=>!isSoldStatus(d) && !isShippedStatus(d) && !isArchivedStatus(d));
   const filtered=drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
   const active=operationalDrums;
@@ -3187,7 +3195,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.35 — reversible completion and hardware-allocation control.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.36 — production owner filter.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3439,6 +3447,15 @@ function App(){
         </div>
 
         <div className="productionFilterGroup">
+          <span className="filterLabel">Owner</span>
+          <div className="filterRow">
+            {["All","Nowak","Brady","Unallocated"].map(f=>
+              <button key={f} className={ownerFilter===f?"primary":""} onClick={()=>setOwnerFilter(f)}>{f}</button>
+            )}
+          </div>
+        </div>
+
+        <div className="productionFilterGroup">
           <span className="filterLabel">Status</span>
           <div className="filterRow">
             {["All","Pending","Active","Completed","Sold","Shipped","Archived"].map(f=>
@@ -3452,7 +3469,8 @@ function App(){
         ? <DrumArchive
             drums={archivedDrums.filter(d=>
               JSON.stringify(d).toLowerCase().includes(search.toLowerCase()) &&
-              constructionMatches(d,constructionFilter)
+              constructionMatches(d,constructionFilter) &&
+              ownerMatches(d,ownerFilter)
             )}
             openJobCard={setJobCard}
             restoreArchivedDrum={restoreArchivedDrum}
@@ -3464,6 +3482,7 @@ function App(){
               .filter(d=>{
                 if(isArchivedStatus(d)) return false;
                 if(!constructionMatches(d,constructionFilter)) return false;
+                if(!ownerMatches(d,ownerFilter)) return false;
 
                 const lifecycle=drumLifecycleStatus(d);
                 if(productionFilter==="Pending") return !hasWorkflowStarted(d) && !["Completed","Sold","Shipped","Archived"].includes(lifecycle);
