@@ -2566,12 +2566,11 @@ function App(){
   }
 
   async function returnDrumToProduction(d){
-    if(!window.confirm("Move this drum back into Production? This will remove Complete/Sold/Shipped status but keep the build history up to final preparation.")) return false;
     const reopenSteps=new Set(parseChecked(d.notes));
-    ["Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].forEach(step=>reopenSteps.delete(step));
+    ["Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].forEach(step=>reopenSteps.delete(step));
     const notes=clearArchiveDetailsFromNotes(setChecklistInNotes(d.notes,reopenSteps));
     const flow=workflowState(d.build_type||"Stave",reopenSteps,d.finish||"To Be Decided",d.build_client||"Nowak",d.drum_type,d.size);
-    const history=(Array.isArray(d.stage_history)?d.stage_history:[]).filter(entry=>!["Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].includes(entry.item));
+    const history=(Array.isArray(d.stage_history)?d.stage_history:[]).filter(entry=>!["Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].includes(entry.item));
     const cleanNotes=setTrackingNumberInNotes(notes,"");
     const customOrder=String(d.sales_status||"").toLowerCase()==="custom order";
     const reopenedProductionStatus=flow.status==="Manufacturing Complete" ? "In Production" : (flow.status || "In Production");
@@ -3266,7 +3265,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.42 — Undo Complete lifecycle separation.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.43 — Undo Complete button repair.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8580,15 +8579,15 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     // be silently reversed the next time the card is saved.
     const currentLifecycleStatus=currentStatusRow?.lifecycle_status ?? "";
 
+    // Lifecycle Complete is explicit. An Assembled checklist item is production
+    // history only and must never recreate Complete after Undo Complete.
     const derivedLifecycle=currentLifecycleStatus==="Archived"
       ? "Archived"
       : checked.has("Shipped")
         ? "Shipped"
         : currentLifecycleStatus==="Sold"
           ? "Sold"
-          : checked.has("Assembled")
-            ? "Completed"
-            : (currentLifecycleStatus || null);
+          : (currentLifecycleStatus || null);
 
     const patch={
       serial:draft.serial,

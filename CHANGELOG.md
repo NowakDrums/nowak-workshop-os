@@ -1,7 +1,10 @@
-# v7.9.42
+# Nowak Workshop OS v7.9.43
 
-- Fixes Undo Complete by separating the Assembled production task from the explicit Complete lifecycle state.
-- An Assembled checklist tick no longer automatically makes a drum Manufacturing Complete.
-- Undo Complete can therefore return an assembled drum to In Production without the old assembly history forcing it back to Complete.
-- Hardware release behaviour from v7.9.41 is unchanged.
-- No Supabase migration or SQL change is required.
+Focused Undo Complete repair only.
+
+- Undo Complete now runs directly from the button.
+- Undo Complete clears the lifecycle Complete state and returns the drum to In Production.
+- Assembly history is preserved; Assembled no longer recreates lifecycle Complete.
+- Normal Job Card Save no longer derives Complete from the Assembled checklist item.
+- Existing v7.9.41 hardware release behaviour is unchanged.
+- No Supabase SQL, schema, RLS, inventory, purchase-order or hardware-rule changes.
