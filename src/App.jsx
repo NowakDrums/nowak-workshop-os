@@ -202,10 +202,11 @@ function isArchivedStatus(drum){
 }
 
 function isManufacturingComplete(drum){
+  // Completion is an explicit drum lifecycle state. Assembly is only a production
+  // task and must not silently force a drum back to Complete after Undo Complete.
   if(isSoldStatus(drum) || isShippedStatus(drum) || isArchivedStatus(drum)) return true;
-  if(drum?.production_status==="Manufacturing Complete") return true;
-  const checked=parseChecked(drum?.notes);
-  return checked.has("Assembled");
+  if(drumLifecycleStatus(drum)==="Completed") return true;
+  return drum?.production_status==="Manufacturing Complete";
 }
 
 function productionPriorityCompare(a,b){
@@ -3265,7 +3266,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.41 — Undo Complete and hardware release repair.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.42 — Undo Complete lifecycle separation.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
