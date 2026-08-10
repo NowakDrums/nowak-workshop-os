@@ -3187,7 +3187,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.34 — Social Post creator collage layout, ordering and caption sharing improvements.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.35 — reversible completion and hardware-allocation control.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3545,7 +3545,7 @@ function App(){
     />}
     {showAddRepair && <AddRepairModal repairs={repairs} onClose={()=>setShowAddRepair(false)} onCreate={createRepair}/>}
     {repairJob && <RepairJobModal repair={repairJob} onClose={()=>setRepairJob(null)} updateRepair={updateRepair} deleteRepair={deleteRepair} setMessage={setMessage}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} returnDrumToProduction={returnDrumToProduction} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}} hardware={hardware} hardwareAllocations={hardwareAllocations} consumeHardwareForDrum={consumeHardwareForDrum} syncHardwareUsed={syncHardwareUsed}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} returnDrumToProduction={returnDrumToProduction} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}} hardware={hardware} hardwareAllocations={hardwareAllocations} consumeHardwareForDrum={consumeHardwareForDrum} syncHardwareUsed={syncHardwareUsed} releaseHardwareForDrum={releaseHardwareForDrum}/>}
   </main>
 }
 
@@ -8312,7 +8312,7 @@ ${emailBody}`,"Customer email")}>Copy Email</button>
 }
 
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, returnDrumToProduction, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject, hardware=[], hardwareAllocations=[], consumeHardwareForDrum, syncHardwareUsed}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, returnDrumToProduction, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject, hardware=[], hardwareAllocations=[], consumeHardwareForDrum, syncHardwareUsed,releaseHardwareForDrum}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
@@ -8368,6 +8368,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const standardHardware=drumHardwareRequirements({...drum,...draft,build_type:localBuildType});
   const partByCode=Object.fromEntries(hardware.map(part=>[hardwareLookupKey(part),part]));
   const consumedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && String(a.status||"").toLowerCase()==="consumed");
+  const allocatedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && String(a.status||"").toLowerCase()==="allocated");
   const consumedByPart=consumedForDrum.reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
 
   function openHardwareUsed(shortages=[],forAssembly=false){
@@ -8396,13 +8397,24 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         ? {...req,code:"THROW-TRICK-GOLD",label:"Trick throw-off — Gold"}
         : req);
     const ok=await syncHardwareUsed(drum,selected,pendingAssembly);
+    if(ok && !pendingAssembly && selected.length===0 && allocatedForDrum.length>0){
+      const release=window.confirm("No hardware is selected as fitted.\n\nDo you also want to release the reserved hardware allocation from this drum?\n\nOK = release it back to general available stock.\nCancel = keep it reserved for this drum for later.");
+      if(release){
+        const released=await releaseHardwareForDrum(drum);
+        if(!released){
+          setSavingHardware(false);
+          setSavedMessage("Hardware was unfitted, but the reservation could not be released.");
+          return;
+        }
+      }
+    }
     setSavingHardware(false);
     if(ok){
       setShowHardwareUsed(false);
       if(pendingAssembly){
         const next=new Set(checked);next.add("Assembled");setChecked(next);await saveWorkflow(next,"Assembled",true);
         setSavedMessage(assemblyShortages.length?"Saved as assembled — hardware shortage highlighted in inventory":"Saved as assembled");
-      }else setSavedMessage("Hardware used updated");
+      }else setSavedMessage(selected.length?"Hardware used updated":"No hardware is recorded as fitted");
       setPendingAssembly(false);setAssemblyShortages([]);setTimeout(()=>setSavedMessage(""),3000);
     }
   }
@@ -8571,14 +8583,46 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   }
 
   async function markManufacturingComplete(){
-    if(["Completed","Sold","Shipped"].includes(drumLifecycleStatus(drum))){
-      return await returnDrumToProduction(drum);
+    if(["Completed","Sold","Shipped"].includes(drumLifecycleStatus(drum)) || drum?.production_status==="Manufacturing Complete"){
+      const returned=await returnDrumToProduction(drum);
+      if(returned){
+        // Keep the open Job Card in sync with the database immediately. Without this,
+        // old local checklist values can make Complete appear to switch itself back on.
+        const reopened=new Set(checked);
+        ["Assembled","Photos taken","Website listing","Facebook / Instagram","YouTube demo","Packed","Shipped"].forEach(step=>reopened.delete(step));
+        const reopenedNotes=setChecklistInNotes(draft.notes,reopened);
+        setChecked(reopened);
+        setDraft(current=>({...current,notes:reopenedNotes}));
+        setSavedMessage("Drum returned to Production.");
+        setTimeout(()=>setSavedMessage(""),3000);
+      }
+      return returned;
     }
 
-    // Completion is a business/lifecycle status only. Do not automatically mark
-    // Prepare hardware / heads or Assembled as complete, do not deduct hardware,
-    // and do not add their estimated time. Those stages are recorded later when
-    // the work actually happens.
+    // Completion and hardware fitting are deliberately separate. Ask what has
+    // physically happened rather than silently consuming or retaining hardware.
+    if(standardHardware.length){
+      const fitted=window.confirm("Is the standard hardware physically fitted to this drum?\n\nOK = Yes — review and record the fitted hardware before completing.\nCancel = No — mark the drum Complete without adding hardware or assembly time.");
+      if(fitted){
+        const shortages=standardHardware.filter(req=>{const part=partByCode[req.code];return !part||Number(part.qty_on_hand||0)<req.qty;});
+        openHardwareUsed(shortages,true);
+        return;
+      }
+
+      if(allocatedForDrum.length){
+        const keepReserved=window.confirm("The drum currently has hardware reserved to it.\n\nKeep that hardware allocated for later fitting?\n\nOK = keep it reserved for this drum.\nCancel = release the allocation back to general available stock.");
+        if(!keepReserved){
+          const released=await releaseHardwareForDrum(drum);
+          if(!released){
+            setSavedMessage("Could not release the hardware allocation, so the drum was not marked Complete.");
+            return;
+          }
+        }
+      }
+    }
+
+    // Mark the drum complete without automatically marking Prepare hardware / heads
+    // or Assembled. Their time is only counted when those stages actually happen.
     setSavedMessage("Marking drum complete...");
     const needsAssembly=!checked.has("Assembled");
     const currentOutstanding=draft.outstanding_work==="Other"
@@ -8921,7 +8965,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
             className={["Completed","Sold","Shipped","Archived"].includes(drumLifecycleStatus(drum)) ? "primary" : ""}
             onClick={markManufacturingComplete}
           >
-            <CheckCircle2 size={16}/> Complete
+            <CheckCircle2 size={16}/> {["Completed","Sold","Shipped"].includes(drumLifecycleStatus(drum)) || drum?.production_status==="Manufacturing Complete" ? "Undo Complete" : "Complete"}
           </button>
 
           <button
