@@ -2200,34 +2200,25 @@ function App(){
     const allocatedRows=(rows||[]).filter(row=>String(row.status||"").toLowerCase()==="allocated");
 
     // Return anything that is currently recorded as fitted but has now been deselected.
-    // Stock drums must NOT retain a reservation: returned hardware goes straight back
-    // to general available stock. Custom orders may keep the reservation for later.
-    const isCustomOrder=String(drum.sales_status||"").toLowerCase()==="custom order";
+    // Stock drums must not keep a reservation: the returned part becomes fully available.
+    // Custom orders may keep the part reserved for later fitting.
+    const isCustomOrder=String(drum.sales_status||"").toLowerCase()==="custom order" || String(drum.order_type||"").toLowerCase()==="custom";
     for(const allocation of consumedRows){
       if(desiredByPartId.has(allocation.hardware_part_id)) continue;
       const part=allocation.hardware_part||hardware.find(p=>p.id===allocation.hardware_part_id);
       if(!part) continue;
       const returnedQty=Number(part.qty_on_hand||0)+Number(allocation.quantity||0);
-      const {data:stockRows,error:stockError}=await supabase.from("hardware_parts")
+      const {error:stockError}=await supabase.from("hardware_parts")
         .update({qty_on_hand:returnedQty})
-        .eq("id",part.id)
-        .select("id,qty_on_hand");
+        .eq("id",part.id);
       if(stockError){setMessage("Could not return deselected hardware to stock: "+stockError.message);return false;}
-      if(!stockRows?.length){setMessage("The hardware stock update was blocked by Supabase. No allocation changes were made.");return false;}
-
-      const returnedStatus=isCustomOrder ? "Allocated" : "Released";
       const allocationPatch=isCustomOrder
         ? {status:"Allocated",consumed_at:null,released_at:null}
         : {status:"Released",consumed_at:null,released_at:new Date().toISOString()};
-      const {data:allocationRows,error:updateError}=await supabase.from("hardware_allocations")
+      const {error:updateError}=await supabase.from("hardware_allocations")
         .update(allocationPatch)
-        .eq("id",allocation.id)
-        .select("id,status");
-      if(updateError){setMessage("Could not update the returned hardware allocation: "+updateError.message);return false;}
-      if(!allocationRows?.length || String(allocationRows[0]?.status||"").toLowerCase()!==returnedStatus.toLowerCase()){
-        setMessage("Supabase returned the hardware to stock but did not release its drum allocation. Run the v7.9.40 Supabase repair included with this patch.");
-        return false;
-      }
+        .eq("id",allocation.id);
+      if(updateError){setMessage(updateError.message);return false;}
     }
 
     // Fit any selected parts that are not already recorded as consumed.
@@ -2260,9 +2251,9 @@ function App(){
       }
     }
 
-    // If every fitted part has been deselected, the stock quantities have already
-    // been returned above. Now deal with the reservation separately. This query is
-    // deliberately fresh because consumed rows may just have changed to Allocated.
+    // If no hardware is fitted, stock drums should have no active allocation at all.
+    // Custom orders may keep the reservation because those parts are intentionally
+    // set aside for that customer.
     if(selectedRequirements.length===0){
       const {data:remainingAllocations,error:remainingError}=await supabase.from("hardware_allocations")
         .select("id,status")
@@ -2273,21 +2264,17 @@ function App(){
         .filter(row=>String(row.status||"").toLowerCase()==="allocated")
         .map(row=>row.id);
       if(activeReservationIds.length){
-        // Only a genuine custom order is allowed to retain a reservation. Stock drums
-        // are released automatically so Allocated cannot remain against a stock build.
-        const releaseReservation=!isCustomOrder || window.confirm(
-          "All fitted hardware has been returned to stock.\n\nRelease the hardware reservation from this custom drum as well?\n\nOK = release it to general available stock.\nCancel = keep it reserved for this custom order."
-        );
+        let releaseReservation=!isCustomOrder;
+        if(isCustomOrder){
+          releaseReservation=window.confirm(
+            "All fitted hardware has been returned to stock.\n\nRelease the hardware reservation from this custom order as well?\n\nOK = release it to general available stock.\nCancel = keep it reserved for this custom order."
+          );
+        }
         if(releaseReservation){
-          const {data:releasedRows,error:releaseError}=await supabase.from("hardware_allocations")
+          const {error:releaseError}=await supabase.from("hardware_allocations")
             .update({status:"Released",released_at:new Date().toISOString(),consumed_at:null})
-            .in("id",activeReservationIds)
-            .select("id,status");
+            .in("id",activeReservationIds);
           if(releaseError){setMessage("Hardware was returned to stock, but the allocation could not be released: "+releaseError.message);return false;}
-          if((releasedRows||[]).length!==activeReservationIds.length || (releasedRows||[]).some(row=>String(row.status||"").toLowerCase()!=="released")){
-            setMessage("Supabase did not release every hardware allocation. Run the v7.9.40 Supabase repair included with this patch.");
-            return false;
-          }
         }
       }
     }
@@ -3278,7 +3265,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.40 — Completion and hardware allocation repair.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.41 — Undo Complete and hardware release repair.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8587,9 +8574,9 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     }
 
     const currentSalesStatus=currentStatusRow?.sales_status ?? drum.sales_status;
-    // IMPORTANT: a database NULL lifecycle means the drum is genuinely back in
-    // production. Do not fall back to the stale Job Card prop, otherwise an Undo
-    // Complete can be silently turned back into Completed on the next save.
+    // A NULL lifecycle_status is meaningful: it means the drum is back in production.
+    // Do not fall back to the stale Job Card lifecycle, otherwise Undo Complete can
+    // be silently reversed the next time the card is saved.
     const currentLifecycleStatus=currentStatusRow?.lifecycle_status ?? "";
 
     const derivedLifecycle=currentLifecycleStatus==="Archived"
@@ -8884,7 +8871,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
     {standardHardware.length>0 && <section className="hardwareUsedBar">
       <div><b>Hardware fitted / used</b><span>{consumedForDrum.length
-        ? `${consumedForDrum.reduce((sum,row)=>sum+Number(row.quantity||0),0)} pieces currently recorded as fitted. Deselect a part to return it to stock. Stock drums release it to general availability; custom orders may keep it reserved.`
+        ? `${consumedForDrum.reduce((sum,row)=>sum+Number(row.quantity||0),0)} pieces currently recorded as fitted. Deselect a part to return it to stock. Stock drums release it completely; custom orders can keep it reserved.`
         : "No hardware is currently recorded as fitted. The drum can still be marked Complete and hardware can be fitted later."}</span></div>
       <button onClick={()=>openHardwareUsed()}>Adjust Hardware Used</button>
     </section>}

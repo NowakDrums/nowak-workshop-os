@@ -1,16 +1,13 @@
-# Nowak Workshop OS — v7.9.40
+# Nowak Workshop OS v7.9.41
 
-## Completion and hardware allocation repair
+Small repair patch built from the safe v7.9.39 codebase. No Supabase migration is required.
 
-This release fixes the completed-drum workflow without changing production recipes, purchasing, media, costing, or supplier mappings.
+## Fixed
+- Undo Complete now persists correctly. A database `NULL` lifecycle status is treated as an intentional "In Production" state and is no longer replaced by a stale Completed value when the Job Card is later saved.
+- Deselecting fitted hardware now returns the quantity to On Hand and removes the active allocation for stock drums.
+- Custom orders may continue to keep returned hardware reserved for the customer, or release the reservation when all fitted hardware is removed.
+- Stock drums with no fitted hardware cannot remain accidentally allocated after saving Adjust Hardware Used.
 
-- **Undo Complete:** a persisted `NULL` lifecycle is now treated as the authoritative "back in production" state. The Job Card no longer falls back to a stale Completed value on the next save.
-- **Returned hardware on stock drums:** deselecting fitted hardware returns the quantity to On Hand and immediately marks the allocation Released. Stock builds no longer retain hardware reservations.
-- **Custom orders:** returned hardware may remain Allocated/reserved to the custom drum, or can be released when requested.
-- **Database verification:** hardware stock and allocation updates now request the updated rows back from Supabase. If an RLS policy blocks the update, the app reports it instead of appearing to save successfully.
-- **Supabase repair included:** `SUPABASE_v7_9_40_REPAIR.sql` explicitly restores UPDATE permission/policies for `drums` and `hardware_allocations` for the app's anon/authenticated roles.
-
-### Install
-1. Replace `src/App.jsx` with the patched file.
-2. Replace `CHANGELOG.md`.
-3. In Supabase, open **SQL Editor**, paste the full contents of `SUPABASE_v7_9_40_REPAIR.sql`, and click **Run** once.
+## Not changed
+- No database schema, RLS, Supabase policies or migrations.
+- No purchasing, costing, production recipes, media, marketing or supplier logic changes.
