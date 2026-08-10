@@ -3195,7 +3195,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.36 — production owner filter.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.37 — completed-drum hardware release fix.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8411,12 +8411,12 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   async function saveHardwareUsed(){
     setSavingHardware(true);
     const selected=standardHardware
-      .filter(req=>hardwareSelection[req.code]!==false)
+      .filter(req=>hardwareSelection[req.code]===true)
       .map(req=>req.code==="THROW-TRICK-CHROME" && trickFinish==="Gold"
         ? {...req,code:"THROW-TRICK-GOLD",label:"Trick throw-off — Gold"}
         : req);
     const ok=await syncHardwareUsed(drum,selected,pendingAssembly);
-    if(ok && !pendingAssembly && selected.length===0 && allocatedForDrum.length>0){
+    if(ok && !pendingAssembly && selected.length===0 && (allocatedForDrum.length>0 || consumedForDrum.length>0)){
       const release=window.confirm("No hardware is selected as fitted.\n\nDo you also want to release the reserved hardware allocation from this drum?\n\nOK = release it back to general available stock.\nCancel = keep it reserved for this drum for later.");
       if(release){
         const released=await releaseHardwareForDrum(drum);
