@@ -1,10 +1,9 @@
-# Nowak Workshop OS v7.9.45
+# Nowak Workshop OS v7.9.46
 
-Inventory allocation navigation only.
+Lea Hung tension-rod code correction only.
 
-- In Inventory → Stock Levels, an allocated quantity / “Reserved for … drum(s)” area is now clickable.
-- If the hardware is reserved for one drum, its Job Card opens immediately.
-- If it is reserved for multiple drums, a numbered chooser lets you select which Job Card to open.
-- Inventory → Currently Reserved Hardware now shows clickable drum numbers as well.
-- Allocation navigation also preserves linked drum IDs when duplicate catalogue display rows are collapsed.
-- No inventory quantities, allocation rules, completion logic, hardware release logic, purchase orders or Supabase schema/RLS are changed.
+- Lea Hung purchase orders now show code **TR02** for tension rods instead of TR01.
+- Applies to Lea Hung tension-rod rows regardless of finish or length.
+- Internal inventory matching still uses the rod size and finish so 52mm/115mm and chrome/brass/black-nickel items resolve correctly.
+- Rech supplier output is unchanged.
+- No stock quantities, allocation rules, production workflow, completion logic or Supabase changes.

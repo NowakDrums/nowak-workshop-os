@@ -3253,7 +3253,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.45 — clickable hardware allocations.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.46 — Lea Hung tension rod code TR02.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5507,8 +5507,11 @@ function Inventory({hardware, allocations=[], drums=[], openJobCard, updateHardw
     const code=String(item?.code||"").trim().toUpperCase();
     const itemFinish=hardwareFinishKey(item?.finish||item?.colour||item?.part_name||"");
     const itemLength=Number(String(item?.size||item?.part_name||"").match(/\d+/)?.[0]||0);
-    if(code==="TR01"&&itemFinish!=="CHROME"&&[52,115].includes(itemLength)){
+    if(["TR01","TR02"].includes(code)&&itemFinish!=="CHROME"&&[52,115].includes(itemLength)){
       return `TROD-${itemLength}-${itemFinish}`;
+    }
+    if(code==="TR02"&&itemFinish==="CHROME"&&itemLength){
+      return `TROD-${itemLength}`;
     }
     const rodCodeMap={
       "TR01":"TROD-45","TR01-BR":"TROD-52-BRASS","TR01-BN":"TROD-52-BLACK-NICKEL",
@@ -5661,10 +5664,8 @@ function Inventory({hardware, allocations=[], drums=[], openJobCard, updateHardw
     const category=String(part?.category||"");
     const size=sizeNumber(part?.size||part?.part_name);
     if(category==="Tension Rods"){
-      const length=Number(String(part?.size||"").match(/\d+/)?.[0]||45);
-      const finish=hardwareFinishKey(part?.finish||part?.part_name||"");
-      if(finish==="BRASS"||finish==="BLACK-NICKEL") return "TR01";
-      return length>=100?"TR02":"TR01";
+      // Lea Hung catalogue code for tension rods is TR02 regardless of finish/length.
+      return "TR02";
     }
     if(category==="Snare Wires"){
       const prefix=finishFamily(part)==="Brass"?"SE06":"SE04";
