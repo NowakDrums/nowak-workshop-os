@@ -3253,7 +3253,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.46 — Lea Hung tension rod code TR02.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.47 — CB price auto-calculation repair.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8455,6 +8455,37 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const totalCost=templateCost(template,labourRate);
   const totalPrice=Number(customPrice||0)+Number(shipping||0);
   const profit=Number(drum.total_price||drum.retail_price||0)-totalCost;
+  const lastBradyAutoPriceRef=useRef(null);
+  const bradyCalculatedPrice=localOwnership==="Brady" ? autoPrice({
+    build_type:localBuildType,
+    finish:draft.finish,
+    build_client:"Brady",
+    order_type:"Stock",
+    size:drum.size||"14 x 6.5",
+    drum_type:drum.drum_type||"Snare",
+    timber:draft.timber
+  }) : 0;
+
+  useEffect(()=>{
+    if(localOwnership!=="Brady" || Number(bradyCalculatedPrice||0)<=0) return;
+    const current=Number(customPrice||0);
+    const previousAuto=Number(lastBradyAutoPriceRef.current||0);
+    // Fill missing CB prices automatically. If the current value was the previous
+    // automatic CB price, keep it in sync when finish/build details change. A
+    // genuinely manual non-zero override is left alone.
+    if(current===0 || (previousAuto>0 && current===previousAuto)){
+      const next=Number(bradyCalculatedPrice);
+      if(current!==next){
+        setCustomPrice(next);
+        updateDrum(drum.id,{
+          custom_price:next,
+          wholesale_price:next,
+          total_price:next+Number(shipping||0)
+        });
+      }
+    }
+    lastBradyAutoPriceRef.current=Number(bradyCalculatedPrice);
+  },[localOwnership,bradyCalculatedPrice,draft.finish,localBuildType,drum.drum_type,drum.size]);
 
   const standardHardware=drumHardwareRequirements({...drum,...draft,build_type:localBuildType});
   const partByCode=Object.fromEntries(hardware.map(part=>[hardwareLookupKey(part),part]));
@@ -8615,6 +8646,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       cb_number:localOwnership==="Brady" ? localCbNumber : "",
       construction_note:localBuildSpec,
       custom_price:Number(customPrice||0),
+      wholesale_price:localOwnership==="Brady" ? Number(customPrice||0) : Number(drum.wholesale_price||0),
       shipping_cost:Number(shipping||0),
       total_price:Number(customPrice||0)+Number(shipping||0),
       production_status:["Completed","Sold","Shipped","Archived"].includes(derivedLifecycle)
@@ -8885,11 +8917,24 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
           const suggestedCb = ownership==="Brady" ? (localCbNumber || nextCbNumber(drums)) : "";
           setLocalOwnership(ownership);
           setLocalCbNumber(suggestedCb);
-          updateDrum(drum.id,{
+          const ownershipPatch={
             build_client:ownership,
             cb_number:suggestedCb,
             sales_status:ownership==="Brady" ? "Brady Production" : ownership==="Unallocated" ? "Unallocated" : ((drum.sales_status==="Brady Production" || drum.sales_status==="Unallocated") ? "Stock" : drum.sales_status)
-          });
+          };
+          if(ownership==="Brady"){
+            const suggestedPrice=autoPrice({
+              build_type:localBuildType,finish:draft.finish,build_client:"Brady",
+              size:drum.size||"14 x 6.5",drum_type:drum.drum_type||"Snare",timber:draft.timber
+            });
+            if(Number(suggestedPrice||0)>0 && Number(customPrice||0)===0){
+              setCustomPrice(suggestedPrice);
+              ownershipPatch.custom_price=suggestedPrice;
+              ownershipPatch.wholesale_price=suggestedPrice;
+              ownershipPatch.total_price=Number(suggestedPrice)+Number(shipping||0);
+            }
+          }
+          updateDrum(drum.id,ownershipPatch);
         }}>
           <option>Unallocated</option><option>Nowak</option><option>Brady</option>
         </select>
