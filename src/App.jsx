@@ -5,7 +5,7 @@ import {
   Hammer, LayoutDashboard, RefreshCw, Plus, CheckCircle2, Package, DollarSign,
   Camera, ListChecks, Search, Clock, Truck, Save, Ruler, Users, Mail, Share2,
   Settings, Layers3, FolderPlus, BarChart3, Wrench, Phone, Trash2, CalendarDays, RotateCcw, CircleCheckBig, Archive, ArchiveRestore, ClipboardList, Copy, Repeat2, Lightbulb, Pencil, Images, Printer, Download, Bell, ShoppingBag, Link2, AlertTriangle, ExternalLink
-} from "lucide-react";
+, MessageSquare} from "lucide-react";
 import { supabase, isConfigured } from "./supabaseClient";
 import QRCode from "qrcode";
 import nowakLogo from "./assets/nowak-logo-refined.png";
@@ -1569,6 +1569,15 @@ Nowak Drum Company Australia`
   };
 }
 
+
+function thankYouTextMessage(drum){
+  const firstName=customerFirstName(drum.customer);
+  const greeting=firstName ? `Hi ${firstName},` : "Hi,";
+  return `${greeting} just wanted to say thanks again for choosing a Nowak snare. We really appreciate your support and hope you're loving the drum! If you have a minute, we'd really appreciate a Google review — it goes a long way in helping our small business grow. Thanks, Kyle & Kelly
+
+${NOWAK_GOOGLE_REVIEW_URL}`;
+}
+function normaliseSmsNumber(value){ return String(value||"").trim().replace(/[^0-9+]/g,""); }
 
 function extractNumber(value){
   const match = String(value || "").match(/\d+/g);
@@ -3287,7 +3296,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.49 — customer thank-you email and Google review link.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.50 — customer thank-you email and text message.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8644,6 +8653,24 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     setMessage("Thank-you email opened with the customer's details and Google review link.");
   }
 
+  async function openThankYouText(){
+    const phone=normaliseSmsNumber(draft.customer_phone||drum.customer_phone||"");
+    if(!phone){
+      setMessage("Add the customer's mobile number to the Job Card first.");
+      setSavedMessage("Customer mobile number required");
+      return;
+    }
+    const message=thankYouTextMessage({...drum,...draft,build_type:localBuildType});
+    try{
+      await navigator.clipboard.writeText(message);
+      setMessage("Thank-you text copied. Messages is opening — paste the message and send.");
+      setSavedMessage("Thank-you text copied — paste it into Messages");
+    }catch{
+      window.prompt("Copy this thank-you text, then paste it into Messages:",message);
+    }
+    window.location.href=`sms:${phone}`;
+  }
+
   async function saveAllChanges(){
     if(isSaving) return false;
     const numberError=duplicateNumberMessage(drums,{
@@ -9210,6 +9237,14 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
             title="Open a customer thank-you email with the Google review link"
           >
             <Mail size={16}/> Send Thank You Email
+          </button>}
+          {localOwnership==="Nowak" && ["Completed","Sold","Shipped","Archived"].includes(drumLifecycleStatus(drum)) && <button
+            type="button"
+            className="thankYouTextButton"
+            onClick={openThankYouText}
+            title="Copy the thank-you text and open Messages for this customer"
+          >
+            <MessageSquare size={16}/> Send Thank You Text
           </button>}
         </div>
 
