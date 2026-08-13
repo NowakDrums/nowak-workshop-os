@@ -3296,7 +3296,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.50 — customer thank-you email and text message.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.51 — deployment stability + Shopify groundwork.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>

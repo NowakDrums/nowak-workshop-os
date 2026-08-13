@@ -1,3 +1,24 @@
 {
-  "installCommand": "npx npm@10.8.1 install --no-audit --no-fund"
+  "rewrites": [
+    {
+      "source": "/marketing",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/marketing/:path*",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "installCommand": "npm install --no-audit --no-fund --legacy-peer-deps"
 }

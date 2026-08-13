@@ -1,0 +1,7 @@
+Nowak Workshop OS v7.9.51 FULL PROJECT UPDATE
+
+This package contains the complete deployable project.
+It is not a small App.jsx-only patch.
+
+Use it to update the GitHub project files.
+No Supabase migration is required.
