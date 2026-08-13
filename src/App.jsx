@@ -1535,6 +1535,40 @@ function mailtoLink(d, draft){
   return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`;
 }
 
+const NOWAK_GOOGLE_REVIEW_URL="https://g.page/r/CbVjunQzDQo5EAE/review";
+
+function customerFirstName(value){
+  return String(value||"").trim().split(/\s+/)[0] || "";
+}
+
+function thankYouEmailDraft(drum){
+  const firstName=customerFirstName(drum.customer);
+  const drumDescription=[drum.timber,drum.size,drum.drum_type].filter(Boolean).join(" ");
+  const greeting=firstName ? `Hi ${firstName},` : "Hi,";
+  const drumLine=drumDescription ? `I hope you're enjoying your ${drumDescription} and would love to hear how you're finding it.` : "I hope you're enjoying your drum and would love to hear how you're finding it.";
+  return {
+    subject:"Thank you from Nowak Drum Company",
+    body:`${greeting}
+
+I just wanted to say a big thank you for choosing a Nowak snare drum.
+
+We really appreciate your support. Every drum we make is built by hand here in Western Australia, so it's always great to see one leave the workshop and head off to its new home.
+
+${drumLine}
+
+If you have a spare minute, we'd also really appreciate it if you could leave us a Google review. As a small Australian drum company, reviews and recommendations make a huge difference and really help us continue to grow the business.
+
+Leave a Google review:
+${NOWAK_GOOGLE_REVIEW_URL}
+
+Thanks again for supporting Nowak Drum Company. We genuinely appreciate it.
+
+Cheers,
+Kyle & Kelly
+Nowak Drum Company Australia`
+  };
+}
+
 
 function extractNumber(value){
   const match = String(value || "").match(/\d+/g);
@@ -3253,7 +3287,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.48 — Brady/Nowak photo saving and delete controls.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.49 — customer thank-you email and Google review link.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8598,6 +8632,18 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     setTimeout(()=>setProjectMessage(""),2500);
   }
 
+  function openThankYouEmail(){
+    const email=String(draft.customer_email||drum.customer_email||"").trim();
+    if(!email){
+      setMessage("Add the customer's email address to the Job Card first.");
+      setSavedMessage("Customer email address required");
+      return;
+    }
+    const emailDraft=thankYouEmailDraft({...drum,...draft,build_type:localBuildType});
+    window.location.href=`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(emailDraft.subject)}&body=${encodeURIComponent(emailDraft.body)}`;
+    setMessage("Thank-you email opened with the customer's details and Google review link.");
+  }
+
   async function saveAllChanges(){
     if(isSaving) return false;
     const numberError=duplicateNumberMessage(drums,{
@@ -9155,6 +9201,15 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
             onClick={()=>restoreArchivedDrum(drum)}
           >
             <ArchiveRestore size={16}/> Restore from Archive
+          </button>}
+
+          {localOwnership==="Nowak" && ["Completed","Sold","Shipped","Archived"].includes(drumLifecycleStatus(drum)) && <button
+            type="button"
+            className="thankYouEmailButton"
+            onClick={openThankYouEmail}
+            title="Open a customer thank-you email with the Google review link"
+          >
+            <Mail size={16}/> Send Thank You Email
           </button>}
         </div>
 
