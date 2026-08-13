@@ -1,6 +1,6 @@
 {
   "name": "nowak-workshop-os-webapp",
-  "version": "7.9.18",
+  "version": "7.9.51",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,5 +17,9 @@
     "lucide-react": "latest",
     "qrcode": "latest"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "engines": {
+    "node": "22.x"
+  },
+  "packageManager": "npm@10.8.1"
 }
