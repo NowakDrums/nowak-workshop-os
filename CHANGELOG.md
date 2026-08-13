@@ -1,13 +1,11 @@
-# Nowak Workshop OS v7.9.47
+# Nowak Workshop OS v7.9.48
 
-CB / Brady automatic price repair only.
+Photo/media reliability patch only.
 
-- Existing CB/Brady drums with a zero price now auto-fill from the current Brady pricing rules when the Job Card is opened.
-- If a CB price was automatically calculated, changing a recognised finish/build configuration keeps that automatic price in sync.
-- Manual non-zero CB price overrides are preserved.
-- Switching an existing drum to Brady/CB ownership also fills a missing price when a valid pricing rule is available.
-- Job Card Save now stores the CB amount in `wholesale_price` as well as `custom_price`/`total_price`.
-- Existing Brady pricing values are unchanged.
-- No Supabase SQL/schema/RLS, inventory, purchase-order, allocation or production-workflow changes.
-
-Note: Brady snare pricing still requires Satin or High Gloss because those prices differ. A snare left as To Be Decided cannot determine which wholesale price applies.
+- Brady/CB shell photos now refresh into the Job Card media section immediately after a successful save.
+- The same stored `drum_photos` record and `drum-photos` storage bucket are used for Brady and Nowak drums, linked by the drum database ID.
+- After a successful photo upload the app shows a clear confirmation such as “Photo saved successfully to this Brady shell” and automatically closes the photo window.
+- Photos shown under **Photos & Videos by Stage** now have a visible **Delete** button beside **Open**.
+- Deleting removes both the storage object and its `drum_photos` database record, then refreshes the media view.
+- Existing Launch Pack delete behaviour is unchanged.
+- No pricing, inventory, hardware allocation, purchase-order, production completion or Supabase schema/RLS changes.

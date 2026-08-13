@@ -3253,7 +3253,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.47 — CB price auto-calculation repair.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.48 — Brady/Nowak photo saving and delete controls.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -8118,7 +8118,14 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
     setLoading(false);
   }
 
-  useEffect(()=>{ load(); },[drum.id]);
+  useEffect(()=>{
+    load();
+    const refresh=(event)=>{
+      if(!event?.detail?.drumId || event.detail.drumId===drum.id) load();
+    };
+    window.addEventListener("drum-media-updated",refresh);
+    return ()=>window.removeEventListener("drum-media-updated",refresh);
+  },[drum.id]);
 
   const grouped=photos.reduce((acc,photo)=>{
     // Use the same complete drum-media set as Comms & Marketing.
@@ -8165,6 +8172,23 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
     setMessage?.(`${items.length} photo${items.length===1?"":"s"} opened for download. Attach them manually to the email.`);
   }
 
+  async function deleteStagePhoto(photo){
+    if(!window.confirm("Delete this stored photo or video?")) return;
+    try{
+      if(photo.storage_path){
+        const {error:storageError}=await supabase.storage.from("drum-photos").remove([photo.storage_path]);
+        if(storageError) throw new Error("Storage delete: "+storageError.message);
+      }
+      const {error:rowError}=await supabase.from("drum_photos").delete().eq("id",photo.id);
+      if(rowError) throw new Error("Photo record delete: "+rowError.message);
+      setMessage?.("Photo deleted.");
+      window.dispatchEvent(new CustomEvent("drum-media-updated",{detail:{drumId:drum.id}}));
+      await load();
+    }catch(error){
+      setMessage?.("Could not delete photo: "+(error?.message || String(error)));
+    }
+  }
+
   if(stageKeys.length===0){
     return <section className="panel inner stageCommsPanel">
       <div className="stageCommsHeader">
@@ -8209,9 +8233,15 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
 
           {open && <div className="stageCommsBody">
             <div className="stageCommsThumbs">
-              {items.map(photo=><a href={photo.public_url} target="_blank" rel="noreferrer" key={photo.id}>
-                <img src={photo.public_url} alt={stageLabel(key)}/>
-              </a>)}
+              {items.map(photo=><div className="storedMediaCard" key={photo.id}>
+                <a href={photo.public_url} target="_blank" rel="noreferrer">
+                  <img src={photo.public_url} alt={stageLabel(key)}/>
+                </a>
+                <div className="storedMediaPrimaryActions">
+                  <a className="buttonLike" href={photo.public_url} target="_blank" rel="noreferrer">Open</a>
+                  <button className="mediaDeleteButton" onClick={()=>deleteStagePhoto(photo)}>Delete</button>
+                </div>
+              </div>)}
             </div>
 
             <div className="stageCommsActions">
@@ -8330,8 +8360,10 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       setUploaded(saved);
       setFiles([]);
       window.dispatchEvent(new CustomEvent("drum-media-updated",{detail:{drumId:drum.id}}));
-      setStatus(`${saved.length} photo${saved.length===1?"":"s"} uploaded and stored successfully.`);
-      setMessage?.("");
+      const successMessage=`${saved.length} photo${saved.length===1?"":"s"} saved successfully${drum.build_client==="Brady" ? " to this Brady shell" : " to this drum"}.`;
+      setStatus(successMessage);
+      setMessage?.(successMessage);
+      setTimeout(()=>onClose?.(),650);
     }catch(error){
       const detail="Photo upload failed: " + (error?.message || String(error));
       setStatus(detail);
