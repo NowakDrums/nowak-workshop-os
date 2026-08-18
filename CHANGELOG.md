@@ -1,3 +1,16 @@
+# Nowak Workshop OS v7.9.52
+
+Workshop Today completion filtering fix based on the full v7.9.51 project.
+
+## What changed
+- Drums with lifecycle status `Completed` are now excluded from all normal Workshop Today production batches.
+- Drums whose production status is `Manufacturing Complete` are also excluded, covering older or partially migrated records.
+- Completed drums are no longer shown in the `Outstanding Final Work` section. Final practical work must be resolved before the drum is marked Complete.
+- Sold, Shipped and Archived filtering remains unchanged.
+- No Supabase SQL or data migration is required.
+
+---
+
 # Nowak Workshop OS v7.9.51
 
 Full deployment-stability build based on the current v7.9.50 application.

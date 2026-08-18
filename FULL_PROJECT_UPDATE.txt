@@ -1,7 +1,7 @@
-Nowak Workshop OS v7.9.51 FULL PROJECT UPDATE
+Nowak Workshop OS v7.9.52 FULL PROJECT UPDATE
 
-This package contains the complete deployable project.
-It is not a small App.jsx-only patch.
+Base: v7.9.51 full project
+Change: Workshop Today now excludes Completed / Manufacturing Complete drums from both production batches and Outstanding Final Work.
+Database migration: none required.
 
-Use it to update the GitHub project files.
-No Supabase migration is required.
+Deploy the full contents of this folder over the existing project.

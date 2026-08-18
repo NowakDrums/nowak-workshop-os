@@ -1853,7 +1853,13 @@ function App(){
   const batches=useMemo(()=>{
     const g={};
     filtered
-      .filter(d=>!isSoldStatus(d) && !isShippedStatus(d) && !isArchivedStatus(d))
+      .filter(d=>
+        !isManufacturingComplete(d) &&
+        drumLifecycleStatus(d)!=="Completed" &&
+        !isSoldStatus(d) &&
+        !isShippedStatus(d) &&
+        !isArchivedStatus(d)
+      )
       .forEach(d=>{
         const b=batchType(d);
         if(b){g[b]??=[];g[b].push(d);}
@@ -1896,7 +1902,14 @@ function App(){
     const cure=cureStatusForDrum(d);
     return cure && !cure.ready;
   });
-  const outstandingFinalWork=filtered.filter(d=>!isArchivedStatus(d) && !isSoldStatus(d) && !isShippedStatus(d) && outstandingWorkFromNotes(d.notes));
+  const outstandingFinalWork=filtered.filter(d=>
+    !isManufacturingComplete(d) &&
+    drumLifecycleStatus(d)!=="Completed" &&
+    !isArchivedStatus(d) &&
+    !isSoldStatus(d) &&
+    !isShippedStatus(d) &&
+    outstandingWorkFromNotes(d.notes)
+  );
   const activeRepairs=repairs.filter(r=>r.status!=="Collected & Paid");
   const dueSoonItems=useMemo(()=>{
     const today=new Date(); today.setHours(0,0,0,0); const limit=new Date(today); limit.setDate(limit.getDate()+7);
@@ -3296,7 +3309,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.51 — deployment stability + Shopify groundwork.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.52 — Workshop Today completion filtering fix.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3448,7 +3461,7 @@ function App(){
       <section className="batchGrid">
       {outstandingFinalWork.length>0 && <section className="panel todayTaskPanel outstandingTodayPanel">
         <h2>Outstanding Final Work <span className="taskCount">({outstandingFinalWork.length})</span></h2>
-        <p>These drums can remain Complete while the final practical task stays visible.</p>
+        <p>These drums still have a final practical task to finish before they are marked Complete.</p>
         <div className="todayDrumGrid">
           {outstandingFinalWork
             .sort(productionPriorityCompare)
