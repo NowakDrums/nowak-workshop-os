@@ -3309,7 +3309,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.52 — Workshop Today completion filtering fix.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.53 — Workshop Today fix + deployment compatibility.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
