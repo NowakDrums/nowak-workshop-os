@@ -1846,7 +1846,16 @@ function App(){
     return "Unallocated";
   };
   const ownerMatches=(drum,filter)=>filter==="All" || productionOwnerFor(drum)===filter;
-  const operationalDrums=drums.filter(d=>!isSoldStatus(d) && !isShippedStatus(d) && !isArchivedStatus(d));
+  // Central active-production filter. Workshop Today, Dashboard active counts and
+  // planned work must never include drums that have already left production.
+  // This also removes stale plan items for a drum once it is marked Complete.
+  const operationalDrums=drums.filter(d=>
+    !isManufacturingComplete(d) &&
+    drumLifecycleStatus(d)!=="Completed" &&
+    !isSoldStatus(d) &&
+    !isShippedStatus(d) &&
+    !isArchivedStatus(d)
+  );
   const filtered=drums.filter(d=>JSON.stringify(d).toLowerCase().includes(search.toLowerCase()));
   const active=operationalDrums;
   const templateMap=useMemo(()=>Object.fromEntries(templates.map(t=>[t.name,t])),[templates]);
@@ -3309,7 +3318,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.53 — Workshop Today fix + deployment compatibility.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v7.9.54 — Workshop Today fix + deployment compatibility.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
