@@ -3710,7 +3710,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.19 — Foreign-currency freight receiving.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.20 — Full purchase-order receiving history review.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -6820,7 +6820,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
       const newlyReceived={...receivedTotals(order)};orderItems.forEach(item=>{const key=item.hardware_part_id||item.code;newlyReceived[key]=(newlyReceived[key]||0)+Number(item.quantity_received||0)});
       const hasOutstanding=(order.order_items||[]).some(item=>Number(newlyReceived[item.hardware_part_id||item.code]||0)<Number(item.quantity||0));
       const status=receivingDraft.close_remaining||!hasOutstanding?"Received":"Partially Received";
-      const patch={receiving_history:history,status,supplier_invoice:receivingDraft.supplier_invoice||null,tracking_number:receivingDraft.tracking_number||null,freight_type:receivingDraft.freight_type||null,currency:breakdown.currency,exchange_rate_to_aud:breakdown.fx,shipping_cost:Number(receivingDraft.shipping_cost||0)*sharedRatio,consignment_cost:Number(receivingDraft.consignment_cost||0)*sharedRatio,tax_cost:Number(receivingDraft.tax_cost||0)*sharedRatio,duty_cost:Number(receivingDraft.duty_cost||0)*sharedRatio,payment_fees:Number(receivingDraft.payment_fees||0)*sharedRatio,allocation_method:receivingDraft.allocation_method,received_at:status==="Received"?new Date().toISOString():null};
+      const patch={receiving_history:history,status,supplier_invoice:receivingDraft.supplier_invoice||null,tracking_number:receivingDraft.tracking_number||null,freight_type:receivingDraft.freight_type||null,currency:breakdown.currency,exchange_rate_to_aud:breakdown.fx,shipping_cost:Number(breakdown.freightAud||0)*sharedRatio,consignment_cost:Number(receivingDraft.consignment_cost||0)*sharedRatio,tax_cost:Number(receivingDraft.tax_cost||0)*sharedRatio,duty_cost:Number(receivingDraft.duty_cost||0)*sharedRatio,payment_fees:Number(receivingDraft.payment_fees||0)*sharedRatio,allocation_method:receivingDraft.allocation_method,received_at:status==="Received"?new Date().toISOString():null};
       const {error}=await supabase.from("supplier_orders").update(patch).eq("id",order.id);
       if(error)return setSupplierOrderMessage(`Could not update ${order.po_number}: ${error.message}`);
     }
@@ -6943,6 +6943,59 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
     }
   };
 
+  const receiptReview=receipt=>{
+    const currency=receipt.currency||"AUD";
+    const fx=Number(receipt.exchange_rate_to_aud||1);
+    const itemCount=(receipt.items||[]).reduce((sum,item)=>sum+Number(item.quantity_received||0),0);
+    const foreignItems=Number(receipt.invoice_foreign_total||0);
+    const convertedItems=Number(receipt.converted_items_total_aud||0);
+    const freightAud=Number(receipt.shipping_cost||0);
+    const freightForeign=Number(receipt.shipping_cost_foreign||0);
+    const consignment=Number(receipt.consignment_cost||0);
+    const tax=Number(receipt.tax_cost||0);
+    const duty=Number(receipt.duty_cost||0);
+    const fees=Number(receipt.payment_fees||0);
+    const shared=Number(receipt.order_allocated_shared_aud||0) || (freightAud+consignment+tax+duty+fees);
+    const landed=Number(receipt.landed_total_aud||0);
+    return <article className="card poReceiptDetail">
+      <div className="sectionHeader">
+        <div>
+          <h4>{new Date(receipt.received_at||receipt.delivery_date).toLocaleDateString("en-AU")}</h4>
+          <p>{itemCount} piece{itemCount===1?"":"s"} received{receipt.supplier_invoice?` · Invoice ${receipt.supplier_invoice}`:""}{receipt.tracking_number?` · Tracking ${receipt.tracking_number}`:""}</p>
+        </div>
+        <b>{money(landed)}</b>
+      </div>
+      <div className="inventorySummaryGrid">
+        <article className="card"><b>Currency</b><strong>{currency}</strong><small>{currency!=="AUD"?`1 ${currency} = ${fx.toFixed(4)} AUD`:"AUD invoice"}</small></article>
+        <article className="card"><b>Invoice items</b><strong>{foreignItems.toLocaleString("en-AU",{style:"currency",currency})}</strong><small>{money(convertedItems)} AUD</small></article>
+        <article className="card"><b>Freight</b><strong>{freightForeign>0?freightForeign.toLocaleString("en-AU",{style:"currency",currency}):money(freightAud)}</strong><small>{freightForeign>0?`${money(freightAud)} AUD converted`:"AUD charge"}</small></article>
+        <article className="card"><b>Other landed costs</b><strong>{money(consignment+tax+duty+fees)}</strong><small>Consignment, tax, duty & fees</small></article>
+      </div>
+      <div className="tableWrap"><table>
+        <thead><tr><th>Item</th><th>Qty</th><th>Unit price ({currency})</th><th>Item total ({currency})</th><th>Item AUD</th><th>Allocated costs</th><th>Landed each</th></tr></thead>
+        <tbody>{(receipt.items||[]).map((item,itemIndex)=><tr key={`${item.hardware_part_id||item.code}-${itemIndex}`}>
+          <td>{item.name||item.code}<br/><small>{item.code||""}</small></td>
+          <td>{Number(item.quantity_received||0)}</td>
+          <td>{Number(item.unit_price_foreign||0).toLocaleString("en-AU",{style:"currency",currency})}</td>
+          <td>{Number(item.foreign_subtotal||0).toLocaleString("en-AU",{style:"currency",currency})}</td>
+          <td>{money(item.converted_subtotal_aud||0)}</td>
+          <td>{money(item.allocated_shared_aud||0)}</td>
+          <td><b>{money(item.landed_unit_cost_aud||0)}</b></td>
+        </tr>)}</tbody>
+      </table></div>
+      <div className="landedCostSummary">
+        {freightAud>0&&<div><span>Freight</span><b>{money(freightAud)}</b></div>}
+        {consignment>0&&<div><span>Consignment / handling</span><b>{money(consignment)}</b></div>}
+        {tax>0&&<div><span>GST / tax</span><b>{money(tax)}</b></div>}
+        {duty>0&&<div><span>Import duty</span><b>{money(duty)}</b></div>}
+        {fees>0&&<div><span>Card / FX / bank fees</span><b>{money(fees)}</b></div>}
+        <div><span>Total shared costs</span><b>{money(shared)}</b></div>
+        <div className="total"><span>Receipt landed total</span><b>{money(landed)}</b></div>
+      </div>
+      {receipt.notes&&<p><b>Receiving notes:</b> {receipt.notes}</p>}
+    </article>;
+  };
+
   return <section className="panel inventoryModule">
     {stockSaveMessage&&<div className={`stockSaveToast ${/successfully/i.test(stockSaveMessage)?"success":"notice"}`} role="status">{stockSaveMessage}</div>}
     <div className="sectionHeader"><div><h2>Inventory</h2><p>{visibleHardware.length} displayed parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={printInventoryStocktake}><Printer size={16}/> Print Stocktake</button><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" disabled={stockSaving} onClick={saveAllCounts}>{stockSaving?"Saving…":"Save Stock Levels"}</button></div>:<div className="buttonRow"><button onClick={printInventoryStocktake}><Printer size={16}/> Print Stocktake</button><button onClick={cleanExactHardwareDuplicates} disabled={stockSaving}>Clean Exact Duplicates</button><button className="primary" onClick={()=>setStocktakeMode(true)}>Adjust Stock Levels</button></div>)}</div>
@@ -6987,7 +7040,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
     {activeTab==="reorder"&&otherSupplierGroups.map(group=><section key={group.supplier} className="inventoryBlock supplierOrderPanel"><div className="sectionHeader"><div><h3>{group.supplier} Purchase Order</h3><p>Create a separate purchase order for requirements assigned to {group.supplier}.</p></div><div><b>{group.rows.length} line item{group.rows.length===1?"":"s"}</b></div></div><div className="supplierEmailPreview"><p><b>Supplier:</b> {group.supplier}{supplierEmailFor(group.supplier)?` · ${supplierEmailFor(group.supplier)}`:""}</p><div className="supplierHtmlPreview" dangerouslySetInnerHTML={{__html:supplierEmailHtml(group.supplier,group.rows)}}/></div><div className="buttonRow"><button className="primary" onClick={()=>saveSupplierPurchaseOrder(group.supplier,"Draft")}><Save size={16}/> Create / Update {group.supplier} Draft</button><button onClick={()=>printCurrentPurchaseOrder(group.supplier)}><Printer size={16}/> Print / Save PDF</button><button onClick={()=>copyFormattedOrder(null,group.supplier)}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail(null,group.supplier)}><Mail size={16}/> Open Email</button></div></section>)}
     {activeTab==="purchasing"&&<section className="inventoryBlock"><div className="sectionHeader"><div><h3>Purchase Orders</h3><p>Open orders are counted as incoming stock, so new suggested orders include only additional quantities still required.</p></div>{selectedReceivingOrderIds.length>1&&<button className="primary" onClick={()=>openCombinedReceiving(purchaseOrders.filter(order=>selectedReceivingOrderIds.includes(order.id)))}><Package size={16}/> Receive Combined Shipment</button>}</div>{confirmedPurchaseOrders.length?<div className="tableWrap"><table><thead><tr><th>Combine</th><th>PO</th><th>Supplier</th><th>Date</th><th>Status</th><th>Outstanding</th><th></th></tr></thead><tbody>{confirmedPurchaseOrders.map(order=>{const canReceive=openPurchaseOrders.some(open=>open.id===order.id);const outstanding=(order.order_items||[]).reduce((sum,item)=>sum+Math.max(0,Number(item.quantity||0)-Number(receivedTotals(order)[item.hardware_part_id||item.code]||0)),0);return <tr key={order.id}><td>{canReceive?<input type="checkbox" checked={selectedReceivingOrderIds.includes(order.id)} onChange={e=>setSelectedReceivingOrderIds(current=>e.target.checked?[...new Set([...current,order.id])]:current.filter(id=>id!==order.id))}/>:"—"}</td><td><b>{order.po_number||"Purchase order"}</b></td><td>{order.supplier}</td><td>{new Date(order.created_at).toLocaleDateString("en-AU")}</td><td><span className={`poStatus ${String(order.status||"Sent").toLowerCase()}`}>{order.status||"Sent"}</span></td><td><b>{outstanding}</b></td><td><button onClick={()=>{setSelectedPurchaseOrder(order);setPurchaseOrderOpen(true)}}>Open</button></td></tr>})}</tbody></table></div>:<div className="stocktakeNotice"><b>No confirmed purchase orders yet.</b><span>Create or update the draft in Reorder Planner, then mark it Sent when the order is placed.</span></div>}{selectedReceivingOrderIds.length===1&&<p className="mutedLine">Select at least two open orders from the same supplier to receive them as one combined shipment.</p>}</section>}
 
-    {purchaseOrderOpen&&selectedPurchaseOrder&&<div className="modalBackdrop"><div className="modal purchaseOrderModal"><div className="modalHeader"><div><h2>{selectedPurchaseOrder.po_number}</h2><p>{selectedPurchaseOrder.supplier||"Supplier"} · {selectedPurchaseOrder.status}</p></div><button onClick={()=>setPurchaseOrderOpen(false)}>Close</button></div><div className="purchaseOrderPreview" dangerouslySetInnerHTML={{__html:purchaseOrderEmailHtml(selectedPurchaseOrder)}}/>{(selectedPurchaseOrder.receiving_history||[]).length>0&&<section className="poReceiptSummary"><h3>Receiving history</h3>{selectedPurchaseOrder.receiving_history.map((receipt,index)=><div key={index}><b>{new Date(receipt.received_at).toLocaleDateString("en-AU")}</b><span>{(receipt.items||[]).reduce((sum,item)=>sum+Number(item.quantity_received||0),0)} pieces received{receipt.supplier_invoice?` · Invoice ${receipt.supplier_invoice}`:""}</span></div>)}</section>}<div className="buttonRow"><button onClick={()=>copyFormattedOrder(selectedPurchaseOrder)}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail(selectedPurchaseOrder)}><Mail size={16}/> Open Email</button><button onClick={()=>printPurchaseOrder(selectedPurchaseOrder)}><Printer size={16}/> Print / Save PDF</button>{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>openPurchaseOrderEditor(selectedPurchaseOrder)}><Pencil size={16}/> Edit Order</button>}{selectedPurchaseOrder.status==="Draft"&&<button className="primary" onClick={()=>updatePurchaseOrderStatus(selectedPurchaseOrder,"Sent")}><CircleCheckBig size={16}/> Mark Sent</button>}{selectedPurchaseOrder.status==="Draft"&&<button className="dangerButton" onClick={()=>deleteDraftPurchaseOrder(selectedPurchaseOrder)}><Trash2 size={16}/> Delete Draft</button>}{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>openReceiving(selectedPurchaseOrder)}><Package size={16}/> Receive Shipment</button>}</div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</div></div>}
+    {purchaseOrderOpen&&selectedPurchaseOrder&&<div className="modalBackdrop"><div className="modal purchaseOrderModal"><div className="modalHeader"><div><h2>{selectedPurchaseOrder.po_number}</h2><p>{selectedPurchaseOrder.supplier||"Supplier"} · {selectedPurchaseOrder.status}</p></div><button onClick={()=>setPurchaseOrderOpen(false)}>Close</button></div><div className="purchaseOrderPreview" dangerouslySetInnerHTML={{__html:purchaseOrderEmailHtml(selectedPurchaseOrder)}}/>{(selectedPurchaseOrder.receiving_history||[]).length>0&&<section className="poReceiptSummary"><h3>Receiving history</h3><p className="mutedLine">Saved receiving costs and landed-cost calculations for this purchase order.</p>{selectedPurchaseOrder.receiving_history.map((receipt,index)=><div key={index}>{receiptReview(receipt)}</div>)}</section>}<div className="buttonRow"><button onClick={()=>copyFormattedOrder(selectedPurchaseOrder)}><Copy size={16}/> Copy Formatted Order</button><button onClick={()=>openSupplierEmail(selectedPurchaseOrder)}><Mail size={16}/> Open Email</button><button onClick={()=>printPurchaseOrder(selectedPurchaseOrder)}><Printer size={16}/> Print / Save PDF</button>{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>openPurchaseOrderEditor(selectedPurchaseOrder)}><Pencil size={16}/> Edit Order</button>}{selectedPurchaseOrder.status==="Draft"&&<button className="primary" onClick={()=>updatePurchaseOrderStatus(selectedPurchaseOrder,"Sent")}><CircleCheckBig size={16}/> Mark Sent</button>}{selectedPurchaseOrder.status==="Draft"&&<button className="dangerButton" onClick={()=>deleteDraftPurchaseOrder(selectedPurchaseOrder)}><Trash2 size={16}/> Delete Draft</button>}{selectedPurchaseOrder.status!=="Received"&&<button onClick={()=>openReceiving(selectedPurchaseOrder)}><Package size={16}/> Receive Shipment</button>}</div>{supplierOrderMessage&&<p className="saveMessage">{supplierOrderMessage}</p>}</div></div>}
 
     {purchaseOrderEditOpen&&purchaseOrderDraft&&<div className="modalBackdrop"><div className="modal purchaseOrderEditModal"><div className="modalHeader"><div><h2>Edit {purchaseOrderDraft.po_number}</h2><p>Adjust the order before sending or receiving it.</p></div><button onClick={()=>setPurchaseOrderEditOpen(false)}>Close</button></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Code / size</th><th>Quantity</th><th></th></tr></thead><tbody>{(purchaseOrderDraft.order_items||[]).map((item,index)=><tr key={`${item.hardware_part_id||item.code}-${index}`}><td>{item.name}<br/><small>{item.colour}</small></td><td>{item.code}<br/><small>{item.size}</small></td><td><input className="compactInput" type="number" min="0" value={item.quantity} onChange={e=>setPurchaseOrderDraft(current=>({...current,order_items:current.order_items.map((x,i)=>i===index?{...x,quantity:Number(e.target.value)}:x)}))}/></td><td><button className="dangerButton" onClick={()=>setPurchaseOrderDraft(current=>({...current,order_items:current.order_items.filter((_,i)=>i!==index)}))}><Trash2 size={14}/> Remove</button></td></tr>)}</tbody></table></div><label>Add another inventory item<select defaultValue="" onChange={e=>{addPurchaseOrderItem(e.target.value);e.target.value=""}}><option value="">Select hardware…</option>{hardware.filter(part=>/lea\s*hung/i.test(String(part.supplier||""))).sort(sortParts).map(part=><option key={part.id} value={part.id}>{part.part_name} · {supplierColour(part)} · {part.size} · {supplierCode(part)}</option>)}</select></label><label>Order notes<textarea value={purchaseOrderDraft.notes||""} onChange={e=>setPurchaseOrderDraft({...purchaseOrderDraft,notes:e.target.value})}/></label><div className="buttonRow"><button onClick={()=>setPurchaseOrderEditOpen(false)}>Cancel</button><button className="primary" onClick={savePurchaseOrderEdits}><Save size={16}/> Save Changes</button></div></div></div>}
 
