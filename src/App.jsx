@@ -3710,7 +3710,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.16 — Release all hardware reservations.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.17 — Individual hardware reservation release.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -6865,6 +6865,41 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
     }
   };
 
+  const releaseSingleHardwareReservation=async(part)=>{
+    const rows=(allocations||[]).filter(a=>
+      String(a.status||"").toLowerCase()==="allocated" &&
+      String(a.hardware_part_id)===String(part?.id)
+    );
+    if(!rows.length){
+      setStockSaveMessage("No active reservation was found for this hardware item.");
+      return;
+    }
+    const drumNames=[...new Set(rows.map(row=>{
+      const d=drums.find(item=>String(item.id)===String(row.drum_id));
+      return d ? `#${d.serial||"Pending"}` : "drum";
+    }))];
+    const totalQty=rows.reduce((sum,row)=>sum+Number(row.quantity||0),0);
+    const ok=window.confirm(
+      `Release ${totalQty} reserved ${part?.part_name||"hardware item"}?\n\nReserved for: ${drumNames.join(", ")}\n\nThis changes the reservation only. Physical stock and fitted hardware are unchanged.`
+    );
+    if(!ok) return;
+    setStockSaving(true);
+    setStockSaveMessage("");
+    try{
+      const ids=rows.map(row=>row.id);
+      const {error}=await supabase.from("hardware_allocations")
+        .update({status:"Released",released_at:new Date().toISOString(),consumed_at:null})
+        .in("id",ids);
+      if(error) throw error;
+      await refreshData?.();
+      setStockSaveMessage(`${part?.part_name||"Hardware"} reservation released · ${totalQty} item${totalQty===1?"":"s"} returned to Available stock.`);
+    }catch(error){
+      setStockSaveMessage("Could not release this reservation: "+(error?.message||"Unknown error"));
+    }finally{
+      setStockSaving(false);
+    }
+  };
+
   return <section className="panel inventoryModule">
     {stockSaveMessage&&<div className={`stockSaveToast ${/successfully/i.test(stockSaveMessage)?"success":"notice"}`} role="status">{stockSaveMessage}</div>}
     <div className="sectionHeader"><div><h2>Inventory</h2><p>{visibleHardware.length} displayed parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={printInventoryStocktake}><Printer size={16}/> Print Stocktake</button><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" disabled={stockSaving} onClick={saveAllCounts}>{stockSaving?"Saving…":"Save Stock Levels"}</button></div>:<div className="buttonRow"><button onClick={printInventoryStocktake}><Printer size={16}/> Print Stocktake</button><button onClick={cleanExactHardwareDuplicates} disabled={stockSaving}>Clean Exact Duplicates</button><button className="primary" onClick={()=>setStocktakeMode(true)}>Adjust Stock Levels</button></div>)}</div>
@@ -6900,7 +6935,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
       })}</tbody></table></div></section>})}
       {stocktakeMode&&<div className="stocktakeFooter"><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" disabled={stockSaving} onClick={saveAllCounts}>{stockSaving?"Saving…":"Save Stock Levels"}</button></div>}</>}
 
-    {activeTab==="allocations"&&<><section className="inventoryBlock"><h3>Custom Order Hardware Allocation</h3><p>Allocate parts when an order is accepted and physically place them aside. Assembling a drum deducts its selected hardware automatically.</p>{activeCustom.length===0?<p>No active custom snare orders.</p>:<div className="allocationGrid">{activeCustom.map(d=>{const allocated=allocationByDrum[d.id]?.length>0,reqs=drumHardwareRequirements(d),shortages=reqs.filter(req=>Number(byCode[req.code]?.qty_available||0)<req.qty);return <article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.customer||"Customer not entered"} · {d.build_type}</span><span className={allocated?"okText":shortages.length?"dangerText":"warningText"}>{allocated?"Hardware allocated":shortages.length?`${shortages.length} shortages`:"Ready to allocate"}</span>{shortages.length>0&&!allocated&&<small>{shortages.map(x=>x.label).join(", ")}</small>}<div className="buttonRow">{allocated?<button onClick={()=>releaseHardware(d)}>Release allocation</button>:<button className="primary" onClick={()=>allocateHardware(d)}>Allocate hardware</button>}</div></article>})}</div>}</section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Currently Reserved Hardware</h3><p>This is the hardware already set aside for active drums.</p></div><button className="dangerButton" disabled={stockSaving} onClick={releaseAllHardwareReservations}>Release All Reservations</button></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Allocated</th><th>Drums</th></tr></thead><tbody>{hardware.filter(p=>Number(p.qty_allocated||0)>0).sort((a,b)=>String(a.part_name).localeCompare(String(b.part_name))).map(p=><tr key={`reserved-${p.id}`}><td>{p.part_name}<br/><small>{p.finish||"Standard"} · {p.size||p.code}</small></td><td><b>{p.qty_allocated}</b></td><td><div className="reservedDrumLinks">{(p.allocated_drum_ids||[]).map(id=>{const d=drums.find(x=>String(x.id)===String(id));return d?<button type="button" key={id} onClick={()=>openJobCard?.(d)}>#{d.serial||"Pending"}</button>:<span key={id}>Drum</span>})}{!(p.allocated_drum_ids||[]).length&&<span>Active drum</span>}</div></td></tr>)}</tbody></table></div>{!hardware.some(p=>Number(p.qty_allocated||0)>0)&&<p>No hardware allocations are currently recorded.</p>}</section><section className="inventoryBlock"><h3>Hardware Fitted to Drums</h3><p>Open a Job Card and use <b>Adjust Hardware Used</b> to change this list.</p><div className="allocationGrid">{drums.filter(d=>consumedByDrum[d.id]?.length).map(d=><article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.timber} · {d.build_type}</span><small>{consumedByDrum[d.id].map(a=>`${a.quantity} × ${partById[a.hardware_part_id]?.part_name||"Hardware"}`).join(", ")}</small></article>)}</div>{!drums.some(d=>consumedByDrum[d.id]?.length)&&<p>No fitted hardware has been recorded yet.</p>}</section></>}
+    {activeTab==="allocations"&&<><section className="inventoryBlock"><h3>Custom Order Hardware Allocation</h3><p>Allocate parts when an order is accepted and physically place them aside. Assembling a drum deducts its selected hardware automatically.</p>{activeCustom.length===0?<p>No active custom snare orders.</p>:<div className="allocationGrid">{activeCustom.map(d=>{const allocated=allocationByDrum[d.id]?.length>0,reqs=drumHardwareRequirements(d),shortages=reqs.filter(req=>Number(byCode[req.code]?.qty_available||0)<req.qty);return <article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.customer||"Customer not entered"} · {d.build_type}</span><span className={allocated?"okText":shortages.length?"dangerText":"warningText"}>{allocated?"Hardware allocated":shortages.length?`${shortages.length} shortages`:"Ready to allocate"}</span>{shortages.length>0&&!allocated&&<small>{shortages.map(x=>x.label).join(", ")}</small>}<div className="buttonRow">{allocated?<button onClick={()=>releaseHardware(d)}>Release allocation</button>:<button className="primary" onClick={()=>allocateHardware(d)}>Allocate hardware</button>}</div></article>})}</div>}</section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>Currently Reserved Hardware</h3><p>This is the hardware already set aside for active drums.</p></div><button className="dangerButton" disabled={stockSaving} onClick={releaseAllHardwareReservations}>Release All Reservations</button></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Allocated</th><th>Drums</th><th></th></tr></thead><tbody>{hardware.filter(p=>Number(p.qty_allocated||0)>0).sort((a,b)=>String(a.part_name).localeCompare(String(b.part_name))).map(p=><tr key={`reserved-${p.id}`}><td>{p.part_name}<br/><small>{p.finish||"Standard"} · {p.size||p.code}</small></td><td><b>{p.qty_allocated}</b></td><td><div className="reservedDrumLinks">{(p.allocated_drum_ids||[]).map(id=>{const d=drums.find(x=>String(x.id)===String(id));return d?<button type="button" key={id} onClick={()=>openJobCard?.(d)}>#{d.serial||"Pending"}</button>:<span key={id}>Drum</span>})}{!(p.allocated_drum_ids||[]).length&&<span>Active drum</span>}</div></td><td><button type="button" className="dangerButton" disabled={stockSaving} onClick={()=>releaseSingleHardwareReservation(p)}>Release</button></td></tr>)}</tbody></table></div>{!hardware.some(p=>Number(p.qty_allocated||0)>0)&&<p>No hardware allocations are currently recorded.</p>}</section><section className="inventoryBlock"><h3>Hardware Fitted to Drums</h3><p>Open a Job Card and use <b>Adjust Hardware Used</b> to change this list.</p><div className="allocationGrid">{drums.filter(d=>consumedByDrum[d.id]?.length).map(d=><article className="card" key={d.id}><b>#{d.serial||"Pending"} · {d.size}</b><span>{d.timber} · {d.build_type}</span><small>{consumedByDrum[d.id].map(a=>`${a.quantity} × ${partById[a.hardware_part_id]?.part_name||"Hardware"}`).join(", ")}</small></article>)}</div>{!drums.some(d=>consumedByDrum[d.id]?.length)&&<p>No fitted hardware has been recorded yet.</p>}</section></>}
 
     {activeTab==="capacity"&&<><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Right Now?</h3><p>Each card shows the maximum if you built only that option. Rare 12 × 8 and 13 × 8 sizes are excluded.</p></div></div>{buildableOptions.length?<div className="capacityGrid">{buildableOptions.sort((a,b)=>b.qty-a.qty||Number(b.d)-Number(a.d)).map(x=><article className="card" key={`${x.d}-${x.depth}-${x.type}`}><b>{x.d}" × {x.depth}" {x.drumType} · {x.type}</b><strong>{x.qty} complete drum{x.qty===1?"":"s"}</strong></article>)}</div>:<div className="stocktakeNotice"><b>No complete snare combinations currently available.</b><span>Enter your stocktake quantities and this page will update automatically.</span></div>}</section><section className="inventoryBlock"><div className="sectionHeader"><div><h3>What Can We Build Together?</h3><p>This checks the editable Reorder Planner mix against the same shared stock, so hardware is not counted twice.</p></div><strong>{simultaneousTotal} drums together</strong></div><div className="capacityGrid">{simultaneousMix.map(row=><article className="card" key={row.id}><b>{row.diameter}" × {row.depth}" {row.drumType||"Snare"} · {row.buildType}</b><strong>{row.buildable} of {row.qty}</strong><span>{row.buildable>=Number(row.qty||0)?"Target covered":"Limited by shared hardware"}</span></article>)}</div></section></>}
 
