@@ -1199,15 +1199,28 @@ function experimentalSequentialLengths(thicknesses, size="14 x 6.5"){
   if(!values.length) return [];
   const key=shellSizeKey(size);
   const currentBase=baseLengthsForSize(size);
-  // Workshop trial model: at 1.2 mm per layer the 14" reference runs
-  // 1106 -> 1096.75 -> 1087.50 -> 1078.25 -> 1069 (9.25 mm per step).
-  // The geometry component is PI × (previous thickness + new thickness),
-  // plus a provisional 1.71 mm practical allowance per transition.
-  const practicalAllowance=9.25-(Math.PI*2.4);
+
+  // Empirical workshop model, intentionally separate from the current formula.
+  // Calibrated from actual 14-inch Layer 5 fit results:
+  // 1.10 mm average groups -> about 1072 mm
+  // 1.20 mm average groups -> 1069 mm
+  // 1.30 mm average groups -> about 1065.5 mm
+  // 1.40 mm average groups -> about 1062 mm
+  //
+  // At the 1.20 mm baseline each transition is 9.25 mm.
+  // Thinner groups reduce the transition by 7.5 mm per 1.0 mm thickness change.
+  // Thicker groups increase it by 8.75 mm per 1.0 mm thickness change.
+  // Each step uses the average measured thickness of the two adjoining groups.
   const firstLength=key==="12" ? 949.5 : Number(currentBase[0]||defaultPlyLengths14[0]);
   const lengths=[firstLength];
+
   for(let i=1;i<values.length;i+=1){
-    lengths.push(lengths[i-1]-(Math.PI*(values[i-1]+values[i])+practicalAllowance));
+    const transitionThickness=(values[i-1]+values[i])/2;
+    const thicknessDelta=transitionThickness-defaultPairThickness;
+    const transition=thicknessDelta>=0
+      ? 9.25+(8.75*thicknessDelta)
+      : 9.25+(7.5*thicknessDelta);
+    lengths.push(lengths[i-1]-transition);
   }
   return lengths;
 }
@@ -3655,7 +3668,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.4 — Veneer comparison calculator + updated sealing workflow.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.5 — Corrected empirical veneer trial calculator.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5091,7 +5104,7 @@ function VeneerComparison({thicknesses,size}){
       <strong>{current[index]!=null?`${current[index].toFixed(1)} mm`:"—"}</strong>
       <strong>{experimental[index]!=null?`${experimental[index].toFixed(1)} mm`:"—"}</strong>
     </div>)}
-    {thicknesses.length>=5 && <div className="veneerCalibrationNote"><b>Layer 5 watch item</b><span>14" workshop observations: around 1.2 mm layers, 1069 mm has fitted correctly. Thinner lay-ups have needed a longer Layer 5; thicker lay-ups have needed a shorter Layer 5. Keep using the current value as the production reference while comparing the experimental column.</span></div>}
+    {thicknesses.length>=5 && <div className="veneerCalibrationNote"><b>Layer 5 experimental calibration</b><span>14" trial guide: 1.10 mm ≈ 1072 mm · 1.20 mm = 1069 mm · 1.30 mm ≈ 1065.5 mm · 1.40 mm ≈ 1062 mm. The experimental column is based on these workshop outcomes; keep recording actual fit so we can refine it.</span></div>}
   </div>;
 }
 
