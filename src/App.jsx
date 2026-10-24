@@ -3668,7 +3668,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.5 — Corrected empirical veneer trial calculator.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.6 — Saved veneer workshop records.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5108,16 +5108,72 @@ function VeneerComparison({thicknesses,size}){
   </div>;
 }
 
+function savedVeneerRows(drum){
+  const stored=Array.isArray(drum?.veneer_actuals?.layers) ? drum.veneer_actuals.layers : [];
+  return [0,1,2,3,4].map(index=>{
+    const saved=stored[index] || {};
+    const measured=drum?.[`veneer_${index+1}_thickness`];
+    return {
+      thickness:saved.thickness ?? measured ?? 1.2,
+      actual_cut:saved.actual_cut ?? "",
+      comment:saved.comment ?? ""
+    };
+  });
+}
+
+function SavedVeneerRecord({drum,updateDrum,openJobCard}){
+  const [rows,setRows]=useState(()=>savedVeneerRows(drum));
+  const [saved,setSaved]=useState("");
+
+  useEffect(()=>{ setRows(savedVeneerRows(drum)); },[drum.id]);
+
+  function change(index,key,value){
+    setRows(current=>current.map((row,i)=>i===index?{...row,[key]:value}:row));
+    setSaved("");
+  }
+
+  async function saveRow(index){
+    const row=rows[index];
+    const nextLayers=rows.map(item=>({
+      thickness:Number(item.thickness||0),
+      actual_cut:item.actual_cut==="" ? null : Number(item.actual_cut),
+      comment:String(item.comment||"").trim()
+    }));
+    const ok=await updateDrum(drum.id,{
+      [`veneer_${index+1}_thickness`]:Number(row.thickness||0),
+      veneer_actuals:{...(drum.veneer_actuals||{}),layers:nextLayers}
+    });
+    setSaved(ok===false ? "Could not save" : `Layer ${index+1} saved`);
+  }
+
+  return <article className="card savedVeneerCard">
+    <div className="savedVeneerHeader">
+      <div><b>{drum.serial ? `#${drum.serial}` : "Pending"} {drum.timber}</b><span>{drum.size} · {drum.production_status}</span></div>
+      <button onClick={()=>openJobCard(drum)}>Open job card</button>
+    </div>
+    <div className="savedVeneerTable">
+      <div className="savedVeneerTableHeader"><span>Layer</span><span>Measured thickness</span><span>Actual cut</span><span>Adjustment / comment</span></div>
+      {rows.map((row,index)=><div className="savedVeneerRow" key={index}>
+        <b>L{index+1}</b>
+        <label><span>Measured thickness</span><div className="inputWithUnit"><input inputMode="decimal" value={row.thickness} onChange={e=>change(index,"thickness",e.target.value)} onBlur={()=>saveRow(index)}/><small>mm</small></div></label>
+        <label><span>Actual cut</span><div className="inputWithUnit"><input inputMode="decimal" placeholder="—" value={row.actual_cut??""} onChange={e=>change(index,"actual_cut",e.target.value)} onBlur={()=>saveRow(index)}/><small>mm</small></div></label>
+        <label><span>Adjustment / comment</span><input placeholder="Fit good, 1 mm short, try +1 mm next time…" value={row.comment} onChange={e=>change(index,"comment",e.target.value)} onBlur={()=>saveRow(index)}/></label>
+      </div>)}
+    </div>
+    {saved&&<small className={saved==="Could not save"?"dangerText":"okText"}>{saved}</small>}
+  </article>;
+}
+
 function VeneerCalculator({drums, updateDrum, openJobCard}){
   const [manual,setManual]=useState([1.2,1.2,1.2,1.2,1.2]);
   const [manualSize,setManualSize]=useState("14 x 6.5");
   const addLayer=()=>setManual(current=>[...current,1.2]);
   const removeLayer=()=>setManual(current=>current.length>1?current.slice(0,-1):current);
   return <section>
-    <div className="panel"><h2>Ply Veneer Cut Calculator</h2><p>The existing calculator remains unchanged. The experimental column uses the measured thickness of each layer/group and continues automatically for any number of added layers.</p></div>
+    <div className="panel"><h2>Ply Veneer Cut Calculator</h2><p>The Manual Calculator is for deciding what to cut. Saved ply drums below are the workshop record of what was actually measured, cut and observed.</p></div>
     <VeneerProcessNotes/>
     <section className="panel"><h2>Manual Calculator</h2><label>Shell size</label><select value={manualSize} onChange={e=>setManualSize(e.target.value)}><option>14 x 6.5</option><option>14 x 5.5</option><option>13 x 7</option><option>12 x 7</option></select><p className="calcNote">{sizeAdjustmentLabel(manualSize)}. Measure each completed layer/group directly — single, pair or triple — and enter that actual thickness.</p><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><div className="buttonRow"><button type="button" onClick={addLayer}>+ Add Layer</button>{manual.length>5&&<button type="button" onClick={removeLayer}>Remove Last Layer</button>}</div><VeneerComparison thicknesses={manual} size={manualSize}/></section>
-    <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>{d.serial ? `#${d.serial}` : "Pending"} {d.timber}</b><span>{d.size} · {d.production_status}</span><p className="calcNote">{sizeAdjustmentLabel(d.size)}. Saved drum records currently store Layers 1–5; use the Manual Calculator above for Layer 6+ trials.</p><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerComparison thicknesses={t} size={d.size}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
+    <section className="panel"><div className="sectionHeader"><div><h2>Ply Drum Workshop Records</h2><p>Record the actual measured thickness, cut length and fit adjustment for each layer. These real results are what we will use to keep improving the experimental calculator.</p></div></div><div className="savedVeneerList">{drums.map(d=><SavedVeneerRecord key={d.id} drum={d} updateDrum={updateDrum} openJobCard={openJobCard}/>)}</div></section>
   </section>
 }
 
