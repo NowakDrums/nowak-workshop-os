@@ -760,7 +760,7 @@ function drumHardwareRequirements(drum){
     const ventSize="30mm";
     return [
       {code:finishSku(`LUG-${lugLength.replace("mm","")}`,finish),qty:lugCount,label:`${lugLength} Agile Tube Lug — ${finishLabel}`},
-      tensionRodRequirement(42,rodCount,finish),
+      tensionRodRequirement(45,rodCount,finish),
       {code:diameter==="10" ? finishSku("TOM-HOOP-10-6",finish) : finishSku(`HOOP-${diameter}-${lugCount}-BAT`,finish),qty:1,label:diameter==="10" ? `10\" 6-lug 2.3mm top/tom hoop — ${finishLabel}` : `${diameter}\" ${lugCount}-lug 2.3mm hoop — ${finishLabel}`},
       {code:finishSku(`HOOP-${diameter}-${lugCount}-SNR`,finish),qty:1,label:`${diameter}\" ${lugCount}-lug 2.3mm snare-side hoop — ${finishLabel}`},
       {code:`HEAD-${diameter}-BAT`,qty:1,label:`${diameter}\" Remo batter head`},
@@ -778,7 +778,7 @@ function drumHardwareRequirements(drum){
       {code:finishSku(diameter==="14"?"FLOOR-HOOP-14-8":`TOM-HOOP-${diameter}-${lugCount}`,finish),qty:2,label:`${diameter}" ${lugCount}-lug 2.3mm tom hoop — ${finishLabel}`},
       {code:finishSku("BALL-LUG",finish),qty:totalLugs,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`},
       {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
-      tensionRodRequirement(42,totalLugs,finish),
+      tensionRodRequirement(45,totalLugs,finish),
     ];
   }
   if(type==="floor tom"){
@@ -3710,7 +3710,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.13 — Hardware matching and substitution save fix.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.15 — 45mm standard tension rods + 47mm substitution ready.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
