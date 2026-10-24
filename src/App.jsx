@@ -616,6 +616,27 @@ function hardwareLookupKey(part){
   return part?.sku_key || part?.code || "";
 }
 
+function resolveHardwareRequirement(req,parts=[]){
+  if(!req) return null;
+  if(req.hardware_part_id){
+    const exact=parts.find(part=>String(part.id)===String(req.hardware_part_id));
+    if(exact) return exact;
+  }
+  const exact=parts.find(part=>[hardwareLookupKey(part),String(part.code||""),String(part.sku_key||"")].includes(String(req.code||"")));
+  if(exact) return exact;
+
+  const wantedCategory=String(req.category||"").toLowerCase();
+  const wantedSize=String(req.size||"").toLowerCase();
+  const wantedFinish=inventoryFinishFamily({part_name:req.label||req.partName||"",finish:req.finish||""});
+  return parts.find(part=>{
+    const categoryOk=!wantedCategory || String(part.category||"").toLowerCase()===wantedCategory;
+    const sizeText=String(part.size||part.part_name||"").toLowerCase();
+    const sizeOk=!wantedSize || sizeText.includes(wantedSize);
+    const finishOk=!wantedFinish || wantedFinish==="standard" || inventoryFinishFamily(part)===wantedFinish || (wantedFinish==="chrome"&&inventoryFinishFamily(part)==="stainless");
+    return categoryOk&&sizeOk&&finishOk;
+  }) || null;
+}
+
 function inventoryFinishFamily(part){
   const text=`${part?.part_name||""} ${part?.finish||""}`.toLowerCase();
   if(/black\s*nickel/.test(text)) return "black-nickel";
@@ -2564,7 +2585,7 @@ function App(){
     const missing=[];
     const rows=[];
     for(const req of wanted.values()){
-      const part=byCode[req.code];
+      const part=resolveHardwareRequirement(req,availableHardware);
       if(!part){missing.push(req.label);continue;}
       rows.push({drum_id:drum.id,hardware_part_id:part.id,quantity:req.qty,status:"Allocated"});
     }
@@ -2592,7 +2613,7 @@ function App(){
       [String(part.sku_key||""),part]
     ]).filter(([key])=>key));
 
-    const missing=selectedRequirements.filter(req=>!byCode[req.code]);
+    const missing=selectedRequirements.filter(req=>!resolveHardwareRequirement(req,hardware));
     if(missing.length){
       setMessage("These catalogue items are missing and could not be recorded as fitted: "+missing.map(req=>req.label).join("; "));
       return false;
@@ -2610,7 +2631,7 @@ function App(){
     if(loadError){setMessage("Could not load drum hardware: "+loadError.message);return false;}
 
     const desiredByPartId=new Map(selectedRequirements.map(req=>{
-      const part=byCode[req.code];
+      const part=resolveHardwareRequirement(req,hardware);
       return [part.id,{req,part}];
     }));
     const consumedRows=(rows||[]).filter(row=>String(row.status||"").toLowerCase()==="consumed");
@@ -3689,7 +3710,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.12 — Receiving costs, supplier pricing + duplicate cleanup.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.13 — Hardware matching and substitution save fix.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -9382,8 +9403,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const allocatedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && String(a.status||"").toLowerCase()==="allocated");
   const consumedByPart=consumedForDrum.reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
 
-  function byCodePart(code){
-    return partByCode[code] || hardware.find(part=>String(part.code||"")===String(code) || String(part.sku_key||"")===String(code));
+  function byCodePart(code,req=null){
+    return partByCode[code]
+      || hardware.find(part=>String(part.code||"")===String(code) || String(part.sku_key||"")===String(code))
+      || (req ? resolveHardwareRequirement(req,hardware) : null);
   }
 
   function openHardwareUsed(shortages=[],forAssembly=false){
@@ -9401,7 +9424,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     setHardwareSelection(initial);
 
     // Preserve any fitted non-standard parts as explicit substitutions/extras.
-    const standardPartIds=new Set(standardHardware.map(req=>byCodePart(req.code)?.id).filter(Boolean));
+    const standardPartIds=new Set(standardHardware.map(req=>byCodePart(req.code,req)?.id).filter(Boolean));
     const extras=consumedForDrum
       .filter(a=>!standardPartIds.has(a.hardware_part_id))
       .map(a=>({hardware_part_id:a.hardware_part_id,quantity:Number(a.quantity||1)}));
@@ -9425,9 +9448,13 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
         const part=hardware.find(p=>String(p.id)===String(row.hardware_part_id));
         if(!part) return null;
         return {
+          hardware_part_id:part.id,
           code:hardwareLookupKey(part)||part.code||part.sku_key,
           qty:Number(row.quantity||0),
-          label:`${part.part_name}${part.finish?` — ${part.finish}`:""}`
+          label:`${part.part_name}${part.finish?` — ${part.finish}`:""}`,
+          category:part.category||"",
+          finish:part.finish||"",
+          size:part.size||""
         };
       })
       .filter(Boolean);
@@ -9881,7 +9908,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
     {showHardwareUsed && <div className="hardwareUsedOverlay" onClick={()=>setShowHardwareUsed(false)}><div className="hardwareUsedModal" onClick={e=>e.stopPropagation()}>
       <div className="sectionHeader"><div><h2>Adjust Hardware Used</h2><p>{pendingAssembly?"There is not enough recorded stock for the full standard hardware set. Deselect anything not fitted, or save as assembled anyway to record a stock shortage.":"Select only the parts currently fitted to this drum."}</p></div><button onClick={()=>setShowHardwareUsed(false)}>Close</button></div>{assemblyShortages.length>0&&<div className="stocktakeNotice dangerText"><b>Hardware shortage</b><span>{assemblyShortages.map(req=>req.label).join(", ")}</span></div>}
-      <div className="hardwareChecklist">{standardHardware.map(req=>{const isTrick=req.code==="THROW-TRICK-CHROME";const lookupCode=isTrick&&trickFinish==="Gold"?"THROW-TRICK-GOLD":req.code;const part=partByCode[lookupCode];return <div key={req.code} className={`hardwareCheckRow ${assemblyShortages.some(x=>x.code===req.code)?"hardwareShortageRow":""}`}><input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/><span><b>{req.qty} × {isTrick?`Trick throw-off — ${trickFinish}`:req.label}</b><small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small>{isTrick&&hardwareSelection[req.code]!==false&&<select value={trickFinish} onChange={e=>setTrickFinish(e.target.value)}><option>Chrome</option><option>Gold</option></select>}</span></div>})}</div>
+      <div className="hardwareChecklist">{standardHardware.map(req=>{const isTrick=req.code==="THROW-TRICK-CHROME";const lookupCode=isTrick&&trickFinish==="Gold"?"THROW-TRICK-GOLD":req.code;const part=byCodePart(lookupCode,req);return <div key={req.code} className={`hardwareCheckRow ${assemblyShortages.some(x=>x.code===req.code)?"hardwareShortageRow":""}`}><input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/><span><b>{req.qty} × {isTrick?`Trick throw-off — ${trickFinish}`:req.label}</b><small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small>{isTrick&&hardwareSelection[req.code]!==false&&<select value={trickFinish} onChange={e=>setTrickFinish(e.target.value)}><option>Chrome</option><option>Gold</option></select>}</span></div>})}</div>
           <div className="hardwareSubstitutionPanel">
             <div className="sectionHeader"><div><h3>Substitutions / extra hardware</h3><p>Deselect the standard item above, then add the exact inventory part actually used.</p></div><button type="button" onClick={()=>setExtraHardwareUsed(current=>[...current,{hardware_part_id:"",quantity:1}])}>+ Add substitute</button></div>
             {extraHardwareUsed.length===0&&<small>No substitutions recorded.</small>}
