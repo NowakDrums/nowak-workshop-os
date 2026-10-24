@@ -3675,7 +3675,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.9 — Neutral veneer fit-note prompts.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.10 — Veneer records prompt fix.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5185,7 +5185,7 @@ function SavedVeneerRecord({drum,updateDrum,openJobCard}){
         <b>L{index+1}</b>
         <label><span>Measured thickness</span><div className="inputWithUnit"><input inputMode="decimal" value={row.thickness} onChange={e=>change(index,"thickness",e.target.value)} onBlur={()=>saveRow(index)}/><small>mm</small></div></label>
         <label><span>Actual cut</span><div className="inputWithUnit"><input inputMode="decimal" placeholder="—" value={row.actual_cut??""} onChange={e=>change(index,"actual_cut",e.target.value)} onBlur={()=>saveRow(index)}/><small>mm</small></div></label>
-        <label><span>Adjustment / comment</span><input placeholder="Fit good, 1 mm short, try +1 mm next time…" value={row.comment} onChange={e=>change(index,"comment",e.target.value)} onBlur={()=>saveRow(index)}/></label>
+        <label><span>Adjustment / comment</span><input placeholder="Add fit result or adjustment…" value={row.comment} onChange={e=>change(index,"comment",e.target.value)} onBlur={()=>saveRow(index)}/></label>
       </div>)}
     </div>
     {saved&&<small className={saved==="Could not save"?"dangerText":"okText"}>{saved}</small>}
