@@ -21,8 +21,8 @@ const stages = [
 
 const checklist = [
   "Timber / veneer ready","Glue up complete","Machined","Sanded",
-  "Bearing edges cut","Snare beds cut","Drilled","Inside oiled / sealed",
-  "Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Satin coat",
+  "Sealer coat","Bearing edges cut","Snare beds cut","Drilled","Inside oiled / sealed",
+  "Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Satin coat",
   "Danish oil 1","Danish oil 2","Danish oil 3",
   "Cure complete","High Gloss preparation","Polished","Final shell preparation",
   "Prepare hardware / heads","Assembled","Photos taken","Website listing",
@@ -160,7 +160,7 @@ function applicableChecklist(buildType, finish="", drumType="Snare"){
         "Satin coat","Cure complete","Polished"
       ].includes(item)) return false;
     }else{
-      if(["Danish oil 1","Danish oil 2","Danish oil 3"].includes(item)) return false;
+      if(["Danish oil 1","Danish oil 2","Danish oil 3","Inside oiled / sealed"].includes(item)) return false;
 
       if(isSatin){
         if(["Poly coat 4","Polished"].includes(item)) return false;
@@ -254,7 +254,7 @@ function workflowNextInstruction(nextItem,buildType){
     "Snare beds cut":"Cut the snare beds",
     "Drilled":"Drill the hardware holes",
     "Inside oiled / sealed":"Oil or seal the inside",
-    "Sealer coat":"Spray the sealer coat",
+    "Sealer coat":"Spray inside and outside sealing coats (20 ml polyurethane + 10 ml hardener per 14 × 6½ shell, repeated on Day 2)",
     "Poly coat 1":"Spray polyurethane coat 1",
     "Poly coat 2":"Spray polyurethane coat 2",
     "Poly coat 3":"Spray polyurethane coat 3",
@@ -393,7 +393,7 @@ function sprayMixForBatch(name,count){
   let recipe=null;
 
   if(batchName.includes("sealer")){
-    recipe={label:"Sealer coat",product:"Polyurethane",basePerDrum:30,hardenerPerDrum:15,hardener:"Standard hardener",thinnerPercent:20};
+    recipe={label:"Inside / outside sealing coat",product:"Polyurethane",basePerDrum:20,hardenerPerDrum:10,hardener:"Standard hardener",thinnerPercent:0};
   }else if(batchName.includes("satin")){
     recipe={label:"Final satin coat",product:"Satin",basePerDrum:30,hardenerPerDrum:15,hardener:"Rapid hardener",thinnerPercent:10};
   }else if(batchName.includes("polyurethane")){
@@ -1006,6 +1006,24 @@ function adjustedLengths(thicknesses, size="14 x 6.5"){
     cumulativeOuterDifference += diff;
     return length;
   });
+}
+
+function experimentalSequentialLengths(thicknesses, size="14 x 6.5"){
+  const values=(thicknesses||[]).map(value=>Math.max(0.01,Number(value||defaultPairThickness)));
+  if(!values.length) return [];
+  const key=shellSizeKey(size);
+  const currentBase=baseLengthsForSize(size);
+  // Workshop trial model. At 1.2 mm per layer the 14-inch reference runs
+  // 1106 -> 1096.75 -> 1087.50 -> 1078.25 -> 1069 (9.25 mm per step).
+  // Each transition uses the actual measured thickness of the previous and
+  // new layer, plus the provisional practical allowance observed in trials.
+  const practicalAllowance=9.25-(Math.PI*2.4);
+  const firstLength=key==="12" ? 949.5 : Number(currentBase[0]||defaultPlyLengths14[0]);
+  const lengths=[firstLength];
+  for(let i=1;i<values.length;i+=1){
+    lengths.push(lengths[i-1]-(Math.PI*(values[i-1]+values[i])+practicalAllowance));
+  }
+  return lengths;
 }
 
 function staveSpecForDiameter(diameter){
@@ -3318,7 +3336,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v7.9.54 — Workshop Today fix + deployment compatibility.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.4 — Veneer comparison + sealing workflow + hardware correction.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3687,7 +3705,7 @@ function App(){
     />}
     {showAddRepair && <AddRepairModal repairs={repairs} onClose={()=>setShowAddRepair(false)} onCreate={createRepair}/>}
     {repairJob && <RepairJobModal repair={repairJob} onClose={()=>setRepairJob(null)} updateRepair={updateRepair} deleteRepair={deleteRepair} setMessage={setMessage}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} returnDrumToProduction={returnDrumToProduction} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}} hardware={hardware} hardwareAllocations={hardwareAllocations} consumeHardwareForDrum={consumeHardwareForDrum} syncHardwareUsed={syncHardwareUsed} releaseHardwareForDrum={releaseHardwareForDrum}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} updateHardware={updateHardware} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} returnDrumToProduction={returnDrumToProduction} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}} hardware={hardware} hardwareAllocations={hardwareAllocations} consumeHardwareForDrum={consumeHardwareForDrum} syncHardwareUsed={syncHardwareUsed} releaseHardwareForDrum={releaseHardwareForDrum}/>}
   </main>
 }
 
@@ -4517,36 +4535,56 @@ function SizeEditor({drum, updateDrum}){
   </div>
 }
 
+function VeneerProcessNotes(){
+  return <div className="panel veneerProcessNotes">
+    <span className="launchPackEyebrow">ACTIVE WORKSHOP TRIAL</span>
+    <h2>Ply Veneer Process — Current Trial</h2>
+    <p className="calcNote">Keep the existing cut calculation as the production reference. Enter the actual measured thickness of each completed layer/group; it does not matter whether that layer contains one, two or three individual veneer sheets.</p>
+    <ol>
+      <li><b>Prepare veneer groups:</b> Glue pairs/triples as required, allow them to stabilise, sand flat and measure the actual finished thickness of each group.</li>
+      <li><b>Compare calculations:</b> The calculator shows the current method beside the experimental sequential thickness-based method.</li>
+      <li><b>Mould glue-up:</b> Apply full, even glue coverage with no dry areas.</li>
+      <li><b>Initial plug expansion:</b> Slightly expand the plug before fully tightening the mould to help squeeze out excess glue.</li>
+      <li><b>Final mould pressure:</b> Let the plug down, fully tighten/close the mould, then re-expand the plug to <b>1 bar</b>.</li>
+      <li><b>Staged inner-sheet trial:</b> If using the 9-sheet trial, press the first 9 single sheets for 24 hours, remove the plug and measure, then cut/glue the final single inside sheet. Reinsert the plug for 24 hours, then remove it and leave the shell a further 24 hours.</li>
+      <li><b>Record the result:</b> Note actual cut length and whether each layer was short, correct or long so the experimental formula can keep being calibrated.</li>
+    </ol>
+  </div>;
+}
+
+function VeneerComparison({thicknesses,size}){
+  const current=adjustedLengths(thicknesses,size);
+  const experimental=experimentalSequentialLengths(thicknesses,size);
+  return <div className="veneerCompareWrap">
+    <div className="veneerCompareHeader"><span>Layer</span><b>Current calculation</b><b>Experimental thickness calculation</b></div>
+    {thicknesses.map((value,index)=><div className={`veneerCompareRow ${index===4?"veneerSensitiveLayer":""}`} key={index}>
+      <span><b>L{index+1}</b><small>{Number(value||0).toFixed(2)} mm thick</small></span>
+      <strong>{current[index]!=null && Number.isFinite(current[index])?`${current[index].toFixed(1)} mm`:"—"}</strong>
+      <strong>{experimental[index]!=null?`${experimental[index].toFixed(1)} mm`:"—"}</strong>
+    </div>)}
+    {thicknesses.length>=5 && <div className="veneerCalibrationNote">
+      <b>Layer 5 watch item</b>
+      <span>14-inch workshop observations: around 1.2 mm layers, 1069 mm has fitted correctly. Thinner lay-ups have needed a longer Layer 5; thicker lay-ups have needed a shorter Layer 5. Keep the current value as the production reference while comparing the experimental column.</span>
+    </div>}
+  </div>;
+}
+
 function VeneerCalculator({drums, updateDrum, openJobCard}){
   const [manual,setManual]=useState([1.2,1.2,1.2,1.2,1.2]);
   const [manualSize,setManualSize]=useState("14 x 6.5");
-  const manualLengths=adjustedLengths(manual, manualSize);
+  const addLayer=()=>setManual(current=>[...current,1.2]);
+  const removeLayer=()=>setManual(current=>current.length>5?current.slice(0,-1):current);
   return <section>
-    <div className="panel"><h2>Ply Veneer Cut Calculator</h2><p>12&quot;, 13&quot; and 14&quot; cut lists are adjusted automatically from the selected shell size, then fine-tuned by actual thickness.</p></div>
-    <section className="panel"><h2>Manual Calculator</h2><label>Shell size</label><select value={manualSize} onChange={e=>setManualSize(e.target.value)}><option>14 x 6.5</option><option>14 x 5.5</option><option>13 x 7</option><option>12 x 7</option></select><p className="calcNote">{sizeAdjustmentLabel(manualSize)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><VeneerResult lengths={manualLengths} thicknesses={manual}/></section>
-    <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>{d.serial ? `#${d.serial}` : "Pending"} {d.timber}</b><span>{d.size} · {d.production_status}</span><p className="calcNote">{sizeAdjustmentLabel(d.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerResult lengths={adjustedLengths(t, d.size)}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
+    <div className="panel"><h2>Ply Veneer Cut Calculator</h2><p>The existing calculator remains unchanged. The experimental column uses the measured thickness of each layer/group and continues automatically for any number of added layers.</p></div>
+    <VeneerProcessNotes/>
+    <section className="panel"><h2>Manual Calculator</h2><label>Shell size</label><select value={manualSize} onChange={e=>setManualSize(e.target.value)}><option>14 x 6.5</option><option>14 x 5.5</option><option>13 x 7</option><option>12 x 7</option></select><p className="calcNote">{sizeAdjustmentLabel(manualSize)}. Measure each completed layer/group directly — single, pair or triple — and enter that actual thickness.</p><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><div className="buttonRow"><button type="button" onClick={addLayer}><Plus size={15}/> Add Layer</button>{manual.length>5&&<button type="button" onClick={removeLayer}>Remove Last Layer</button>}</div><VeneerComparison thicknesses={manual} size={manualSize}/></section>
+    <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>{d.serial ? `#${d.serial}` : "Pending"} {d.timber}</b><span>{d.size} · {d.production_status}</span><p className="calcNote">{sizeAdjustmentLabel(d.size)}. Saved drum records currently store Layers 1–5; use the Manual Calculator above for Layer 6+ trials.</p><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerComparison thicknesses={t} size={d.size}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
   </section>
 }
 
 function VeneerResult({lengths,thicknesses=[]}){
-  return <div className="resultList veneerResultList">{lengths.map((l,i)=>{
-    const thickness=Number(thicknesses[i] ?? 0);
-    const isOneMm=Math.abs(thickness-1)<0.051;
-    const isLayer3=i===2;
-    const isLayer5=i===4;
-    const practicalAdjustment=isOneMm && isLayer3 ? 2 : isOneMm && isLayer5 ? 1 : 0;
-    return <div className={(isLayer3||isLayer5)?"veneerSensitiveLayer":""} key={i}>
-      <b>Layer {i+1}</b>
-      <span>{l.toFixed(1)} mm</span>
-      {practicalAdjustment>0
-        ? <small className="veneerPracticalHighlight">Observed practical trial: {(l-practicalAdjustment).toFixed(1)} mm ({practicalAdjustment} mm shorter)</small>
-        : (isLayer3||isLayer5)
-          ? <small className="veneerFitWarning">Check fit before cutting — practical length may vary by about 1 mm.</small>
-          : null}
-    </div>;
-  })}</div>;
+  return <div className="resultList veneerResultList">{lengths.map((l,i)=><div className={i===4?"veneerSensitiveLayer":""} key={i}><b>Layer {i+1}</b><span>{l.toFixed(1)} mm</span>{i===4&&<small className="veneerFitWarning">Layer 5 remains a monitored fit item — compare against the experimental calculator before cutting.</small>}</div>)}</div>;
 }
-
 
 function localDateKey(value){
   if(!value) return "";
@@ -8500,7 +8538,7 @@ ${emailBody}`,"Customer email")}>Copy Email</button>
 }
 
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, returnDrumToProduction, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject, hardware=[], hardwareAllocations=[], consumeHardwareForDrum, syncHardwareUsed,releaseHardwareForDrum}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, updateHardware, completeDrum, addTime, markSold, markShipped, returnDrumToProduction, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject, hardware=[], hardwareAllocations=[], consumeHardwareForDrum, syncHardwareUsed,releaseHardwareForDrum}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
@@ -8543,6 +8581,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [showHardwareUsed,setShowHardwareUsed]=useState(false);
   const [hardwareSelection,setHardwareSelection]=useState({});
   const [trickFinish,setTrickFinish]=useState("Chrome");
+  const [hardwareSubstitutions,setHardwareSubstitutions]=useState({});
   const [savingHardware,setSavingHardware]=useState(false);
   const [pendingAssembly,setPendingAssembly]=useState(false);
   const [assemblyShortages,setAssemblyShortages]=useState([]);
@@ -8585,7 +8624,11 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   },[localOwnership,bradyCalculatedPrice,draft.finish,localBuildType,drum.drum_type,drum.size]);
 
   const standardHardware=drumHardwareRequirements({...drum,...draft,build_type:localBuildType});
-  const partByCode=Object.fromEntries(hardware.map(part=>[hardwareLookupKey(part),part]));
+  const partByCode=Object.fromEntries(hardware.flatMap(part=>[
+    [hardwareLookupKey(part),part],
+    [String(part.code||""),part],
+    [String(part.sku_key||""),part]
+  ]).filter(([key])=>key));
   const consumedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && String(a.status||"").toLowerCase()==="consumed");
   const allocatedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && String(a.status||"").toLowerCase()==="allocated");
   const consumedByPart=consumedForDrum.reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
@@ -8603,6 +8646,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       initial[req.code]=forAssembly ? true : isCurrentlyFitted;
     });
     setHardwareSelection(initial);
+    setHardwareSubstitutions({});
     setAssemblyShortages(shortages);
     setPendingAssembly(forAssembly);
     setShowHardwareUsed(true);
@@ -8612,9 +8656,12 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     setSavingHardware(true);
     const selected=standardHardware
       .filter(req=>hardwareSelection[req.code]===true)
-      .map(req=>req.code==="THROW-TRICK-CHROME" && trickFinish==="Gold"
-        ? {...req,code:"THROW-TRICK-GOLD",label:"Trick throw-off — Gold"}
-        : req);
+      .map(req=>{
+        const defaultCode=req.code==="THROW-TRICK-CHROME" && trickFinish==="Gold" ? "THROW-TRICK-GOLD" : req.code;
+        const chosenCode=hardwareSubstitutions[req.code] || defaultCode;
+        const chosenPart=partByCode[chosenCode];
+        return {...req,code:chosenCode,label:chosenPart?.part_name || req.label};
+      });
     const ok=await syncHardwareUsed(drum,selected,pendingAssembly);
     // syncHardwareUsed now handles any reservation release from a fresh database
     // read. Do not run a second prompt against stale Job Card allocation state.
@@ -9024,7 +9071,33 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
     {showHardwareUsed && <div className="hardwareUsedOverlay" onClick={()=>setShowHardwareUsed(false)}><div className="hardwareUsedModal" onClick={e=>e.stopPropagation()}>
       <div className="sectionHeader"><div><h2>Adjust Hardware Used</h2><p>{pendingAssembly?"There is not enough recorded stock for the full standard hardware set. Deselect anything not fitted, or save as assembled anyway to record a stock shortage.":"Select only the parts currently fitted to this drum."}</p></div><button onClick={()=>setShowHardwareUsed(false)}>Close</button></div>{assemblyShortages.length>0&&<div className="stocktakeNotice dangerText"><b>Hardware shortage</b><span>{assemblyShortages.map(req=>req.label).join(", ")}</span></div>}
-      <div className="hardwareChecklist">{standardHardware.map(req=>{const isTrick=req.code==="THROW-TRICK-CHROME";const lookupCode=isTrick&&trickFinish==="Gold"?"THROW-TRICK-GOLD":req.code;const part=partByCode[lookupCode];return <div key={req.code} className={`hardwareCheckRow ${assemblyShortages.some(x=>x.code===req.code)?"hardwareShortageRow":""}`}><input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/><span><b>{req.qty} × {isTrick?`Trick throw-off — ${trickFinish}`:req.label}</b><small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small>{isTrick&&hardwareSelection[req.code]!==false&&<select value={trickFinish} onChange={e=>setTrickFinish(e.target.value)}><option>Chrome</option><option>Gold</option></select>}</span></div>})}</div>
+      <div className="hardwareChecklist">{standardHardware.map(req=>{
+        const isTrick=req.code==="THROW-TRICK-CHROME";
+        const defaultCode=isTrick&&trickFinish==="Gold"?"THROW-TRICK-GOLD":req.code;
+        const lookupCode=hardwareSubstitutions[req.code]||defaultCode;
+        const part=partByCode[lookupCode];
+        const standardPart=partByCode[defaultCode];
+        const category=canonicalInventoryCategory(standardPart?.category);
+        const alternatives=hardware.filter(candidate=>candidate.id!==standardPart?.id && canonicalInventoryCategory(candidate.category)===category);
+        const insufficient=part && Number(part.qty_on_hand||0)<Number(req.qty||0);
+        return <div key={req.code} className={`hardwareCheckRow ${insufficient?"hardwareShortageRow":""}`}>
+          <input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/>
+          <span>
+            <b>{req.qty} × {part?.part_name || (isTrick?`Trick throw-off — ${trickFinish}`:req.label)}</b>
+            <small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small>
+            {isTrick&&hardwareSelection[req.code]!==false&&<select value={trickFinish} onChange={e=>setTrickFinish(e.target.value)}><option>Chrome</option><option>Gold</option></select>}
+            {hardwareSelection[req.code]!==false&&alternatives.length>0&&<label className="hardwareSubstituteControl">Hardware fitted<select value={hardwareSubstitutions[req.code]||""} onChange={e=>setHardwareSubstitutions(current=>({...current,[req.code]:e.target.value}))}><option value="">Standard — {standardPart?.part_name||req.label}</option>{alternatives.map(candidate=><option key={candidate.id} value={hardwareLookupKey(candidate)}>{candidate.part_name} · {candidate.finish||"Standard"} · {candidate.size||candidate.code} · {candidate.qty_on_hand} on hand</option>)}</select></label>}
+            {hardwareSelection[req.code]!==false&&insufficient&&part&&<button type="button" className="stockCorrectionButton" onClick={async()=>{
+              const entered=window.prompt(`App stock for ${part.part_name} is ${part.qty_on_hand}. How many are physically in stock before fitting this drum?`,String(part.qty_on_hand||0));
+              if(entered===null) return;
+              const qty=Number(entered);
+              if(!Number.isFinite(qty)||qty<0){setSavedMessage("Enter a valid physical stock quantity.");return;}
+              const ok=await updateHardware?.(part.id,{qty_on_hand:qty});
+              if(ok!==false) setSavedMessage(`${part.part_name} stock corrected to ${qty}. Review the row, then save hardware used.`);
+            }}>Correct stock level</button>}
+          </span>
+        </div>;
+      })}</div>
       <div className="modalActions"><button onClick={()=>setShowHardwareUsed(false)}>Cancel</button><button className="primary" disabled={savingHardware} onClick={saveHardwareUsed}>{savingHardware?"Saving...":pendingAssembly?"Save as Assembled":"Save Hardware Used"}</button></div>
     </div></div>}
 
@@ -9125,7 +9198,9 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     </section>
 
     {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Stave" serial={drum.serial} timber={draft.timber} size={drum.size}/></section>}
-    {localBuildType==="Ply" && <section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={draft.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerResult lengths={adjustedLengths(veneer, drum.size)} thicknesses={veneer}/></section>}
+    {localBuildType==="Ply" && <><VeneerProcessNotes/><section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={draft.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Enter the measured thickness of each completed layer/group. The current calculation remains the production reference while the experimental value is monitored.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerComparison thicknesses={veneer} size={drum.size}/></section></>}
+
+    {!String(draft.finish||"").toLowerCase().includes("natural") && <section className="panel inner sealingWorkflowNote"><span className="launchPackEyebrow">UPDATED FINISHING PROCESS</span><h2>Inside / Outside Seal Before Machining</h2><p><b>14 × 6½ baseline per coat:</b> 20 ml polyurethane + 10 ml hardener. Spray both inside and outside and repeat the following day.</p><p>After the second coat the inside is finished and the outside sealer stage is complete. During the following 7-day cure, cut/sand bearing edges, cut snare beds and drill the hardware holes.</p></section>}
 
     <section className="panel inner"><h2>Manufacturing Checklist</h2>
       {shouldSuggestExtraFiddlebackCoat({...drum,...draft,timber:draft.timber,finish:draft.finish}) && <div className="fiddlebackCoatSuggestion">
