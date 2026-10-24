@@ -3710,7 +3710,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.17 — Individual hardware reservation release.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.18 — Inventory print layout + 14-inch brass hoop label fix.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -6173,6 +6173,18 @@ function Inventory({hardware, allocations=[], drums=[], openJobCard, updateHardw
     if(wanted.includes("brass")||wanted.includes("gold")) return selected.includes("brass")||selected.includes("gold");
     return false;
   });
+  const inventoryDisplayName=part=>{
+    const raw=String(part?.part_name||"");
+    const sizeText=String(part?.size||"");
+    const finishText=String(part?.finish||"");
+    const codeText=String(part?.code||"");
+    const isMislabelled14BrassHoop=
+      String(part?.category||"")==="Hoops" &&
+      /floor\s*tom\s*hoop/i.test(raw) &&
+      /14/.test(`${sizeText} ${raw} ${codeText}`) &&
+      /brass/i.test(`${finishText} ${raw} ${codeText}`);
+    return isMislabelled14BrassHoop ? '14" 8-lug 2.3mm Hoop' : raw;
+  };
   const finishFamily=part=>{
     const finish=String(part.finish||"").toLowerCase();
     const combined=`${part.part_name||""} ${finish}`.toLowerCase();
@@ -6644,10 +6656,37 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
     openPrintableDocument(html,"Please allow pop-ups to print or save the supplier kit hardware breakdown.");
   };
   const printInventoryStocktake=()=>{
-    const printableParts=[...displayHardware].sort((a,b)=>String(a.category||"").localeCompare(String(b.category||""))||sortParts(a,b));
-    const categories=[...new Set(printableParts.map(part=>part.category||"Other"))];
-    const body=categories.map(category=>{const rows=printableParts.filter(part=>(part.category||"Other")===category).map(part=>`<tr><td>${escapeHtml(part.part_name||"")}</td><td>${escapeHtml(part.finish||"")}</td><td>${escapeHtml(part.supplier||"")}</td><td>${escapeHtml(part.code||"")}<br/><small>${escapeHtml(part.size||"")}</small></td><td>${Number(part.qty_on_hand||0)}</td><td>${Number(part.qty_allocated||0)}</td><td>${Number(part.qty_available||0)}</td><td class="countCell"></td><td>${money(part.landed_cost_aud||0)}</td><td>${Number(part.reorder_level||0)}</td></tr>`).join("");return `<tr class="category"><td colspan="10">${escapeHtml(category)}</td></tr>${rows}`}).join("");
-    const html=`<!doctype html><html><head><title>Nowak Workshop OS Stocktake</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:10px}h1{margin:0 0 4px;font-size:20px}p{margin:0 0 12px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #888;padding:5px;text-align:left;vertical-align:top}th{background:#ddd}.category td{background:#eee;font-weight:700;font-size:11px}.countCell{min-width:55px;height:20px}small{font-size:9px}</style></head><body><h1>Nowak Drum Company — Inventory Stocktake</h1><p>Printed ${new Date().toLocaleString("en-AU")} · Physical count is intentionally blank for workshop stocktake.</p><table><thead><tr><th>Part</th><th>Finish</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Physical count</th><th>Unit cost</th><th>Minimum</th></tr></thead><tbody>${body}</tbody></table></body></html>`;
+    const printableGroups=groups.map(group=>{
+      const parents=stocktakeParents.filter(part=>part.category===group).sort(sortParts);
+      if(!parents.length) return "";
+      const rows=parents.flatMap(parent=>{
+        const parentRow=`<tr class="mainRow"><td><b>${escapeHtml(inventoryDisplayName(parent)||"")}</b>${parent.finish?`<br/><small>${escapeHtml(parent.finish)}</small>`:""}</td><td>${escapeHtml(parent.supplier||"—")}</td><td>${escapeHtml(parent.code||"")}<br/><small>${escapeHtml(parent.size||"")}</small></td><td>${Number(parent.qty_on_hand||0)}</td><td>${Number(parent.qty_allocated||0)}</td><td>${Number(parent.qty_available||0)}</td><td class="countCell"></td><td>${money(parent.landed_cost_aud||0)}</td><td>${Number(parent.reorder_level||0)}</td></tr>`;
+        const variantRows=variantsFor(parent).sort(sortParts).map(variant=>`<tr class="variantRow"><td><span class="variantIndent">↳ ${escapeHtml(variant.finish||inventoryDisplayName(variant)||"Variant")}</span></td><td>${escapeHtml(variant.supplier||"—")}</td><td>${escapeHtml(variant.code||"")}<br/><small>${escapeHtml(variant.size||"")}</small></td><td>${Number(variant.qty_on_hand||0)}</td><td>${Number(variant.qty_allocated||0)}</td><td>${Number(variant.qty_available||0)}</td><td class="countCell"></td><td>${money(variant.landed_cost_aud||0)}</td><td>${Number(variant.reorder_level||0)}</td></tr>`);
+        return [parentRow,...variantRows];
+      }).join("");
+      return `<section class="inventoryBlock"><h2>${escapeHtml(group)}</h2><table><thead><tr><th>Part</th><th>Supplier</th><th>Code / size</th><th>On hand</th><th>Allocated</th><th>Available</th><th>Physical count</th><th>Unit cost</th><th>Minimum</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+    }).join("");
+
+    const html=`<!doctype html><html><head><title>Nowak Workshop OS Stocktake</title><style>
+      @page{size:A4 landscape;margin:9mm}
+      body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:9.5px;margin:0}
+      h1{margin:0 0 4px;font-size:20px}
+      .intro{margin:0 0 12px;color:#444}
+      .inventoryBlock{break-inside:avoid;margin:0 0 14px}
+      .inventoryBlock h2{font-size:14px;margin:0 0 5px;padding:7px 8px;background:#efefef;border:1px solid #aaa}
+      table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #aaa;padding:5px;text-align:left;vertical-align:middle}
+      th{background:#dedede;font-weight:700}
+      .mainRow td:first-child{font-weight:600}
+      .variantRow td{background:#fafafa}
+      .variantIndent{display:inline-block;padding-left:14px}
+      .countCell{min-width:62px;height:23px;background:#fff}
+      small{font-size:8.5px;color:#444}
+    </style></head><body>
+      <h1>Nowak Drum Company — Inventory Stocktake</h1>
+      <p class="intro">Printed ${new Date().toLocaleString("en-AU")} · Laid out to match Inventory → Stock Levels. Count everything physically in the workshop, including allocated hardware.</p>
+      ${printableGroups}
+    </body></html>`;
     openPrintableDocument(html,"Please allow pop-ups to print or save the stocktake.");
   };
   const updatePurchaseOrderStatus=async(order,status)=>{const patch={status};if(status==="Sent")patch.sent_at=new Date().toISOString();if(status==="Received")patch.received_at=new Date().toISOString();const {data,error}=await supabase.from("supplier_orders").update(patch).eq("id",order.id).select().single();if(error)return setSupplierOrderMessage(error.message);const updated=data||{...order,...patch};setSelectedPurchaseOrder(updated);await loadPurchaseOrders();setSupplierOrderMessage(`${order.po_number} marked ${status}.`)};
@@ -6913,9 +6952,9 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
         const isShort=Number(p.qty_available||0)<0;
         const hasAllocation=Number(p.qty_allocated||0)>0;
         const rowClass=isShort?"inventoryShortageRow":hasAllocation?"inventoryAllocatedRow":"";
-        const main=<tr className={rowClass} key={p.id}><td>{p.part_name}{p.finish&&<><br/><small>{p.finish}</small></>}{isShort&&<span className="shortageBadge">{`SHORT ${Math.abs(Number(p.qty_available||0))}`}</span>}{hasAllocation&&!isShort&&<span className="allocationBadge">ALLOCATED</span>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={p.id} defaultValue={Number(p.qty_on_hand||0)}/>:<b>{p.qty_on_hand}</b>}</td><td>{hasAllocation&&!stocktakeMode?<button type="button" className="allocationOpenButton" onClick={()=>openAllocatedDrums(p.allocated_drum_ids||[])} title="Open reserved drum Job Card"><b>{p.qty_allocated}</b><small className="allocationHint">Reserved for {p.allocated_drum_ids?.length||0} drum{(p.allocated_drum_ids?.length||0)===1?"":"s"} · Open</small></button>:<><b>{p.qty_allocated}</b>{hasAllocation&&<small className="allocationHint">Reserved for {p.allocated_drum_ids?.length||0} drum{(p.allocated_drum_ids?.length||0)===1?"":"s"}</small>}</>}</td><td><b className={isShort?"dangerText":hasAllocation?"okText":""}>{p.qty_available}</b>{isShort&&<small className="shortageHint">Order at least {Math.abs(Number(p.qty_available||0))}</small>}</td><td>{stocktakeMode?<input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/>:money(p.landed_cost_aud||0)}</td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" data-stock-min-id={p.id} defaultValue={Number(p.reorder_level||0)}/>:<b>{p.reorder_level||0}</b>}</td></tr>;
+        const main=<tr className={rowClass} key={p.id}><td>{inventoryDisplayName(p)}{p.finish&&<><br/><small>{p.finish}</small></>}{isShort&&<span className="shortageBadge">{`SHORT ${Math.abs(Number(p.qty_available||0))}`}</span>}{hasAllocation&&!isShort&&<span className="allocationBadge">ALLOCATED</span>}</td><td>{p.supplier||"—"}</td><td>{p.code}<br/><small>{p.size}</small></td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={p.id} defaultValue={Number(p.qty_on_hand||0)}/>:<b>{p.qty_on_hand}</b>}</td><td>{hasAllocation&&!stocktakeMode?<button type="button" className="allocationOpenButton" onClick={()=>openAllocatedDrums(p.allocated_drum_ids||[])} title="Open reserved drum Job Card"><b>{p.qty_allocated}</b><small className="allocationHint">Reserved for {p.allocated_drum_ids?.length||0} drum{(p.allocated_drum_ids?.length||0)===1?"":"s"} · Open</small></button>:<><b>{p.qty_allocated}</b>{hasAllocation&&<small className="allocationHint">Reserved for {p.allocated_drum_ids?.length||0} drum{(p.allocated_drum_ids?.length||0)===1?"":"s"}</small>}</>}</td><td><b className={isShort?"dangerText":hasAllocation?"okText":""}>{p.qty_available}</b>{isShort&&<small className="shortageHint">Order at least {Math.abs(Number(p.qty_available||0))}</small>}</td><td>{stocktakeMode?<input className="moneyInput" type="number" min="0" step="0.01" defaultValue={Number(p.landed_cost_aud||0)} onBlur={e=>Number(e.target.value)!==Number(p.landed_cost_aud||0)&&updateHardware(p.id,{landed_cost_aud:Number(e.target.value||0)})}/>:money(p.landed_cost_aud||0)}</td><td>{stocktakeMode?<input className="compactInput" type="number" min="0" data-stock-min-id={p.id} defaultValue={Number(p.reorder_level||0)}/>:<b>{p.reorder_level||0}</b>}</td></tr>;
         if(!stocktakeMode) return [main];
-        const existingRows=variants.map(v=>{const allowMinimum=String(v.category||"")==="Snare Wires";const variantShort=Number(v.qty_available||0)<0;const variantAllocated=Number(v.qty_allocated||0)>0;return <tr className={`variantRow ${variantShort?"inventoryShortageRow":variantAllocated?"inventoryAllocatedRow":""}`} key={v.id}><td><span className="variantIndent">↳ {v.finish||v.part_name}</span>{variantShort&&<span className="shortageBadge">SHORT {Math.abs(Number(v.qty_available||0))}</span>}{variantAllocated&&!variantShort&&<span className="allocationBadge">ALLOCATED</span>}</td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={v.id} defaultValue={Number(v.qty_on_hand||0)}/></td><td>{variantAllocated&&!stocktakeMode?<button type="button" className="allocationOpenButton" onClick={()=>openAllocatedDrums(v.allocated_drum_ids||[])} title="Open reserved drum Job Card"><b>{v.qty_allocated}</b><small className="allocationHint">Reserved · Open</small></button>:<><b>{v.qty_allocated}</b>{variantAllocated&&<small className="allocationHint">Reserved</small>}</>}</td><td><b className={variantShort?"dangerText":variantAllocated?"okText":""}>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td>{allowMinimum?<input className="compactInput" type="number" min="0" data-stock-min-id={v.id} defaultValue={Number(v.reorder_level||0)}/>:<b>—</b>}</td></tr>});
+        const existingRows=variants.map(v=>{const allowMinimum=String(v.category||"")==="Snare Wires";const variantShort=Number(v.qty_available||0)<0;const variantAllocated=Number(v.qty_allocated||0)>0;return <tr className={`variantRow ${variantShort?"inventoryShortageRow":variantAllocated?"inventoryAllocatedRow":""}`} key={v.id}><td><span className="variantIndent">↳ {v.finish||inventoryDisplayName(v)}</span>{variantShort&&<span className="shortageBadge">SHORT {Math.abs(Number(v.qty_available||0))}</span>}{variantAllocated&&!variantShort&&<span className="allocationBadge">ALLOCATED</span>}</td><td>{v.supplier||"—"}</td><td>{v.code}<br/><small>{v.size}</small></td><td><input className="compactInput" type="number" min="0" inputMode="numeric" data-stock-id={v.id} defaultValue={Number(v.qty_on_hand||0)}/></td><td>{variantAllocated&&!stocktakeMode?<button type="button" className="allocationOpenButton" onClick={()=>openAllocatedDrums(v.allocated_drum_ids||[])} title="Open reserved drum Job Card"><b>{v.qty_allocated}</b><small className="allocationHint">Reserved · Open</small></button>:<><b>{v.qty_allocated}</b>{variantAllocated&&<small className="allocationHint">Reserved</small>}</>}</td><td><b className={variantShort?"dangerText":variantAllocated?"okText":""}>{v.qty_available}</b></td><td>{money(v.landed_cost_aud||0)}</td><td>{allowMinimum?<input className="compactInput" type="number" min="0" data-stock-min-id={v.id} defaultValue={Number(v.reorder_level||0)}/>:<b>—</b>}</td></tr>});
         const missingRows=[];
         const optionalFinishes=(p.category==="Snare Wires"&&finishFamily(p)==="Stainless Steel")
           ?["Brass"]
@@ -9978,7 +10017,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
             {extraHardwareUsed.map((row,index)=><div className="hardwareSubstitutionRow" key={index}>
               <select value={row.hardware_part_id} onChange={e=>setExtraHardwareUsed(current=>current.map((x,i)=>i===index?{...x,hardware_part_id:e.target.value}:x))}>
                 <option value="">Select actual hardware…</option>
-                {[...hardware].sort((a,b)=>String(a.category||"").localeCompare(String(b.category||""))||String(a.part_name||"").localeCompare(String(b.part_name||""))).map(part=><option key={part.id} value={part.id}>{part.category} · {part.part_name} · {part.finish||"Standard"} · {part.size||part.code} · On hand {part.qty_on_hand||0}</option>)}
+                {[...hardware].sort((a,b)=>String(a.category||"").localeCompare(String(b.category||""))||String(a.part_name||"").localeCompare(String(b.part_name||""))).map(part=><option key={part.id} value={part.id}>{part.category} · {inventoryDisplayName(part)} · {part.finish||"Standard"} · {part.size||part.code} · On hand {part.qty_on_hand||0}</option>)}
               </select>
               <input className="compactInput" type="number" min="1" value={row.quantity} onChange={e=>setExtraHardwareUsed(current=>current.map((x,i)=>i===index?{...x,quantity:Number(e.target.value||1)}:x))}/>
               <button type="button" className="dangerButton" onClick={()=>setExtraHardwareUsed(current=>current.filter((_,i)=>i!==index))}>Remove</button>
