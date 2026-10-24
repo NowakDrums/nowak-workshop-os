@@ -3689,7 +3689,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.11 — Hardware substitutions + clean Job Card notes.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.12 — Receiving costs, supplier pricing + duplicate cleanup.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -5922,6 +5922,13 @@ function RepairJobModal({repair,onClose,updateRepair,deleteRepair,setMessage}){
   </div></div>
 }
 
+function supplierUnitCost(part,supplier){
+  if(!part) return 0;
+  const key=preferredSupplierName(supplier||part.supplier||"");
+  const saved=part.supplier_prices && typeof part.supplier_prices==="object" ? part.supplier_prices[key] : null;
+  return Number(saved?.unit_price_aud ?? saved?.landed_unit_cost_aud ?? part.landed_cost_aud ?? 0);
+}
+
 function Inventory({hardware, allocations=[], drums=[], openJobCard, updateHardware, saveStocktake, refreshData, allocateHardware, releaseHardware, lowStock, inventoryValue}){
   const [activeTab,setActiveTab]=useState("stock");
   const [stocktakeMode,setStocktakeMode]=useState(false);
@@ -6288,7 +6295,7 @@ function Inventory({hardware, allocations=[], drums=[], openJobCard, updateHardw
     const preferredSupplier=purchaseOrderSupplier;
     const onOrder=Number(onOrderByCode[parsed.code]||0);
     const toOrder=Math.max(0,grossNeed-onOrder);
-    return {code:parsed.code,planKey,preferredSupplier,part,required,available,currentShortage,grossNeed,onOrder,toOrder,cost:Number(part?.landed_cost_aud||0),total:toOrder*Number(part?.landed_cost_aud||0)};
+    return {code:parsed.code,planKey,preferredSupplier,part,required,available,currentShortage,grossNeed,onOrder,toOrder,cost:supplierUnitCost(part,preferredSupplier),total:toOrder*supplierUnitCost(part,preferredSupplier)};
   }).filter(row=>row.toOrder>0);
   const orderEstimate=orderRows.reduce((sum,row)=>sum+row.total,0);
   const supplierBucket=(part,override="")=>{
@@ -6646,7 +6653,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
   const addPurchaseOrderItem=partId=>{
     const part=hardware.find(p=>p.id===partId);if(!part||!purchaseOrderDraft)return;
     if((purchaseOrderDraft.order_items||[]).some(item=>item.hardware_part_id===part.id))return;
-    const item={hardware_part_id:part.id,name:supplierName(part),colour:supplierColour(part),code:supplierCode(part),size:supplierSize(part),quantity:1,unit_cost:Number(part.landed_cost_aud||0),estimated_total:Number(part.landed_cost_aud||0)};
+    const item={hardware_part_id:part.id,name:supplierName(part),colour:supplierColour(part),code:supplierCode(part),size:supplierSize(part),quantity:1,unit_cost:supplierUnitCost(part,purchaseOrderDraft.supplier||part.supplier),estimated_total:supplierUnitCost(part,purchaseOrderDraft.supplier||part.supplier)};
     setPurchaseOrderDraft(current=>({...current,order_items:[...(current.order_items||[]),item]}));
   };
   const outstandingRowsForOrder=order=>{
@@ -6666,7 +6673,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
     const rows=clean.flatMap(outstandingRowsForOrder);
     if(!rows.length)return setSupplierOrderMessage("The selected purchase orders have no outstanding quantities.");
     const first=clean[0];
-    setReceivingDraft({orders:clean,order:first,items:rows,delivery_date:new Date().toISOString().slice(0,10),supplier_invoice:"",tracking_number:"",freight_type:first.freight_type||"",currency:first.currency||"USD",exchange_rate_to_aud:Number(first.exchange_rate_to_aud||1.5),shipping_cost:0,tax_cost:0,duty_cost:0,payment_fees:0,allocation_method:first.allocation_method||"value",notes:"",close_remaining:false});
+    setReceivingDraft({orders:clean,order:first,items:rows,delivery_date:new Date().toISOString().slice(0,10),supplier_invoice:"",tracking_number:"",freight_type:first.freight_type||"",currency:first.currency||"USD",exchange_rate_to_aud:Number(first.exchange_rate_to_aud||1.5),shipping_cost:0,consignment_cost:0,tax_cost:0,duty_cost:0,payment_fees:0,allocation_method:first.allocation_method||"value",notes:"",close_remaining:false});
     setPurchaseOrderReceiveOpen(true);
   };
   const openReceiving=order=>openCombinedReceiving([order]);
@@ -6683,7 +6690,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
     });
     const foreignTotal=rows.reduce((sum,item)=>sum+item.foreign_subtotal,0);
     const convertedTotal=rows.reduce((sum,item)=>sum+item.converted_subtotal_aud,0);
-    const sharedTotal=[draft.shipping_cost,draft.tax_cost,draft.duty_cost,draft.payment_fees].reduce((sum,value)=>sum+Math.max(0,Number(value||0)),0);
+    const sharedTotal=[draft.shipping_cost,draft.consignment_cost,draft.tax_cost,draft.duty_cost,draft.payment_fees].reduce((sum,value)=>sum+Math.max(0,Number(value||0)),0);
     const method=draft.allocation_method||"value";
     const denominator=method==="quantity"
       ? rows.reduce((sum,item)=>sum+item.quantity_received,0)
@@ -6719,7 +6726,24 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
       const oldQty=Number(part.qty_on_hand||0),oldCost=Number(part.landed_cost_aud||0),newQty=Number(shipment.quantity||0);
       const combinedQty=oldQty+newQty;
       const weightedCost=combinedQty>0?((oldQty*oldCost)+Number(shipment.landedValue||0))/combinedQty:(newQty?Number(shipment.landedValue||0)/newQty:oldCost);
-      const {error:partError}=await supabase.from("hardware_parts").update({qty_on_hand:combinedQty,landed_cost_aud:Number(weightedCost.toFixed(4))}).eq("id",part.id);
+      const supplierNameKey=preferredSupplierName(orders.find(order=>receivedItems.some(item=>String(item.source_order_id)===String(order.id)&&String(item.hardware_part_id)===String(part.id)))?.supplier||part.supplier||"");
+      const receivedForPart=receivedItems.filter(item=>String(item.hardware_part_id)===String(part.id));
+      const supplierQty=receivedForPart.reduce((sum,item)=>sum+Number(item.quantity_received||0),0);
+      const supplierItemValue=receivedForPart.reduce((sum,item)=>sum+Number(item.converted_subtotal_aud||0),0);
+      const supplierLandedValue=receivedForPart.reduce((sum,item)=>sum+Number(item.landed_total_aud||0),0);
+      const supplierPrices={...(part.supplier_prices||{})};
+      if(supplierNameKey&&supplierQty>0){
+        supplierPrices[supplierNameKey]={
+          unit_price_aud:Number((supplierItemValue/supplierQty).toFixed(4)),
+          landed_unit_cost_aud:Number((supplierLandedValue/supplierQty).toFixed(4)),
+          updated_at:new Date().toISOString()
+        };
+      }
+      const {error:partError}=await supabase.from("hardware_parts").update({
+        qty_on_hand:combinedQty,
+        landed_cost_aud:Number(weightedCost.toFixed(4)),
+        supplier_prices:supplierPrices
+      }).eq("id",part.id);
       if(partError)return setSupplierOrderMessage(`Could not update ${part.part_name}: ${partError.message}`);
     }
     const shipmentOrderIds=orders.map(order=>order.id);
@@ -6727,12 +6751,12 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
       const orderItems=receivedItems.filter(item=>String(item.source_order_id)===String(order.id));
       const orderShared=orderItems.reduce((sum,item)=>sum+Number(item.allocated_shared_aud||0),0);
       const sharedRatio=breakdown.sharedTotal>0?orderShared/breakdown.sharedTotal:0;
-      const receipt={received_at:new Date().toISOString(),delivery_date:receivingDraft.delivery_date,currency:breakdown.currency,exchange_rate_to_aud:breakdown.fx,allocation_method:receivingDraft.allocation_method,combined_shipment:orders.length>1,shipment_order_ids:shipmentOrderIds,items:orderItems.map(item=>({hardware_part_id:item.hardware_part_id,code:item.code,name:item.name,quantity_received:item.quantity_received,unit_price_foreign:item.unit_price_foreign,foreign_subtotal:item.foreign_subtotal,converted_subtotal_aud:item.converted_subtotal_aud,allocated_shared_aud:item.allocated_shared_aud,landed_total_aud:item.landed_total_aud,landed_unit_cost_aud:item.landed_unit_cost_aud})),supplier_invoice:receivingDraft.supplier_invoice,tracking_number:receivingDraft.tracking_number,freight_type:receivingDraft.freight_type,shipping_cost:Number(receivingDraft.shipping_cost||0)*sharedRatio,tax_cost:Number(receivingDraft.tax_cost||0)*sharedRatio,duty_cost:Number(receivingDraft.duty_cost||0)*sharedRatio,payment_fees:Number(receivingDraft.payment_fees||0)*sharedRatio,order_allocated_shared_aud:orderShared,shipment_shared_total_aud:breakdown.sharedTotal,invoice_foreign_total:orderItems.reduce((sum,item)=>sum+Number(item.foreign_subtotal||0),0),converted_items_total_aud:orderItems.reduce((sum,item)=>sum+Number(item.converted_subtotal_aud||0),0),landed_total_aud:orderItems.reduce((sum,item)=>sum+Number(item.landed_total_aud||0),0),notes:receivingDraft.notes};
+      const receipt={received_at:new Date().toISOString(),delivery_date:receivingDraft.delivery_date,currency:breakdown.currency,exchange_rate_to_aud:breakdown.fx,allocation_method:receivingDraft.allocation_method,combined_shipment:orders.length>1,shipment_order_ids:shipmentOrderIds,items:orderItems.map(item=>({hardware_part_id:item.hardware_part_id,code:item.code,name:item.name,quantity_received:item.quantity_received,unit_price_foreign:item.unit_price_foreign,foreign_subtotal:item.foreign_subtotal,converted_subtotal_aud:item.converted_subtotal_aud,allocated_shared_aud:item.allocated_shared_aud,landed_total_aud:item.landed_total_aud,landed_unit_cost_aud:item.landed_unit_cost_aud})),supplier_invoice:receivingDraft.supplier_invoice,tracking_number:receivingDraft.tracking_number,freight_type:receivingDraft.freight_type,shipping_cost:Number(receivingDraft.shipping_cost||0)*sharedRatio,consignment_cost:Number(receivingDraft.consignment_cost||0)*sharedRatio,tax_cost:Number(receivingDraft.tax_cost||0)*sharedRatio,duty_cost:Number(receivingDraft.duty_cost||0)*sharedRatio,payment_fees:Number(receivingDraft.payment_fees||0)*sharedRatio,order_allocated_shared_aud:orderShared,shipment_shared_total_aud:breakdown.sharedTotal,invoice_foreign_total:orderItems.reduce((sum,item)=>sum+Number(item.foreign_subtotal||0),0),converted_items_total_aud:orderItems.reduce((sum,item)=>sum+Number(item.converted_subtotal_aud||0),0),landed_total_aud:orderItems.reduce((sum,item)=>sum+Number(item.landed_total_aud||0),0),notes:receivingDraft.notes};
       const history=[...(order.receiving_history||[]),receipt];
       const newlyReceived={...receivedTotals(order)};orderItems.forEach(item=>{const key=item.hardware_part_id||item.code;newlyReceived[key]=(newlyReceived[key]||0)+Number(item.quantity_received||0)});
       const hasOutstanding=(order.order_items||[]).some(item=>Number(newlyReceived[item.hardware_part_id||item.code]||0)<Number(item.quantity||0));
       const status=receivingDraft.close_remaining||!hasOutstanding?"Received":"Partially Received";
-      const patch={receiving_history:history,status,supplier_invoice:receivingDraft.supplier_invoice||null,tracking_number:receivingDraft.tracking_number||null,freight_type:receivingDraft.freight_type||null,currency:breakdown.currency,exchange_rate_to_aud:breakdown.fx,shipping_cost:Number(receivingDraft.shipping_cost||0)*sharedRatio,tax_cost:Number(receivingDraft.tax_cost||0)*sharedRatio,duty_cost:Number(receivingDraft.duty_cost||0)*sharedRatio,payment_fees:Number(receivingDraft.payment_fees||0)*sharedRatio,allocation_method:receivingDraft.allocation_method,received_at:status==="Received"?new Date().toISOString():null};
+      const patch={receiving_history:history,status,supplier_invoice:receivingDraft.supplier_invoice||null,tracking_number:receivingDraft.tracking_number||null,freight_type:receivingDraft.freight_type||null,currency:breakdown.currency,exchange_rate_to_aud:breakdown.fx,shipping_cost:Number(receivingDraft.shipping_cost||0)*sharedRatio,consignment_cost:Number(receivingDraft.consignment_cost||0)*sharedRatio,tax_cost:Number(receivingDraft.tax_cost||0)*sharedRatio,duty_cost:Number(receivingDraft.duty_cost||0)*sharedRatio,payment_fees:Number(receivingDraft.payment_fees||0)*sharedRatio,allocation_method:receivingDraft.allocation_method,received_at:status==="Received"?new Date().toISOString():null};
       const {error}=await supabase.from("supplier_orders").update(patch).eq("id",order.id);
       if(error)return setSupplierOrderMessage(`Could not update ${order.po_number}: ${error.message}`);
     }
@@ -6740,9 +6764,61 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
   };
 
 
+  const exactDuplicateGroups=()=>{
+    const keyFor=part=>[
+      String(part.category||"").trim().toLowerCase(),
+      normaliseHardwareName(part.part_name||""),
+      String(part.code||"").trim().toLowerCase(),
+      String(part.size||"").trim().toLowerCase(),
+      String(part.finish||"").trim().toLowerCase(),
+      preferredSupplierName(part.supplier||"").trim().toLowerCase()
+    ].join("|");
+    const groups=new Map();
+    hardware.forEach(part=>{const key=keyFor(part);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(part);});
+    return [...groups.values()].filter(group=>group.length>1);
+  };
+
+  const cleanExactHardwareDuplicates=async()=>{
+    const groups=exactDuplicateGroups();
+    if(!groups.length){setStockSaveMessage("No exact duplicate hardware records were found.");return;}
+    const total=groups.reduce((sum,group)=>sum+group.length-1,0);
+    if(!window.confirm(`Found ${total} exact duplicate hardware record${total===1?"":"s"} across ${groups.length} item${groups.length===1?"":"s"}.\n\nOnly records with the same category, name, code, size, finish and supplier will be merged. Continue?`)) return;
+    setStockSaving(true);setStockSaveMessage("");
+    try{
+      for(const group of groups){
+        const sorted=[...group].sort((a,b)=>{
+          const aScore=Number(a.qty_on_hand||0)+(Number(a.landed_cost_aud||0)>0?0.01:0);
+          const bScore=Number(b.qty_on_hand||0)+(Number(b.landed_cost_aud||0)>0?0.01:0);
+          return bScore-aScore;
+        });
+        const keeper=sorted[0],duplicates=sorted.slice(1);
+        const duplicateIds=duplicates.map(x=>x.id);
+        const mergedSupplierPrices=Object.assign({},...sorted.map(x=>x.supplier_prices||{}));
+        const patch={
+          qty_on_hand:Math.max(...sorted.map(x=>Number(x.qty_on_hand||0))),
+          reorder_level:Math.max(...sorted.map(x=>Number(x.reorder_level||0))),
+          landed_cost_aud:Number(keeper.landed_cost_aud||0)||Math.max(...sorted.map(x=>Number(x.landed_cost_aud||0))),
+          supplier_prices:mergedSupplierPrices
+        };
+        const {error:updateError}=await supabase.from("hardware_parts").update(patch).eq("id",keeper.id);
+        if(updateError) throw new Error(`Could not merge ${keeper.part_name}: ${updateError.message}`);
+        if(duplicateIds.length){
+          const {error:allocError}=await supabase.from("hardware_allocations").update({hardware_part_id:keeper.id}).in("hardware_part_id",duplicateIds);
+          if(allocError) throw new Error(`Could not move allocations for ${keeper.part_name}: ${allocError.message}`);
+          const {error:deleteError}=await supabase.from("hardware_parts").delete().in("id",duplicateIds);
+          if(deleteError) throw new Error(`Could not remove duplicate ${keeper.part_name}: ${deleteError.message}`);
+        }
+      }
+      await refreshData?.();
+      setStockSaveMessage(`Duplicate cleanup complete · ${total} redundant hardware record${total===1?"":"s"} removed.`);
+    }catch(error){
+      setStockSaveMessage(error?.message||"Duplicate cleanup could not be completed.");
+    }finally{setStockSaving(false);}
+  };
+
   return <section className="panel inventoryModule">
     {stockSaveMessage&&<div className={`stockSaveToast ${/successfully/i.test(stockSaveMessage)?"success":"notice"}`} role="status">{stockSaveMessage}</div>}
-    <div className="sectionHeader"><div><h2>Inventory</h2><p>{visibleHardware.length} displayed parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={printInventoryStocktake}><Printer size={16}/> Print Stocktake</button><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" disabled={stockSaving} onClick={saveAllCounts}>{stockSaving?"Saving…":"Save Stock Levels"}</button></div>:<div className="buttonRow"><button onClick={printInventoryStocktake}><Printer size={16}/> Print Stocktake</button><button className="primary" onClick={()=>setStocktakeMode(true)}>Adjust Stock Levels</button></div>)}</div>
+    <div className="sectionHeader"><div><h2>Inventory</h2><p>{visibleHardware.length} displayed parts · {lowStock} low stock alerts · {money(inventoryValue)} stock value</p></div>{activeTab==="stock"&&(stocktakeMode?<div className="buttonRow"><button onClick={printInventoryStocktake}><Printer size={16}/> Print Stocktake</button><button onClick={()=>{setCounts({});setNewVariantCounts({});setStocktakeMode(false)}}>Cancel</button><button className="primary" disabled={stockSaving} onClick={saveAllCounts}>{stockSaving?"Saving…":"Save Stock Levels"}</button></div>:<div className="buttonRow"><button onClick={printInventoryStocktake}><Printer size={16}/> Print Stocktake</button><button onClick={cleanExactHardwareDuplicates} disabled={stockSaving}>Clean Exact Duplicates</button><button className="primary" onClick={()=>setStocktakeMode(true)}>Adjust Stock Levels</button></div>)}</div>
     <nav className="inventoryTabs"><button className={activeTab==="stock"?"active":""} onClick={()=>setActiveTab("stock")}>Stock Levels</button><button className={activeTab==="allocations"?"active":""} onClick={()=>setActiveTab("allocations")}>Drum Hardware</button><button className={activeTab==="capacity"?"active":""} onClick={()=>setActiveTab("capacity")}>Build Capacity</button><button className={activeTab==="reorder"?"active":""} onClick={()=>setActiveTab("reorder")}>Reorder Planner</button><button className={activeTab==="purchasing"?"active":""} onClick={()=>setActiveTab("purchasing")}>Purchase Orders</button></nav>
 
     {activeTab==="stock"&&<><div className="inventorySummaryGrid"><article className="card"><b>On hand</b><strong>{visibleHardware.reduce((s,p)=>s+Number(p.qty_on_hand||0),0)}</strong></article><article className="card"><b>Allocated</b><strong>{visibleHardware.reduce((s,p)=>s+Number(p.qty_allocated||0),0)}</strong></article><article className="card"><b>Available</b><strong>{visibleHardware.reduce((s,p)=>s+Number(p.qty_available||0),0)}</strong></article><article className="card"><b>Stock value</b><strong>{money(inventoryValue)}</strong></article></div>
@@ -6788,7 +6864,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
 
     {purchaseOrderEditOpen&&purchaseOrderDraft&&<div className="modalBackdrop"><div className="modal purchaseOrderEditModal"><div className="modalHeader"><div><h2>Edit {purchaseOrderDraft.po_number}</h2><p>Adjust the order before sending or receiving it.</p></div><button onClick={()=>setPurchaseOrderEditOpen(false)}>Close</button></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Code / size</th><th>Quantity</th><th></th></tr></thead><tbody>{(purchaseOrderDraft.order_items||[]).map((item,index)=><tr key={`${item.hardware_part_id||item.code}-${index}`}><td>{item.name}<br/><small>{item.colour}</small></td><td>{item.code}<br/><small>{item.size}</small></td><td><input className="compactInput" type="number" min="0" value={item.quantity} onChange={e=>setPurchaseOrderDraft(current=>({...current,order_items:current.order_items.map((x,i)=>i===index?{...x,quantity:Number(e.target.value)}:x)}))}/></td><td><button className="dangerButton" onClick={()=>setPurchaseOrderDraft(current=>({...current,order_items:current.order_items.filter((_,i)=>i!==index)}))}><Trash2 size={14}/> Remove</button></td></tr>)}</tbody></table></div><label>Add another inventory item<select defaultValue="" onChange={e=>{addPurchaseOrderItem(e.target.value);e.target.value=""}}><option value="">Select hardware…</option>{hardware.filter(part=>/lea\s*hung/i.test(String(part.supplier||""))).sort(sortParts).map(part=><option key={part.id} value={part.id}>{part.part_name} · {supplierColour(part)} · {part.size} · {supplierCode(part)}</option>)}</select></label><label>Order notes<textarea value={purchaseOrderDraft.notes||""} onChange={e=>setPurchaseOrderDraft({...purchaseOrderDraft,notes:e.target.value})}/></label><div className="buttonRow"><button onClick={()=>setPurchaseOrderEditOpen(false)}>Cancel</button><button className="primary" onClick={savePurchaseOrderEdits}><Save size={16}/> Save Changes</button></div></div></div>}
 
-    {purchaseOrderReceiveOpen&&receivingDraft&&(()=>{const costs=receiptCostBreakdown(receivingDraft);return <div className="modalBackdrop"><div className="modal purchaseOrderReceiveModal"><div className="modalHeader"><div><h2>Receive {(receivingDraft.orders||[receivingDraft.order]).map(order=>order.po_number).join(" + ")}</h2><p>Enter one invoice and one set of shipping costs. Shared costs are allocated across every item in the combined shipment.</p></div><button onClick={()=>setPurchaseOrderReceiveOpen(false)}>Close</button></div><div className="receivingDetailsGrid"><label>Delivery date<input type="date" value={receivingDraft.delivery_date} onChange={e=>setReceivingDraft({...receivingDraft,delivery_date:e.target.value})}/></label><label>Supplier invoice<input value={receivingDraft.supplier_invoice} onChange={e=>setReceivingDraft({...receivingDraft,supplier_invoice:e.target.value})}/></label><label>Tracking number<input value={receivingDraft.tracking_number} onChange={e=>setReceivingDraft({...receivingDraft,tracking_number:e.target.value})}/></label><label>Invoice currency<select value={receivingDraft.currency} onChange={e=>setReceivingDraft({...receivingDraft,currency:e.target.value,exchange_rate_to_aud:e.target.value==="AUD"?1:receivingDraft.exchange_rate_to_aud})}><option>AUD</option><option>USD</option><option>CNY</option><option>EUR</option><option>GBP</option><option>NZD</option></select></label><label>Actual AUD exchange rate<input type="number" min="0" step="0.0001" value={receivingDraft.exchange_rate_to_aud} disabled={receivingDraft.currency==="AUD"} onChange={e=>setReceivingDraft({...receivingDraft,exchange_rate_to_aud:Number(e.target.value)})}/><small>AUD value of 1 {receivingDraft.currency}</small></label><label>Allocation method<select value={receivingDraft.allocation_method} onChange={e=>setReceivingDraft({...receivingDraft,allocation_method:e.target.value})}><option value="value">By item value</option><option value="quantity">By quantity</option><option value="manual">Manual weighting</option></select></label><label>Freight type<select value={receivingDraft.freight_type} onChange={e=>setReceivingDraft({...receivingDraft,freight_type:e.target.value})}><option value="">Not entered</option><option>Air</option><option>Sea</option><option>Courier</option></select></label><label>Shipping / freight (AUD)<input type="number" min="0" step="0.01" value={receivingDraft.shipping_cost} onChange={e=>setReceivingDraft({...receivingDraft,shipping_cost:Number(e.target.value)})}/></label><label>GST / tax (AUD)<input type="number" min="0" step="0.01" value={receivingDraft.tax_cost} onChange={e=>setReceivingDraft({...receivingDraft,tax_cost:Number(e.target.value)})}/></label><label>Import duty (AUD)<input type="number" min="0" step="0.01" value={receivingDraft.duty_cost} onChange={e=>setReceivingDraft({...receivingDraft,duty_cost:Number(e.target.value)})}/></label><label>Card / FX / bank fees (AUD)<input type="number" min="0" step="0.01" value={receivingDraft.payment_fees} onChange={e=>setReceivingDraft({...receivingDraft,payment_fees:Number(e.target.value)})}/></label></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Outstanding</th><th>Received now</th><th>Unit price ({receivingDraft.currency})</th>{receivingDraft.allocation_method==="manual"&&<th>Weight</th>}<th>Item AUD</th><th>Allocated costs</th><th>Landed each</th></tr></thead><tbody>{receivingDraft.items.map((item,index)=>{const calculated=costs.items.find(x=>String(x.source_order_id)===String(item.source_order_id)&&Number(x.source_item_index)===Number(item.source_item_index));return <tr key={`${item.hardware_part_id||item.code}-${index}`}><td>{item.name}<br/><small>{item.source_po_number} · {item.code} · {item.size}<br/>Ordered {item.quantity} · previously {item.already_received}</small></td><td><b>{item.outstanding}</b></td><td><input className="compactInput" type="number" min="0" max={item.outstanding} value={item.receive_now} onChange={e=>setReceivingDraft(current=>({...current,items:current.items.map((x,i)=>i===index?{...x,receive_now:Math.max(0,Math.min(Number(e.target.value),x.outstanding))}:x)}))}/></td><td><input className="moneyInput" type="number" min="0" step="0.0001" value={item.unit_price_foreign} onChange={e=>setReceivingDraft(current=>({...current,items:current.items.map((x,i)=>i===index?{...x,unit_price_foreign:Number(e.target.value)}:x)}))}/></td>{receivingDraft.allocation_method==="manual"&&<td><input className="compactInput" type="number" min="0" step="0.1" value={item.allocation_weight} onChange={e=>setReceivingDraft(current=>({...current,items:current.items.map((x,i)=>i===index?{...x,allocation_weight:Number(e.target.value)}:x)}))}/></td>}<td>{money(calculated?.converted_subtotal_aud||0)}</td><td>{money(calculated?.allocated_shared_aud||0)}</td><td><b>{money(calculated?.landed_unit_cost_aud||0)}</b></td></tr>})}</tbody></table></div><div className="landedCostSummary"><div><span>Invoice items</span><b>{Number(costs.foreignTotal||0).toLocaleString("en-AU",{style:"currency",currency:costs.currency||"AUD"})}</b></div><div><span>Converted items</span><b>{money(costs.convertedTotal)}</b></div><div><span>Shipping, tax, duty & fees</span><b>{money(costs.sharedTotal)}</b></div><div className="total"><span>Total landed cost</span><b>{money(costs.landedTotal)}</b></div></div><p className="mutedLine">Receiving updates each inventory item using a weighted average: existing stock value plus this shipment’s landed value, divided by the new total quantity.</p><label>Receiving notes<textarea value={receivingDraft.notes} onChange={e=>setReceivingDraft({...receivingDraft,notes:e.target.value})} placeholder="Out of stock, backordered, damaged, substituted…"/></label><label className="poCloseRemaining"><input type="checkbox" checked={receivingDraft.close_remaining} onChange={e=>setReceivingDraft({...receivingDraft,close_remaining:e.target.checked})}/><span><b>Close the order after this shipment</b><small>Use this when the supplier cannot provide the remaining quantities. Outstanding items will be treated as cancelled rather than backordered.</small></span></label><div className="buttonRow"><button onClick={()=>setPurchaseOrderReceiveOpen(false)}>Cancel</button><button className="primary" onClick={saveReceipt}><Package size={16}/> Receive & Update Costs</button></div></div></div>})()}
+    {purchaseOrderReceiveOpen&&receivingDraft&&(()=>{const costs=receiptCostBreakdown(receivingDraft);return <div className="modalBackdrop"><div className="modal purchaseOrderReceiveModal"><div className="modalHeader"><div><h2>Receive {(receivingDraft.orders||[receivingDraft.order]).map(order=>order.po_number).join(" + ")}</h2><p>Enter one invoice and one set of shipping costs. Shared costs are allocated across every item in the combined shipment.</p></div><button onClick={()=>setPurchaseOrderReceiveOpen(false)}>Close</button></div><div className="receivingDetailsGrid"><label>Delivery date<input type="date" value={receivingDraft.delivery_date} onChange={e=>setReceivingDraft({...receivingDraft,delivery_date:e.target.value})}/></label><label>Supplier invoice<input value={receivingDraft.supplier_invoice} onChange={e=>setReceivingDraft({...receivingDraft,supplier_invoice:e.target.value})}/></label><label>Tracking number<input value={receivingDraft.tracking_number} onChange={e=>setReceivingDraft({...receivingDraft,tracking_number:e.target.value})}/></label><label>Invoice currency<select value={receivingDraft.currency} onChange={e=>setReceivingDraft({...receivingDraft,currency:e.target.value,exchange_rate_to_aud:e.target.value==="AUD"?1:receivingDraft.exchange_rate_to_aud})}><option>AUD</option><option>USD</option><option>CNY</option><option>EUR</option><option>GBP</option><option>NZD</option></select></label><label>Actual AUD exchange rate<input type="number" min="0" step="0.0001" value={receivingDraft.exchange_rate_to_aud} disabled={receivingDraft.currency==="AUD"} onChange={e=>setReceivingDraft({...receivingDraft,exchange_rate_to_aud:Number(e.target.value)})}/><small>AUD value of 1 {receivingDraft.currency}</small></label><label>Allocation method<select value={receivingDraft.allocation_method} onChange={e=>setReceivingDraft({...receivingDraft,allocation_method:e.target.value})}><option value="value">By item value</option><option value="quantity">By quantity</option><option value="manual">Manual weighting</option></select></label><label>Freight type<select value={receivingDraft.freight_type} onChange={e=>setReceivingDraft({...receivingDraft,freight_type:e.target.value})}><option value="">Not entered</option><option>Air</option><option>Sea</option><option>Courier</option></select></label><label>Shipping / freight (AUD)<input type="number" min="0" step="0.01" value={receivingDraft.shipping_cost} onChange={e=>setReceivingDraft({...receivingDraft,shipping_cost:Number(e.target.value)})}/></label><label>Consignment / handling (AUD)<input type="number" min="0" step="0.01" value={receivingDraft.consignment_cost||0} onChange={e=>setReceivingDraft({...receivingDraft,consignment_cost:Number(e.target.value)})}/></label><label>GST / tax (AUD)<input type="number" min="0" step="0.01" value={receivingDraft.tax_cost} onChange={e=>setReceivingDraft({...receivingDraft,tax_cost:Number(e.target.value)})}/></label><label>Import duty (AUD)<input type="number" min="0" step="0.01" value={receivingDraft.duty_cost} onChange={e=>setReceivingDraft({...receivingDraft,duty_cost:Number(e.target.value)})}/></label><label>Card / FX / bank fees (AUD)<input type="number" min="0" step="0.01" value={receivingDraft.payment_fees} onChange={e=>setReceivingDraft({...receivingDraft,payment_fees:Number(e.target.value)})}/></label></div><div className="tableWrap"><table><thead><tr><th>Part</th><th>Outstanding</th><th>Received now</th><th>Unit price ({receivingDraft.currency})</th>{receivingDraft.allocation_method==="manual"&&<th>Weight</th>}<th>Item AUD</th><th>Allocated costs</th><th>Landed each</th></tr></thead><tbody>{receivingDraft.items.map((item,index)=>{const calculated=costs.items.find(x=>String(x.source_order_id)===String(item.source_order_id)&&Number(x.source_item_index)===Number(item.source_item_index));return <tr key={`${item.hardware_part_id||item.code}-${index}`}><td>{item.name}<br/><small>{item.source_po_number} · {item.code} · {item.size}<br/>Ordered {item.quantity} · previously {item.already_received}</small></td><td><b>{item.outstanding}</b></td><td><input className="compactInput" type="number" min="0" max={item.outstanding} value={item.receive_now} onChange={e=>setReceivingDraft(current=>({...current,items:current.items.map((x,i)=>i===index?{...x,receive_now:Math.max(0,Math.min(Number(e.target.value),x.outstanding))}:x)}))}/></td><td><input className="moneyInput" type="number" min="0" step="0.0001" value={item.unit_price_foreign} onChange={e=>setReceivingDraft(current=>({...current,items:current.items.map((x,i)=>i===index?{...x,unit_price_foreign:Number(e.target.value)}:x)}))}/></td>{receivingDraft.allocation_method==="manual"&&<td><input className="compactInput" type="number" min="0" step="0.1" value={item.allocation_weight} onChange={e=>setReceivingDraft(current=>({...current,items:current.items.map((x,i)=>i===index?{...x,allocation_weight:Number(e.target.value)}:x)}))}/></td>}<td>{money(calculated?.converted_subtotal_aud||0)}</td><td>{money(calculated?.allocated_shared_aud||0)}</td><td><b>{money(calculated?.landed_unit_cost_aud||0)}</b></td></tr>})}</tbody></table></div><div className="landedCostSummary"><div><span>Invoice items</span><b>{Number(costs.foreignTotal||0).toLocaleString("en-AU",{style:"currency",currency:costs.currency||"AUD"})}</b></div><div><span>Converted items</span><b>{money(costs.convertedTotal)}</b></div><div><span>Shipping, consignment, tax, duty & fees</span><b>{money(costs.sharedTotal)}</b></div><div className="total"><span>Total landed cost</span><b>{money(costs.landedTotal)}</b></div></div><p className="mutedLine">Receiving updates each inventory item using a weighted average: existing stock value plus this shipment’s landed value, divided by the new total quantity.</p><label>Receiving notes<textarea value={receivingDraft.notes} onChange={e=>setReceivingDraft({...receivingDraft,notes:e.target.value})} placeholder="Out of stock, backordered, damaged, substituted…"/></label><label className="poCloseRemaining"><input type="checkbox" checked={receivingDraft.close_remaining} onChange={e=>setReceivingDraft({...receivingDraft,close_remaining:e.target.checked})}/><span><b>Close the order after this shipment</b><small>Use this when the supplier cannot provide the remaining quantities. Outstanding items will be treated as cancelled rather than backordered.</small></span></label><div className="buttonRow"><button onClick={()=>setPurchaseOrderReceiveOpen(false)}>Cancel</button><button className="primary" onClick={saveReceipt}><Package size={16}/> Receive & Update Costs</button></div></div></div>})()}
 
   </section>;
 }
