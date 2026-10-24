@@ -1957,3 +1957,28 @@ button:disabled{opacity:.55;cursor:not-allowed}
 
 /* v8.0.4 veneer comparison */
 .veneerCompareWrap{display:grid;gap:8px;margin-top:14px}.veneerCompareHeader,.veneerCompareRow{display:grid;grid-template-columns:minmax(90px,.8fr) minmax(130px,1fr) minmax(160px,1.15fr);gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line,#d9dde3);border-radius:10px}.veneerCompareHeader{font-size:.82rem;background:#f4f5f6}.veneerCompareRow span{display:flex;flex-direction:column}.veneerCompareRow small{opacity:.7}.veneerCompareRow strong:nth-child(3){font-size:1.05rem}.veneerCalibrationNote{padding:12px;border-radius:10px;background:#fff4d6;border:1px solid #e6c96a;display:flex;flex-direction:column;gap:4px}.sealingWorkflowNote{border-left:4px solid #8b6b3f}@media(max-width:700px){.veneerCompareHeader{display:none}.veneerCompareRow{grid-template-columns:1fr 1fr}.veneerCompareRow>span{grid-column:1/-1}.veneerCompareRow strong:before{display:block;font-size:.72rem;font-weight:500;opacity:.65}.veneerCompareRow strong:nth-child(2):before{content:"Current"}.veneerCompareRow strong:nth-child(3):before{content:"Experimental"}}
+
+
+/* v8.0.6 saved veneer workshop records */
+.savedVeneerList{display:grid;gap:14px}
+.savedVeneerCard{display:grid;gap:12px}
+.savedVeneerHeader{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.savedVeneerHeader>div{display:grid;gap:3px}
+.savedVeneerTable{display:grid;gap:6px}
+.savedVeneerTableHeader,.savedVeneerRow{display:grid;grid-template-columns:60px minmax(125px,.8fr) minmax(115px,.75fr) minmax(220px,1.7fr);gap:8px;align-items:center}
+.savedVeneerTableHeader{padding:0 8px;font-size:.76rem;font-weight:700;opacity:.72}
+.savedVeneerRow{padding:8px;border:1px solid var(--line,#3a3a3a);border-radius:10px}
+.savedVeneerRow label{margin:0;display:grid;gap:4px}
+.savedVeneerRow label>span{display:none}
+.inputWithUnit{display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px}
+.inputWithUnit small{opacity:.7}
+.savedVeneerRow input{width:100%;box-sizing:border-box}
+@media(max-width:700px){
+  .savedVeneerHeader{display:grid}
+  .savedVeneerHeader button{width:100%}
+  .savedVeneerTableHeader{display:none}
+  .savedVeneerRow{grid-template-columns:1fr 1fr}
+  .savedVeneerRow>b{grid-column:1/-1;font-size:1.05rem;color:var(--gold,#e0b858)}
+  .savedVeneerRow label>span{display:block;font-size:.72rem;opacity:.72}
+  .savedVeneerRow label:last-child{grid-column:1/-1}
+}
