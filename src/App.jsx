@@ -2912,6 +2912,13 @@ function App(){
       veneer_3_thickness:isPly ? Number(form.veneer[2] || 1.2) : null,
       veneer_4_thickness:isPly ? Number(form.veneer[3] || 1.2) : null,
       veneer_5_thickness:isPly ? Number(form.veneer[4] || 1.2) : null,
+      veneer_actuals:isPly ? {
+        layers:(form.veneer_actuals?.layers||[]).map((row,index)=>({
+          thickness:Number(form.veneer[index] || row.thickness || 1.2),
+          actual_cut:row.actual_cut==="" || row.actual_cut==null ? null : Number(row.actual_cut),
+          comment:String(row.comment||"").trim()
+        }))
+      } : {layers:[]},
     };
 
     const {data,error}=await supabase.from("drums").insert(insertData).select().single();
@@ -3668,7 +3675,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.7 — Job Card veneer calculator + actual cut records.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.8 — Unified veneer calculators + creation records.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -4723,6 +4730,7 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
     timber_story:"",
     construction_note:defaultBuildSpecification("Snare"),
     veneer:[1.2,1.2,1.2,1.2,1.2],
+    veneer_actuals:{layers:[0,1,2,3,4].map(()=>({thickness:1.2,actual_cut:"",comment:""}))},
     project_id:preset.project_id || "",
     customer:preset.customer || "",
     customer_phone:preset.customer_phone || "",
@@ -4734,7 +4742,6 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
   const size = buildSize(form.diameter, form.depth);
   const timber = form.timber === "Custom / Other" ? form.customTimber : form.timber;
   const isPly = form.build_type === "Ply";
-  const lengths = adjustedLengths(form.veneer, size);
   const calculatedPrice = autoPrice({...form,size,timber});
   const total = Number(calculatedPrice||0) + Number(form.shipping_cost||0);
 
@@ -4815,7 +4822,19 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
     setForm(current=>{
       const veneer=[...current.veneer];
       veneer[index]=value;
-      return {...current,veneer};
+      const layers=Array.isArray(current.veneer_actuals?.layers)
+        ? current.veneer_actuals.layers.map((row,i)=>i===index?{...row,thickness:value}:row)
+        : [0,1,2,3,4].map((_,i)=>({thickness:i===index?value:(veneer[i]||1.2),actual_cut:"",comment:""}));
+      return {...current,veneer,veneer_actuals:{layers}};
+    });
+  }
+
+  function setVeneerActual(index,key,value){
+    setForm(current=>{
+      const layers=Array.isArray(current.veneer_actuals?.layers)
+        ? current.veneer_actuals.layers.map((row,i)=>i===index?{...row,[key]:value}:row)
+        : [0,1,2,3,4].map((_,i)=>({thickness:current.veneer[i]||1.2,actual_cut:i===index&&key==="actual_cut"?value:"",comment:i===index&&key==="comment"?value:""}));
+      return {...current,veneer_actuals:{layers}};
     });
   }
 
@@ -4978,15 +4997,24 @@ function AddDrumWizard({onClose, onCreate, drums=[], projects=[], createProject,
 
         {isPly ? <>
           <StaveSpecPanel diameter={form.diameter} drumType={form.drum_type} buildType="Ply" serial={form.serial} timber={timber} size={size}/>
-          <p className="calcNote">{sizeAdjustmentLabel(size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect inner layers only.</p>
+          <p className="calcNote">{sizeAdjustmentLabel(size)}. Enter the measured thickness of each completed layer/group. Current remains the production reference; Experimental uses the workshop-calibrated formula.</p>
           <div className="veneerGrid">
             {form.veneer.map((value,index)=>
-              <label key={index}>Layer {index+1} mm
+              <label key={index}>Layer {index+1} measured thickness
                 <input value={value} onChange={e=>setVeneer(index,e.target.value)} />
               </label>
             )}
           </div>
-          <VeneerResult lengths={lengths} thicknesses={form.veneer}/>
+          <VeneerComparison thicknesses={form.veneer} size={size}/>
+          <div className="jobVeneerActuals">
+            <h3>Actual cuts & fit notes</h3>
+            <p className="calcNote">Optional at creation. Record the actual cut and fit note now, or leave blank and complete it later in the Job Card.</p>
+            {form.veneer_actuals.layers.map((row,index)=><div className="jobVeneerActualRow" key={index}>
+              <b>L{index+1}</b>
+              <label>Actual cut<div className="inputWithUnit"><input inputMode="decimal" placeholder="—" value={row.actual_cut??""} onChange={e=>setVeneerActual(index,"actual_cut",e.target.value)}/><small>mm</small></div></label>
+              <label>Adjustment / comment<input placeholder="Fit good, 1 mm short, try +1 mm…" value={row.comment||""} onChange={e=>setVeneerActual(index,"comment",e.target.value)}/></label>
+            </div>)}
+          </div>
         </> : <>
           <StaveSpecPanel diameter={form.diameter} drumType={form.drum_type} buildType="Stave" serial={form.serial} timber={timber} size={size}/>
         </>}
