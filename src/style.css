@@ -1994,3 +1994,12 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .jobVeneerActualRow>b{grid-column:1/-1;color:var(--gold,#e0b858)}
   .jobVeneerActualRow label:last-child{grid-column:1/-1}
 }
+
+
+/* v8.0.11 hardware substitutions */
+.hardwareSubstitutionPanel{margin-top:14px;padding-top:14px;border-top:1px solid var(--line,#3a3a3a);display:grid;gap:10px}
+.hardwareSubstitutionRow{display:grid;grid-template-columns:minmax(220px,1fr) 90px auto;gap:8px;align-items:center}
+@media(max-width:700px){
+  .hardwareSubstitutionRow{grid-template-columns:1fr 80px}
+  .hardwareSubstitutionRow .dangerButton{grid-column:1/-1}
+}
