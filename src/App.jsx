@@ -1707,6 +1707,20 @@ function setOutstandingWorkInNotes(notes,value){
   return `${clean?clean+"\n":""}[Outstanding Work: ${task}]`;
 }
 
+function userNotesFromNotes(notes){
+  return String(notes || "")
+    .split("\n")
+    .filter(line=>{
+      const trimmed=line.trim();
+      if(/^\[(?:x| )\]\s/i.test(trimmed)) return false;
+      if(/^\[Outstanding Work:/i.test(trimmed)) return false;
+      if(/^\[Tracking Number:/i.test(trimmed)) return false;
+      return true;
+    })
+    .join("\n")
+    .trim();
+}
+
 function trackingNumberFromNotes(notes){
   const match=String(notes || "").match(/^\[Tracking Number:\s*(.+?)\]$/mi);
   return match ? match[1].trim() : "";
@@ -3675,7 +3689,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.10 — Veneer records prompt fix.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.11 — Hardware substitutions + clean Job Card notes.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -9226,7 +9240,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     due_date:drum.due_date||"",
     finish:drum.finish||"To Be Decided",
     next_step:drum.next_step||"",
-    notes:drum.notes||"",
+    notes:userNotesFromNotes(drum.notes),
     project_id:drum.project_id||"",
     nowak_serial:drum.nowak_serial||"",
     outstanding_work:outstandingWorkOptions.includes(outstandingWorkFromNotes(drum.notes))
@@ -9243,6 +9257,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [photoPrompt,setPhotoPrompt]=useState(null);
   const [showHardwareUsed,setShowHardwareUsed]=useState(false);
   const [hardwareSelection,setHardwareSelection]=useState({});
+  const [extraHardwareUsed,setExtraHardwareUsed]=useState([]);
   const [trickFinish,setTrickFinish]=useState("Chrome");
   const [savingHardware,setSavingHardware]=useState(false);
   const [pendingAssembly,setPendingAssembly]=useState(false);
@@ -9291,6 +9306,10 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const allocatedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && String(a.status||"").toLowerCase()==="allocated");
   const consumedByPart=consumedForDrum.reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
 
+  function byCodePart(code){
+    return partByCode[code] || hardware.find(part=>String(part.code||"")===String(code) || String(part.sku_key||"")===String(code));
+  }
+
   function openHardwareUsed(shortages=[],forAssembly=false){
     const goldPart=partByCode["THROW-TRICK-GOLD"];
     const goldIsFitted=goldPart ? Number(consumedByPart[goldPart.id]||0)>0 : false;
@@ -9304,6 +9323,14 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
       initial[req.code]=forAssembly ? true : isCurrentlyFitted;
     });
     setHardwareSelection(initial);
+
+    // Preserve any fitted non-standard parts as explicit substitutions/extras.
+    const standardPartIds=new Set(standardHardware.map(req=>byCodePart(req.code)?.id).filter(Boolean));
+    const extras=consumedForDrum
+      .filter(a=>!standardPartIds.has(a.hardware_part_id))
+      .map(a=>({hardware_part_id:a.hardware_part_id,quantity:Number(a.quantity||1)}));
+    setExtraHardwareUsed(extras);
+
     setAssemblyShortages(shortages);
     setPendingAssembly(forAssembly);
     setShowHardwareUsed(true);
@@ -9311,11 +9338,24 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
 
   async function saveHardwareUsed(){
     setSavingHardware(true);
-    const selected=standardHardware
+    const selectedStandard=standardHardware
       .filter(req=>hardwareSelection[req.code]===true)
       .map(req=>req.code==="THROW-TRICK-CHROME" && trickFinish==="Gold"
         ? {...req,code:"THROW-TRICK-GOLD",label:"Trick throw-off — Gold"}
         : req);
+    const selectedExtras=extraHardwareUsed
+      .filter(row=>row.hardware_part_id && Number(row.quantity||0)>0)
+      .map(row=>{
+        const part=hardware.find(p=>String(p.id)===String(row.hardware_part_id));
+        if(!part) return null;
+        return {
+          code:hardwareLookupKey(part)||part.code||part.sku_key,
+          qty:Number(row.quantity||0),
+          label:`${part.part_name}${part.finish?` — ${part.finish}`:""}`
+        };
+      })
+      .filter(Boolean);
+    const selected=[...selectedStandard,...selectedExtras];
     const ok=await syncHardwareUsed(drum,selected,pendingAssembly);
     // syncHardwareUsed now handles any reservation release from a fresh database
     // read. Do not run a second prompt against stale Job Card allocation state.
@@ -9766,6 +9806,18 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     {showHardwareUsed && <div className="hardwareUsedOverlay" onClick={()=>setShowHardwareUsed(false)}><div className="hardwareUsedModal" onClick={e=>e.stopPropagation()}>
       <div className="sectionHeader"><div><h2>Adjust Hardware Used</h2><p>{pendingAssembly?"There is not enough recorded stock for the full standard hardware set. Deselect anything not fitted, or save as assembled anyway to record a stock shortage.":"Select only the parts currently fitted to this drum."}</p></div><button onClick={()=>setShowHardwareUsed(false)}>Close</button></div>{assemblyShortages.length>0&&<div className="stocktakeNotice dangerText"><b>Hardware shortage</b><span>{assemblyShortages.map(req=>req.label).join(", ")}</span></div>}
       <div className="hardwareChecklist">{standardHardware.map(req=>{const isTrick=req.code==="THROW-TRICK-CHROME";const lookupCode=isTrick&&trickFinish==="Gold"?"THROW-TRICK-GOLD":req.code;const part=partByCode[lookupCode];return <div key={req.code} className={`hardwareCheckRow ${assemblyShortages.some(x=>x.code===req.code)?"hardwareShortageRow":""}`}><input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/><span><b>{req.qty} × {isTrick?`Trick throw-off — ${trickFinish}`:req.label}</b><small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small>{isTrick&&hardwareSelection[req.code]!==false&&<select value={trickFinish} onChange={e=>setTrickFinish(e.target.value)}><option>Chrome</option><option>Gold</option></select>}</span></div>})}</div>
+          <div className="hardwareSubstitutionPanel">
+            <div className="sectionHeader"><div><h3>Substitutions / extra hardware</h3><p>Deselect the standard item above, then add the exact inventory part actually used.</p></div><button type="button" onClick={()=>setExtraHardwareUsed(current=>[...current,{hardware_part_id:"",quantity:1}])}>+ Add substitute</button></div>
+            {extraHardwareUsed.length===0&&<small>No substitutions recorded.</small>}
+            {extraHardwareUsed.map((row,index)=><div className="hardwareSubstitutionRow" key={index}>
+              <select value={row.hardware_part_id} onChange={e=>setExtraHardwareUsed(current=>current.map((x,i)=>i===index?{...x,hardware_part_id:e.target.value}:x))}>
+                <option value="">Select actual hardware…</option>
+                {[...hardware].sort((a,b)=>String(a.category||"").localeCompare(String(b.category||""))||String(a.part_name||"").localeCompare(String(b.part_name||""))).map(part=><option key={part.id} value={part.id}>{part.category} · {part.part_name} · {part.finish||"Standard"} · {part.size||part.code} · On hand {part.qty_on_hand||0}</option>)}
+              </select>
+              <input className="compactInput" type="number" min="1" value={row.quantity} onChange={e=>setExtraHardwareUsed(current=>current.map((x,i)=>i===index?{...x,quantity:Number(e.target.value||1)}:x))}/>
+              <button type="button" className="dangerButton" onClick={()=>setExtraHardwareUsed(current=>current.filter((_,i)=>i!==index))}>Remove</button>
+            </div>)}
+          </div>
       <div className="modalActions"><button onClick={()=>setShowHardwareUsed(false)}>Cancel</button><button className="primary" disabled={savingHardware} onClick={saveHardwareUsed}>{savingHardware?"Saving...":pendingAssembly?"Save as Assembled":"Save Hardware Used"}</button></div>
     </div></div>}
 
