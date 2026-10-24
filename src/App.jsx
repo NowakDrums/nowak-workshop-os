@@ -3668,7 +3668,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.6 — Saved veneer workshop records.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.7 — Job Card veneer calculator + actual cut records.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -9187,6 +9187,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
   const [customPrice,setCustomPrice]=useState(drum.custom_price ?? drum.retail_price ?? 0);
   const [shipping,setShipping]=useState(drum.shipping_cost||0);
   const [veneer,setVeneer]=useState([drum.veneer_1_thickness,drum.veneer_2_thickness,drum.veneer_3_thickness,drum.veneer_4_thickness,drum.veneer_5_thickness].map(x=>x||1.2));
+  const [veneerActualRows,setVeneerActualRows]=useState(()=>savedVeneerRows(drum));
   const [draft,setDraft]=useState({
     serial:drum.serial||"",
     timber:drum.timber||"",
@@ -9307,8 +9308,36 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     setVeneer(next);
   }
 
+  function changeVeneerActual(index,key,value){
+    setVeneerActualRows(current=>current.map((row,i)=>i===index?{...row,[key]:value}:row));
+  }
+
   async function saveVeneer(index,value){
-    await updateDrum(drum.id,{[`veneer_${index+1}_thickness`]:Number(value || 0)});
+    const nextThickness=Number(value || 0);
+    const nextRows=veneerActualRows.map((row,i)=>i===index?{...row,thickness:nextThickness}:row);
+    setVeneerActualRows(nextRows);
+    await updateDrum(drum.id,{
+      [`veneer_${index+1}_thickness`]:nextThickness,
+      veneer_actuals:{...(drum.veneer_actuals||{}),layers:nextRows.map(row=>({
+        thickness:Number(row.thickness||0),
+        actual_cut:row.actual_cut==="" ? null : Number(row.actual_cut),
+        comment:String(row.comment||"").trim()
+      }))}
+    });
+  }
+
+  async function saveVeneerActual(index){
+    const nextRows=veneerActualRows.map((row,i)=>i===index?{...row,thickness:Number(veneer[i]||row.thickness||0)}:row);
+    const ok=await updateDrum(drum.id,{
+      [`veneer_${index+1}_thickness`]:Number(veneer[index]||0),
+      veneer_actuals:{...(drum.veneer_actuals||{}),layers:nextRows.map(row=>({
+        thickness:Number(row.thickness||0),
+        actual_cut:row.actual_cut==="" ? null : Number(row.actual_cut),
+        comment:String(row.comment||"").trim()
+      }))}
+    });
+    setSavedMessage(ok===false ? `Could not save veneer Layer ${index+1}` : `Veneer Layer ${index+1} workshop record saved`);
+    if(ok!==false) setTimeout(()=>setSavedMessage(""),2200);
   }
 
   async function assignProject(value){
@@ -9809,7 +9838,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum,
     </section>
 
     {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Stave" serial={drum.serial} timber={draft.timber} size={drum.size}/></section>}
-    {localBuildType==="Ply" && <><VeneerProcessNotes/><section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={draft.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p>{shellSizeKey(drum.size)==="12" && <p className="veneerFitWarning"><b>Workshop calibrated.</b> Layer 4: check fit on next 12&quot; build — may need +1 mm.</p>}<div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerComparison thicknesses={veneer} size={drum.size}/></section></>}
+    {localBuildType==="Ply" && <><VeneerProcessNotes/><section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={draft.timber} size={drum.size}/><h2>Ply Veneer Calculator & Workshop Record</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Enter the measured thickness of each completed layer/group. <b>Current</b> stays as the existing reference; <b>Experimental</b> uses the workshop-calibrated formula.</p>{shellSizeKey(drum.size)==="12" && <p className="veneerFitWarning"><b>Workshop calibrated.</b> Layer 4: check fit on next 12&quot; build — may need +1 mm.</p>}<div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} measured thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerComparison thicknesses={veneer} size={drum.size}/><div className="jobVeneerActuals"><h3>Actual cuts & fit notes</h3><p className="calcNote">Record what you actually cut and how it fitted. These values feed the saved veneer workshop history.</p>{veneerActualRows.map((row,index)=><div className="jobVeneerActualRow" key={index}><b>L{index+1}</b><label>Actual cut<div className="inputWithUnit"><input inputMode="decimal" placeholder="—" value={row.actual_cut??""} onChange={e=>changeVeneerActual(index,"actual_cut",e.target.value)} onBlur={()=>saveVeneerActual(index)}/><small>mm</small></div></label><label>Adjustment / comment<input placeholder="Fit good, 1 mm short, try +1 mm…" value={row.comment||""} onChange={e=>changeVeneerActual(index,"comment",e.target.value)} onBlur={()=>saveVeneerActual(index)}/></label></div>)}</div></section></>}
 
     <section className="panel inner"><h2>Manufacturing Checklist</h2>
       {shouldSuggestExtraFiddlebackCoat({...drum,...draft,timber:draft.timber,finish:draft.finish}) && <div className="fiddlebackCoatSuggestion">
