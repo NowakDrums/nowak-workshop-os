@@ -1,0 +1,16 @@
+Nowak Workshop OS v8.0.4
+Base: v8.0.3 deploy package supplied by user
+
+Changes
+- Veneer calculator now shows Current Calculation and Experimental Thickness Calculation side by side.
+- Current veneer formula remains unchanged.
+- Experimental sequential formula uses actual measured thickness of each layer/group.
+- Manual veneer calculator supports + Add Layer for Layer 6, 7, 8 and beyond.
+- Layer 5 monitoring note added: 14-inch baseline ~1069 mm at 1.2 mm layers; thinner layups have required longer cuts and thicker layups shorter cuts.
+- Updated veneer mould process notes: initial plug expansion for glue squeeze-out, release, tighten mould, then 1 bar final pressure.
+- Added staged 9-sheet + final measured inner-sheet trial instructions.
+- Updated sealing workflow note: before bearing-edge machining, spray inside/outside twice over two days; 14 x 6.5 baseline per coat = 20 ml polyurethane + 10 ml hardener.
+- Inside considered finished after second seal coat; outside seal stage complete.
+- During the following 7-day cure window: bearing edges, snare beds and drilling can be completed.
+- Sealer spray calculator baseline updated to 20 ml polyurethane + 10 ml hardener, 0% thinner, per 14 x 6.5 equivalent coat.
+- Full high-gloss material estimate updated to include two sealing coats.

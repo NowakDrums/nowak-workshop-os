@@ -1,0 +1,14 @@
+NOWAK WORKSHOP OS v8.0.4 UPDATE
+
+This package is based directly on the supplied v8.0.3 deploy package.
+
+GitHub/Vercel update:
+1. Keep a copy of the current v8.0.3 package as backup.
+2. Open the nowak-workshop-os GitHub repository.
+3. Upload the contents of this v8.0.4 package, preserving the same folder structure.
+4. Replace matching files when prompted.
+5. Commit the changes (example message: Workshop OS v8.0.4 veneer calculator update).
+6. Vercel should deploy automatically from the GitHub commit.
+7. After deployment, confirm the header shows v8.0.4 and test the Veneer Calculator before workshop use.
+
+No database migration is included in this update.

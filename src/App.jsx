@@ -21,8 +21,8 @@ const stages = [
 
 const checklist = [
   "Timber / veneer ready","Glue up complete","Machined","Sanded",
-  "Sealer coat","Bearing edges cut","Snare beds cut","Drilled","Inside oiled / sealed",
-  "Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Satin coat",
+  "Bearing edges cut","Snare beds cut","Inside oiled / sealed","Drilled",
+  "Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Satin coat",
   "Danish oil 1","Danish oil 2","Danish oil 3",
   "Cure complete","High Gloss preparation","Polished","Final shell preparation",
   "Prepare hardware / heads","Assembled","Photos taken","Website listing",
@@ -116,8 +116,8 @@ const workflowLabels = {
   "Sanded": {status:"Sanding Complete", next:"Cut the bearing edges"},
   "Bearing edges cut": {status:"Bearing Edges Complete", next:"Cut the snare beds"},
   "Snare beds cut": {status:"Snare Beds Complete", next:"Drill the hardware holes"},
-  "Drilled": {status:"Drilling Complete", next:"Oil or seal the inside"},
-  "Inside oiled / sealed": {status:"Inside Sealed", next:"Spray the sealer coat"},
+  "Inside oiled / sealed": {status:"Inside Sealed", next:"Drill the hardware holes"},
+  "Drilled": {status:"Drilling Complete", next:"Spray the sealer coat"},
   "Sealer coat": {status:"Sealer Coat Complete", next:"Spray polyurethane coat 1"},
   "Poly coat 1": {status:"Polyurethane Coat 1 Complete", next:"Spray polyurethane coat 2"},
   "Poly coat 2": {status:"Polyurethane Coat 2 Complete", next:"Spray polyurethane coat 3"},
@@ -160,7 +160,7 @@ function applicableChecklist(buildType, finish="", drumType="Snare"){
         "Satin coat","Cure complete","Polished"
       ].includes(item)) return false;
     }else{
-      if(["Danish oil 1","Danish oil 2","Danish oil 3","Inside oiled / sealed"].includes(item)) return false;
+      if(["Danish oil 1","Danish oil 2","Danish oil 3"].includes(item)) return false;
 
       if(isSatin){
         if(["Poly coat 4","Polished"].includes(item)) return false;
@@ -252,13 +252,13 @@ function workflowNextInstruction(nextItem,buildType){
     "Sanded":"Sand the shell",
     "Bearing edges cut":"Cut the bearing edges",
     "Snare beds cut":"Cut the snare beds",
-    "Drilled":"Drill the hardware holes",
     "Inside oiled / sealed":"Oil or seal the inside",
-    "Sealer coat":"Spray inside and outside sealing coats (20 ml polyurethane + 10 ml hardener per 14 × 6½ shell, repeated on Day 2)",
-    "Poly coat 1":"Spray polyurethane coat 1",
-    "Poly coat 2":"Spray polyurethane coat 2",
-    "Poly coat 3":"Spray polyurethane coat 3",
-    "Poly coat 4":"Spray polyurethane coat 4",
+    "Drilled":"Drill the hardware holes",
+    "Sealer coat":"Spray the sealer coat",
+    "Poly coat 1":"Sand 180G until relatively smooth, then spray polyurethane coat 1",
+    "Poly coat 2":"Sand 180G until relatively smooth, then spray polyurethane coat 2",
+    "Poly coat 3":"Sand 240G, then spray polyurethane coat 3",
+    "Poly coat 4":"Sand 400G, then spray polyurethane coat 4",
     "Satin coat":"Spray the final satin coat",
     "Danish oil 1":"Apply Danish oil coat 1",
     "Danish oil 2":"Apply Danish oil coat 2",
@@ -290,24 +290,27 @@ function drumTimingMultiplier(drumType="Snare", size=""){
 function workflowState(buildType, checked, finish="", buildClient="", drumType="Snare", size=""){
 
   const steps=manufacturingChecklist(buildType,finish,buildClient,drumType);
-  let completedCount=0;
-  for(const step of steps){
-    if(checked.has(step)) completedCount += 1;
-    else break;
-  }
+  // Workshop work can legitimately happen out of sequence. Treat the furthest
+  // completed stage as the drum's current position, while leaving any skipped
+  // earlier stages outstanding so they can be completed later.
+  const completedIndices=steps
+    .map((step,index)=>checked.has(step)?index:-1)
+    .filter(index=>index>=0);
+  const furthestCompletedIndex=completedIndices.length ? Math.max(...completedIndices) : -1;
+  const completedCount=furthestCompletedIndex+1; // current workflow pointer
 
-  const previous=completedCount>0 ? steps[completedCount-1] : null;
-  const next=steps[completedCount] || null;
+  const previous=furthestCompletedIndex>=0 ? steps[furthestCompletedIndex] : null;
+  const next=steps[furthestCompletedIndex+1] || null;
   const status=previous ? workflowStatusLabel(previous,buildType) : "Ready to Start";
   const nextStep=next ? workflowNextInstruction(next,buildType) : "Complete";
-  const estimates=workflowEstimates[buildType] || workflowEstimates.Stave;
-  const multiplier=drumTimingMultiplier(drumType,size);
-  const estimatedCompleted=steps.slice(0,completedCount).reduce((sum,item)=>sum+Number(estimates[item]||0)*multiplier,0);
-  const estimatedTotal=steps.reduce((sum,item)=>sum+Number(estimates[item]||0)*multiplier,0);
-  const percent=steps.length ? Math.round((completedCount/steps.length)*100) : 0;
+  const estimatedCompleted=steps.reduce((sum,item)=>sum+(checked.has(item)?workflowItemEstimatedHours(item,buildType,drumType,size):0),0);
+  const estimatedTotal=steps.reduce((sum,item)=>sum+workflowItemEstimatedHours(item,buildType,drumType,size),0);
+  const actualCompletedCount=steps.filter(item=>checked.has(item)).length;
+  const percent=steps.length ? Math.round((actualCompletedCount/steps.length)*100) : 0;
+  const outstandingSkipped=steps.slice(0,completedCount).filter(item=>!checked.has(item));
 
   return {
-    steps, completedCount, status, nextStep, percent,
+    steps, completedCount, furthestCompletedIndex, outstandingSkipped, status, nextStep, percent,
     estimatedCompleted,
     estimatedRemaining:Math.max(0,estimatedTotal-estimatedCompleted),
     estimatedTotal
@@ -330,8 +333,6 @@ function formatStageDate(value){
 
 function cureStatusForDrum(drum){
   const finishText=String(drum?.finish||"").toLowerCase();
-  if(!finishText.includes("gloss") && !finishText.includes("satin")) return null;
-
   const checked=parseChecked(drum?.notes);
   const history=Array.isArray(drum?.stage_history) ? drum.stage_history : [];
   const now=new Date();
@@ -339,8 +340,16 @@ function cureStatusForDrum(drum){
 
   function statusFor(item,type,nextInstruction){
     const entry=[...history].reverse().find(record=>record.item===item && record.completed && record.completed_at);
-    if(!entry) return null;
-    const completedAt=new Date(entry.completed_at);
+    // Older/Brady records can have the checklist stage completed without a stage_history
+    // timestamp. When the drum is currently sitting at that completed stage, use the
+    // drum's last update time so the cure lock still starts rather than disappearing.
+    const currentStatus=workflowStatusLabel(item,drum?.build_type||"Stave");
+    const fallbackCompletedAt=String(drum?.production_status||"")===currentStatus
+      ? (drum?.updated_at || drum?.created_at || null)
+      : null;
+    const completedAtValue=entry?.completed_at || fallbackCompletedAt;
+    if(!completedAtValue) return null;
+    const completedAt=new Date(completedAtValue);
     const readyAt=new Date(completedAt);
     readyAt.setDate(readyAt.getDate()+7);
     readyAt.setHours(12,0,0,0);
@@ -349,7 +358,7 @@ function cureStatusForDrum(drum){
     return {
       type,
       item,
-      completedAt:entry.completed_at,
+      completedAt:completedAtValue,
       readyAt:readyAt.toISOString(),
       readyDate:readyAt.toISOString().slice(0,10),
       ready:milliseconds<=0,
@@ -358,12 +367,20 @@ function cureStatusForDrum(drum){
     };
   }
 
-  // Final coat cure takes priority once the final coat is complete.
-  if(finishText.includes("satin") && checked.has("Satin coat") && !checked.has("Cure complete")){
-    return statusFor("Satin coat","final","Complete cure inspection and progress to final preparation");
-  }
-  if(finishText.includes("gloss") && checked.has("Poly coat 4") && !checked.has("Cure complete")){
-    return statusFor("Poly coat 4","final","Complete cure inspection and progress to High Gloss preparation");
+  // Final finish cure takes priority once the last finish coat is complete.
+  // Do not rely on the free-text finish field here: older records can be blank or
+  // use legacy wording even though the workflow has clearly reached the cure stage.
+  // All final finish systems use the same seven-day countdown before Cure complete.
+  if(!checked.has("Cure complete")){
+    if(checked.has("Satin coat")){
+      return statusFor("Satin coat","final","Complete cure inspection and progress to final preparation");
+    }
+    if(checked.has("Poly coat 4")){
+      return statusFor("Poly coat 4","final","Complete cure inspection and progress to High Gloss preparation");
+    }
+    if(checked.has("Danish oil 3")){
+      return statusFor("Danish oil 3","final","Complete cure inspection and progress to final preparation");
+    }
   }
 
   // The sealer must cure for seven days before polyurethane coat 1.
@@ -387,30 +404,182 @@ function cureDisplayText(cure){
     : `Final coat curing — ${cure.daysRemaining} ${dayLabel} remaining`;
 }
 
-function sprayMixForBatch(name,count){
-  const batchName=String(name||"").toLowerCase();
-  const drums=Math.max(0,Number(count||0));
-  let recipe=null;
+function sprayMeasurementNumber(value){
+  const text=String(value??"").trim().replace(/"/g,"");
+  if(!text) return 0;
+  const mixed=text.match(/^(\d+(?:\.\d+)?)\s+(\d+)\/(\d+)$/);
+  if(mixed) return Number(mixed[1])+(Number(mixed[2])/Number(mixed[3]));
+  const fraction=text.match(/^(\d+)\/(\d+)$/);
+  if(fraction) return Number(fraction[1])/Number(fraction[2]);
+  return Number(text.replace(/½/g,".5"))||0;
+}
 
+function spraySizeParts(size){
+  const text=String(size||"14 x 6 1/2").toLowerCase().replace(/×/g,"x");
+  const parts=text.split("x").map(part=>part.trim());
+  return {
+    diameter:sprayMeasurementNumber(parts[0]||14),
+    depth:sprayMeasurementNumber(parts[1]||"6 1/2"),
+  };
+}
+
+function sprayEquivalentForSize(size){
+  const {diameter,depth}=spraySizeParts(size);
+  if(!diameter||!depth) return 0;
+  return (diameter*depth)/(14*6.5);
+}
+
+// Workshop-calibrated high-gloss polyurethane model. The original direct
+// diameter × depth scaling was accurate around snare sizes but increasingly
+// overestimated larger drums. A measured batch of 8×8, 14×8, 16×16, 18×18
+// and 24×14 required 600 ml versus the old 720 ml estimate. Keep 14×6.5 as
+// the 60 ml reference, but use a fixed per-drum component plus shell-size
+// component for gloss coats. This reproduces that measured batch at ~600 ml.
+function polyurethaneGlossMixMlForSize(size){
+  const {diameter,depth}=spraySizeParts(size);
+  if(!diameter||!depth) return 0;
+  return 17 + (0.471 * diameter * depth);
+}
+
+function polyurethaneGlossEquivalentForSize(size){
+  return polyurethaneGlossMixMlForSize(size)/60;
+}
+
+// Inter-coat sanding calibration from actual workshop observations:
+// 8 x 8 = 5 min, 14 x 8 = 10 min, 16 x 16 = 15 min, 24 x 14 = 20 min.
+// Interpolate between these real workshop measurements using shell-side area
+// (diameter × depth), then round to the nearest practical 5-minute block.
+function intercoatSandingMinutesForSize(size){
+  const {diameter,depth}=spraySizeParts(size);
+  const area=diameter*depth;
+  const anchors=[[64,5],[112,10],[256,15],[336,20]];
+  let rawMinutes=5;
+  if(area<=anchors[0][0]) rawMinutes=anchors[0][1];
+  else if(area>=anchors[anchors.length-1][0]){
+    const [x1,y1]=anchors[anchors.length-2];
+    const [x2,y2]=anchors[anchors.length-1];
+    rawMinutes=y2+((area-x2)*(y2-y1)/(x2-x1));
+  }else{
+    for(let i=0;i<anchors.length-1;i+=1){
+      const [x1,y1]=anchors[i];
+      const [x2,y2]=anchors[i+1];
+      if(area>=x1 && area<=x2){
+        rawMinutes=y1+((area-x1)*(y2-y1)/(x2-x1));
+        break;
+      }
+    }
+  }
+  return Math.max(5,Math.round(rawMinutes/5)*5);
+}
+
+function fullFinishIntercoatSandingHours(size){
+  // Four sanding passes: after sealer and between each subsequent finish coat.
+  return (intercoatSandingMinutesForSize(size)*4)/60;
+}
+
+function workflowItemEstimatedHours(item,buildType='Stave',drumType='Snare',size=''){
+  const estimates=workflowEstimates[buildType] || workflowEstimates.Stave;
+  const base=Number(estimates[item]||0)*drumTimingMultiplier(drumType,size);
+  // Sand immediately before each subsequent sprayed finish coat. High Gloss
+  // has four poly coats; Satin uses three poly coats plus the final satin coat.
+  if(['Poly coat 1','Poly coat 2','Poly coat 3','Poly coat 4','Satin coat'].includes(item)){
+    return base+(intercoatSandingMinutesForSize(size)/60);
+  }
+  return base;
+}
+
+function roundMixTo5(value){
+  const number=Math.max(0,Number(value||0));
+  return Math.round(number/5)*5;
+}
+
+function roundTwoToOneMix(rawTotal){
+  // Keep polyurethane : hardener at an exact 2:1 ratio while still using
+  // practical 5 ml measuring increments. This means the finished base mix
+  // is rounded to the nearest 15 ml (e.g. 125-ish ml -> 120 ml = 80 + 40).
+  const total=Math.max(0,Number(rawTotal||0));
+  const hardener=Math.max(0,Math.round((total/3)/5)*5);
+  const base=hardener*2;
+  return {base,hardener,combined:base+hardener};
+}
+
+function sprayRecipeForName(name){
+  const batchName=String(name||"").toLowerCase();
   if(batchName.includes("sealer")){
-    recipe={label:"Inside / outside sealing coat",product:"Polyurethane",basePerDrum:20,hardenerPerDrum:10,hardener:"Standard hardener",thinnerPercent:0};
-  }else if(batchName.includes("satin")){
-    recipe={label:"Final satin coat",product:"Satin",basePerDrum:30,hardenerPerDrum:15,hardener:"Rapid hardener",thinnerPercent:10};
-  }else if(batchName.includes("polyurethane")){
-    recipe={label:"High-gloss polyurethane spray session",product:"Polyurethane",basePerDrum:40,hardenerPerDrum:20,hardener:"Standard hardener",thinnerPercent:0};
+    return {label:"Sealer coat",product:"Polyurethane",basePerDrum:20,hardenerPerDrum:10,hardener:"Standard hardener",thinnerPercent:0};
+  }
+  if(batchName.includes("satin")){
+    return {label:"Final satin coat",product:"Satin",basePerDrum:30,hardenerPerDrum:15,hardener:"Rapid hardener",thinnerPercent:10};
+  }
+  if(batchName.includes("polyurethane") || batchName.includes("poly gloss") || batchName.includes("gloss")){
+    return {label:"High-gloss polyurethane spray session",product:"Polyurethane",basePerDrum:40,hardenerPerDrum:20,hardener:"Standard hardener",thinnerPercent:0};
+  }
+  return null;
+}
+
+const sprayMaterialPrices = {
+  polyurethanePerMl:145.20/4000,
+  standardHardenerPerMl:49.665/1000,
+  thinnersPerMl:22.33/1000,
+};
+
+function polyurethaneMaterialCost({base=0,hardener=0,thinners=0}={}){
+  return Number(base||0)*sprayMaterialPrices.polyurethanePerMl
+    + Number(hardener||0)*sprayMaterialPrices.standardHardenerPerMl
+    + Number(thinners||0)*sprayMaterialPrices.thinnersPerMl;
+}
+
+function fullHighGlossFinishForSize(size){
+  const sealerEquivalent=sprayEquivalentForSize(size);
+  const glossEquivalent=polyurethaneGlossEquivalentForSize(size);
+  // Updated workflow: two inside/outside sealing coats before bearing-edge machining,
+  // each using 20 ml polyurethane + 10 ml hardener on a 14 × 6½ reference shell.
+  const glossMixPerCoat=polyurethaneGlossMixMlForSize(size);
+  const polyurethane=(40*sealerEquivalent)+(4*(glossMixPerCoat*(2/3)));
+  const hardener=(20*sealerEquivalent)+(4*(glossMixPerCoat*(1/3)));
+  const thinners=0;
+  const total=polyurethane+hardener+thinners;
+  const cost=polyurethaneMaterialCost({base:polyurethane,hardener,thinners});
+  return {equivalent:glossEquivalent,sealerEquivalent,glossEquivalent,polyurethane,hardener,thinners,total,cost};
+}
+
+function sprayMixForBatch(name,drumsOrCount){
+  const recipe=sprayRecipeForName(name);
+  if(!recipe) return null;
+
+  let drumCount=0;
+  let equivalentDrums=0;
+  let drumBreakdown=[];
+
+  const batchName=String(name||"").toLowerCase();
+  const calibratedGloss=batchName.includes("polyurethane") || batchName.includes("poly gloss") || batchName.includes("gloss");
+
+  if(Array.isArray(drumsOrCount)){
+    const valid=drumsOrCount.filter(Boolean);
+    drumCount=valid.length;
+    drumBreakdown=valid.map((drum,index)=>{
+      const size=drum.size || `${drum.diameter||14} x ${drum.depth||"6 1/2"}`;
+      const equivalent=calibratedGloss ? polyurethaneGlossEquivalentForSize(size) : sprayEquivalentForSize(size);
+      return {id:drum.id||`manual-${index}`,label:drum.label||drum.drum_label||drum.serial||`Drum ${index+1}`,size,equivalent};
+    });
+    equivalentDrums=drumBreakdown.reduce((sum,row)=>sum+row.equivalent,0);
+  }else{
+    drumCount=Math.max(0,Number(drumsOrCount||0));
+    equivalentDrums=drumCount;
   }
 
-  if(!recipe || !drums) return null;
-  const base=recipe.basePerDrum*drums;
-  const hardener=recipe.hardenerPerDrum*drums;
-  const combined=base+hardener;
-  const thinners=combined*(recipe.thinnerPercent/100);
-  return {...recipe,drums,base,hardener,combined,thinners,total:combined+thinners};
+  if(!drumCount || !equivalentDrums) return null;
+  const rawBase=recipe.basePerDrum*equivalentDrums;
+  const rawHardener=recipe.hardenerPerDrum*equivalentDrums;
+  const rounded=roundTwoToOneMix(rawBase+rawHardener);
+  const {base,hardener,combined}=rounded;
+  const thinners=roundMixTo5(combined*(recipe.thinnerPercent/100));
+  const total=combined+thinners;
+  return {...recipe,drums:drumCount,equivalentDrums,drumBreakdown,rawBase,rawHardener,base,hardener,combined,thinners,total};
 }
 
 function formatMixMl(value){
-  const number=Number(value||0);
-  return Number.isInteger(number) ? `${number} ml` : `${number.toFixed(1)} ml`;
+  return `${Math.max(0,Math.round(Number(value||0)))} ml`;
 }
 
 function plannedWorkGroupKey(item){
@@ -424,9 +593,9 @@ function plannedWorkGroupKey(item){
 function polyurethaneBatchHours(count){
   const drums=Math.max(0,Number(count||0));
   if(!drums) return 0;
-  // Workshop measurements: approximately 40 min for 2 drums and 48 min for 4,
-  // including setup and cleanup. This retains that batching efficiency.
-  return (32+(4*drums))/60;
+  // One spray setup/cleanup allowance plus the actual per-drum spraying time.
+  // Calibrated to the workshop: 2 drums ≈ 40 min, 4 ≈ 60 min, 6 ≈ 80 min.
+  return (20+(10*drums))/60;
 }
 
 function plannedGroupHours(group,items){
@@ -540,7 +709,7 @@ function tensionRodRequirement(baseLength,qty,finish){
   const isChrome=hardwareFinishKey(finish)==="CHROME";
   const isBass=Number(baseLength)>=100;
   // Chrome uses the existing stainless-steel sizes. Brass and Black Nickel use Rech TR01 rods.
-  const length=isChrome?Number(baseLength):(isBass?115:52);
+  const length=isChrome?Number(baseLength):(isBass?115:Number(baseLength));
   const material=isChrome?"Stainless Steel":finishLabel;
   const code=isChrome?`TROD-${length}`:finishSku(`TROD-${length}`,finish);
   return {
@@ -570,14 +739,14 @@ function drumHardwareRequirements(drum){
     const ventSize="30mm";
     return [
       {code:finishSku(`LUG-${lugLength.replace("mm","")}`,finish),qty:lugCount,label:`${lugLength} Agile Tube Lug — ${finishLabel}`},
-      tensionRodRequirement(45,rodCount,finish),
+      tensionRodRequirement(42,rodCount,finish),
       {code:diameter==="10" ? finishSku("TOM-HOOP-10-6",finish) : finishSku(`HOOP-${diameter}-${lugCount}-BAT`,finish),qty:1,label:diameter==="10" ? `10\" 6-lug 2.3mm top/tom hoop — ${finishLabel}` : `${diameter}\" ${lugCount}-lug 2.3mm hoop — ${finishLabel}`},
       {code:finishSku(`HOOP-${diameter}-${lugCount}-SNR`,finish),qty:1,label:`${diameter}\" ${lugCount}-lug 2.3mm snare-side hoop — ${finishLabel}`},
       {code:`HEAD-${diameter}-BAT`,qty:1,label:`${diameter}\" Remo batter head`},
       {code:`HEAD-${diameter}-SNR`,qty:1,label:`${diameter}\" Remo snare-side head`},
       {code:`WIRE-${diameter}-BRASS`,qty:1,label:`${diameter}\" snare wire — Brass`},
       {code:"THROW-TRICK-CHROME",qty:1,label:"Trick throw-off — Chrome"},
-      {code:finishSku(`VENT-${ventSize.replace("mm","")}`,finish),qty:1,label:`${ventSize} air vent — ${finishLabel}`},
+      {code:finishSku(`VENT-${ventSize.replace("mm","")}`,finish),qty:1,label:`${ventSize} air vent — ${finishLabel}`,partName:"Air Vent",category:"Air Vents",finish:finishLabel,size:ventSize},
     ].filter(item=>!item.code.includes("--"));
   }
   if(type==="tom"){
@@ -588,7 +757,7 @@ function drumHardwareRequirements(drum){
       {code:finishSku(diameter==="14"?"FLOOR-HOOP-14-8":`TOM-HOOP-${diameter}-${lugCount}`,finish),qty:2,label:`${diameter}" ${lugCount}-lug 2.3mm tom hoop — ${finishLabel}`},
       {code:finishSku("BALL-LUG",finish),qty:totalLugs,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`},
       {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
-      tensionRodRequirement(45,totalLugs,finish),
+      tensionRodRequirement(42,totalLugs,finish),
     ];
   }
   if(type==="floor tom"){
@@ -597,7 +766,7 @@ function drumHardwareRequirements(drum){
       {code:finishSku(`FLOOR-HOOP-${diameter}-8`,finish),qty:2,label:`${diameter}\" 8-lug 2.3mm floor-tom hoop — ${finishLabel}`},
       {code:finishSku("BALL-LUG",finish),qty:16,label:`ATL01-01 Agile Tube Lug – Ball — ${finishLabel}`},
       {code:finishSku("VENT-20",finish),qty:1,label:`20mm air vent — ${finishLabel}`},
-      tensionRodRequirement(45,16,finish),
+      tensionRodRequirement(52,16,finish),
       {code:finishSku("FLOOR-LEG-SET",finish),qty:1,label:`Floor tom leg set (3 pack) — ${finishLabel}`,partName:"Floor Tom Leg Set",category:"Floor Tom Hardware",finish:finishLabel,size:"3 pack"},
       {code:finishSku("TOM-MOUNT",finish),qty:3,label:`TM001 tom mount — ${finishLabel}`,partName:"Tom Mount",category:"Floor Tom Hardware",finish:finishLabel,size:"Tom mount"},
     ];
@@ -994,6 +1163,23 @@ function sizeAdjustmentLabel(size){
 }
 
 function adjustedLengths(thicknesses, size="14 x 6.5"){
+  const key = shellSizeKey(size);
+
+  // 12" workshop-calibrated from the first glued shell (Sep 2026).
+  // Reference veneer thicknesses: 1.2 / 1.2 / 1.1 / 1.1 / 1.2 mm.
+  // Layer 4 remains a watch item on the next 12" build: 924 mm may need to become 925 mm.
+  if(key === "12"){
+    const verifiedLengths = [949.5,939.5,931,924,914];
+    const verifiedThicknesses = [1.2,1.2,1.1,1.1,1.2];
+    let cumulativeDifference = 0;
+    return thicknesses.map((t,i)=>{
+      const length = verifiedLengths[i] - (cumulativeDifference * 2 * Math.PI);
+      const actual = Number(t || verifiedThicknesses[i]);
+      cumulativeDifference += actual - verifiedThicknesses[i];
+      return length;
+    });
+  }
+
   const baseLengths = baseLengthsForSize(size);
   let cumulativeOuterDifference = 0;
 
@@ -1013,10 +1199,10 @@ function experimentalSequentialLengths(thicknesses, size="14 x 6.5"){
   if(!values.length) return [];
   const key=shellSizeKey(size);
   const currentBase=baseLengthsForSize(size);
-  // Workshop trial model. At 1.2 mm per layer the 14-inch reference runs
+  // Workshop trial model: at 1.2 mm per layer the 14" reference runs
   // 1106 -> 1096.75 -> 1087.50 -> 1078.25 -> 1069 (9.25 mm per step).
-  // Each transition uses the actual measured thickness of the previous and
-  // new layer, plus the provisional practical allowance observed in trials.
+  // The geometry component is PI × (previous thickness + new thickness),
+  // plus a provisional 1.71 mm practical allowance per transition.
   const practicalAllowance=9.25-(Math.PI*2.4);
   const firstLength=key==="12" ? 949.5 : Number(currentBase[0]||defaultPlyLengths14[0]);
   const lengths=[firstLength];
@@ -1094,6 +1280,14 @@ function batchType(d){
     return "Stave Blanks";
   }
 
+  // All polyurethane spray coats share the same spray gun setup and mixture.
+  // Keep Coat 1, 2, 3 and 4 in one Workshop Today batch so a single spray
+  // session can contain drums at different coat stages. Each drum still keeps
+  // its own current task_item when it is scheduled/progressed.
+  if(String(flow.nextStep||"").toLowerCase().includes("polyurethane coat")){
+    return "Spray Polyurethane";
+  }
+
   return flow.nextStep;
 }
 
@@ -1156,19 +1350,59 @@ function friendlyPlanDate(dateValue){
   }
 }
 
-function planDetailsForDrum(drum){
+function planDetailsForDrum(drum,taskOverride=""){
   const buildType=drum.build_type || "Stave";
-  const flow=workflowState(buildType,parseChecked(drum.notes),drum.finish,drum.build_client,drum.drum_type,drum.size);
+  const checked=parseChecked(drum.notes);
+  const flow=workflowState(buildType,checked,drum.finish,drum.build_client,drum.drum_type,drum.size);
   const cure=cureStatusForDrum(drum);
-  const taskItem=flow.steps[flow.completedCount] || "";
-  if(cure && !cure.ready) return null;
+  const requested=String(taskOverride||"");
+  const requestedIndex=requested ? flow.steps.indexOf(requested) : -1;
+  // Explicit scheduling may target a skipped earlier task (for example drilling)
+  // or a later spray stage. Only reject it if it has already been completed.
+  const taskItem=requestedIndex>=0 && !checked.has(requested) ? requested : (flow.steps[flow.completedCount] || "");
+  if(!requested && cure && !cure.ready) return null;
   if(!taskItem || isManufacturingComplete(drum) || ["Sold","Shipped"].includes(drumLifecycleStatus(drum))) return null;
   return {
     task_item:taskItem,
-    task_label:checklistDisplayLabel(taskItem,buildType),
-    estimated_hours:Number(workflowEstimates[buildType]?.[taskItem] || 0) * drumTimingMultiplier(drum.drum_type,drum.size),
+    task_label:workflowNextInstruction(taskItem,buildType),
+    estimated_hours:workflowItemEstimatedHours(taskItem,buildType,drum.drum_type,drum.size),
     drum_label:`#${drum.serial || "—"} ${drum.timber || "Drum"} · ${drum.size || ""}`.trim(),
   };
+}
+
+function scheduleTaskOptionsForDrum(drum){
+  const buildType=drum.build_type || "Stave";
+  const checked=parseChecked(drum.notes);
+  const flow=workflowState(buildType,checked,drum.finish,drum.build_client,drum.drum_type,drum.size);
+  const candidates=[];
+  const current=flow.steps[flow.completedCount];
+  if(current && !checked.has(current)) candidates.push(current);
+  // Drilling may intentionally be skipped until later, so keep it schedulable
+  // until it is actually ticked complete, even if spraying has already started.
+  if(flow.steps.includes("Drilled") && !checked.has("Drilled")) candidates.push("Drilled");
+  ["Sealer coat","Poly coat 1","Poly coat 2","Poly coat 3","Poly coat 4","Satin coat"].forEach(item=>{
+    const index=flow.steps.indexOf(item);
+    if(index>=flow.completedCount) candidates.push(item);
+  });
+  return [...new Set(candidates)].map(item=>({value:item,label:workflowNextInstruction(item,buildType)}));
+}
+
+function planItemStillCurrentForDrum(item,drum){
+  if(!item || !drum || item.status==="Done") return false;
+  const buildType=drum.build_type || "Stave";
+  const checked=parseChecked(drum.notes);
+  const flow=workflowState(buildType,checked,drum.finish,drum.build_client,drum.drum_type,drum.size);
+  if(item.task_item){
+    const taskItem=String(item.task_item);
+    const index=flow.steps.indexOf(taskItem);
+    // A scheduled task remains active until that exact task is completed. This
+    // supports deliberately skipped stages without letting old completed badges linger.
+    if(index>=0) return !checked.has(taskItem);
+  }
+  const details=planDetailsForDrum(drum);
+  if(!details) return false;
+  const normalise=value=>String(value||"").trim().toLowerCase().replace(/\s+/g," ");
+  return normalise(item.task_label)===normalise(details.task_label);
 }
 
 function formatPlanTime(hours){
@@ -1759,12 +1993,59 @@ function App(){
   const [productionFilter,setProductionFilter]=useState("All");
   const [constructionFilter,setConstructionFilter]=useState("All");
   const [ownerFilter,setOwnerFilter]=useState("All");
+  const [drumViewMode,setDrumViewMode]=useState(()=>{
+    try{return localStorage.getItem("nowak-drum-view-mode") || "standard";}catch{return "standard";}
+  });
+  const [jobCardReturn,setJobCardReturn]=useState(null);
+  const productionOrderRef=useRef([]);
   const [globalPhotoPrompt,setGlobalPhotoPrompt]=useState(null);
   const [progressingDrumId,setProgressingDrumId]=useState(null);
   const [externalOrders,setExternalOrders]=useState([]);
   const [notifications,setNotifications]=useState([]);
   const [integrationStatus,setIntegrationStatus]=useState({connections:[]});
   const [alertPopup,setAlertPopup]=useState(null);
+
+  useEffect(()=>{
+    try{localStorage.setItem("nowak-drum-view-mode",drumViewMode);}catch{}
+  },[drumViewMode]);
+
+  useEffect(()=>{
+    const ids=new Set(drums.map(d=>String(d.id)));
+    if(!productionOrderRef.current.length && drums.length){
+      productionOrderRef.current=[...drums].sort(productionPriorityCompare).map(d=>String(d.id));
+      return;
+    }
+    const retained=productionOrderRef.current.filter(id=>ids.has(id));
+    const known=new Set(retained);
+    const added=drums.filter(d=>!known.has(String(d.id))).sort(productionPriorityCompare).map(d=>String(d.id));
+    productionOrderRef.current=[...retained,...added];
+  },[drums.map(d=>d.id).join("|")]);
+
+  function productionStableCompare(a,b){
+    const order=productionOrderRef.current;
+    const ai=order.indexOf(String(a.id));
+    const bi=order.indexOf(String(b.id));
+    if(ai>=0 && bi>=0) return ai-bi;
+    if(ai>=0) return -1;
+    if(bi>=0) return 1;
+    return productionPriorityCompare(a,b);
+  }
+
+  function openJobCardStable(drum){
+    setJobCardReturn({id:drum?.id || "",scrollY:window.scrollY});
+    setJobCard(drum);
+  }
+
+  function closeJobCardStable(){
+    const target=jobCardReturn;
+    setJobCard(null);
+    setTimeout(()=>{
+      const el=target?.id ? document.querySelector(`[data-drum-id="${target.id}"]`) : null;
+      if(el) el.scrollIntoView({block:"center",behavior:"auto"});
+      else if(target) window.scrollTo({top:target.scrollY||0,behavior:"auto"});
+      setJobCardReturn(null);
+    },60);
+  }
 
   async function loadAll(){
     if(!isConfigured){ setMessage("Supabase is not configured yet."); return; }
@@ -1949,14 +2230,21 @@ function App(){
   const repairIncome=repairs
     .filter(r=>r.status==="Collected & Paid")
     .reduce((sum,r)=>sum+Number(r.agreed_price||0),0);
-  const tomorrowPlan=workPlan.filter(item=>item.planned_date===localISODate(1) && item.status!=="Done");
+  const operationalDrumById=Object.fromEntries(operationalDrums.map(drum=>[drum.id,drum]));
+  const currentWorkPlan=workPlan.filter(item=>{
+    if(item.status==="Done") return false;
+    if(item.repair_id) return true;
+    const drum=operationalDrumById[item.drum_id];
+    return planItemStillCurrentForDrum(item,drum);
+  });
+  const tomorrowPlan=currentWorkPlan.filter(item=>item.planned_date===localISODate(1));
   const tomorrowPlanHours=tomorrowPlan.reduce((sum,item)=>sum+Number(item.estimated_hours||0),0);
   const tomorrowPlannedDrumIds=new Set(tomorrowPlan.map(item=>item.drum_id));
   const tomorrowPlannedTaskByDrum=Object.fromEntries(
     tomorrowPlan.map(item=>[item.drum_id,item.task_label])
   );
-  const activePlanByDrum=workPlan
-    .filter(item=>item.status!=="Done")
+  const activePlanByDrum=currentWorkPlan
+    .filter(item=>item.drum_id)
     .reduce((acc,item)=>{
       acc[item.drum_id] ??=[];
       acc[item.drum_id].push(item);
@@ -2121,6 +2409,24 @@ function App(){
 
     setDrums(current=>current.map(item=>item.id===id ? {...item,...data} : item));
     setJobCard(current=>current?.id===id ? {...current,...data} : current);
+
+    // Saving checklist changes from the Job Card must also complete any matching
+    // scheduled work. Otherwise yesterday's green schedule badge can remain even
+    // though the stage itself has been ticked complete.
+    if("notes" in nextPatch){
+      const completedNow=parseChecked(data.notes);
+      const matchingPlanItems=workPlan.filter(item=>
+        item.drum_id===id && item.status!=="Done" && item.task_item && completedNow.has(String(item.task_item))
+      );
+      if(matchingPlanItems.length){
+        const ids=matchingPlanItems.map(item=>item.id);
+        const {error:planError}=await supabase.from("work_plan_items").update({status:"Done"}).in("id",ids);
+        if(!planError){
+          setWorkPlan(current=>current.map(item=>ids.includes(item.id)?{...item,status:"Done"}:item));
+        }
+      }
+    }
+
     setMessage("");
     return true;
   }
@@ -2370,7 +2676,7 @@ function App(){
     return true;
   }
 
-  async function progressDrumFromCard(d){
+  async function progressDrumFromCard(d,taskOverride=""){
     if(!d?.id || progressingDrumId===d.id) return false;
     setProgressingDrumId(d.id);
     setMessage("");
@@ -2378,7 +2684,11 @@ function App(){
     try{
       const checked=parseChecked(d.notes);
       const flow=workflowState(d.build_type || "Stave",checked,d.finish,d.build_client,d.drum_type,d.size);
-      const nextItem=flow.steps[flow.completedCount];
+      const requested=String(taskOverride||"");
+      const requestedIndex=requested ? flow.steps.indexOf(requested) : -1;
+      const nextItem=requestedIndex>=0 && !checked.has(requested)
+        ? requested
+        : flow.steps[flow.completedCount];
       if(!nextItem) return false;
 
       if(nextItem==="Assembled" && drumHardwareRequirements(d).length){
@@ -2411,6 +2721,19 @@ function App(){
 
       const updatedDrum={...d,notes:updatedNotes,production_status:nextFlow.status,next_step:nextFlow.nextStep,stage_history:history};
       setDrums(current=>current.map(item=>item.id===d.id ? updatedDrum : item));
+
+      // If this stage had been scheduled, it is no longer active once the drum progresses.
+      // Mark matching plan rows Done so stale green schedule badges do not linger.
+      const matchingPlanItems=workPlan.filter(item=>
+        item.drum_id===d.id && item.status!=="Done" && String(item.task_item||"")===String(nextItem)
+      );
+      if(matchingPlanItems.length){
+        const ids=matchingPlanItems.map(item=>item.id);
+        const {error:planError}=await supabase.from("work_plan_items").update({status:"Done"}).in("id",ids);
+        if(!planError){
+          setWorkPlan(current=>current.map(item=>ids.includes(item.id)?{...item,status:"Done"}:item));
+        }
+      }
 
       const milestoneKey=photoMilestoneForCompletion(updatedDrum,nextItem);
       if(milestoneKey){
@@ -2969,10 +3292,10 @@ function App(){
     setEditingWorkshopTask(null);
   }
 
-  async function addDrumsToPlan(drumsToAdd,plannedDate=localISODate(1),batchName=""){
+  async function addDrumsToPlan(drumsToAdd,plannedDate=localISODate(1),batchName="",taskOverride=""){
     const rows=drumsToAdd
       .map(drum=>{
-        const details=planDetailsForDrum(drum);
+        const details=planDetailsForDrum(drum,taskOverride);
         if(!details) return null;
         return {
           drum_id:drum.id,
@@ -3094,17 +3417,13 @@ function App(){
     }
 
     const checked=parseChecked(drum.notes);
-    const flow=workflowState(drum.build_type || "Stave",checked,drum.finish,drum.build_client,drum.drum_type,drum.size);
-    const currentTask=flow.steps[flow.completedCount] || "";
-
-    if(currentTask && item.task_item && currentTask!==item.task_item){
-      const proceed=window.confirm(
-        `This drum is now at "${checklistDisplayLabel(currentTask,drum.build_type||"Stave")}", but the plan item is "${item.task_label}".\n\nProgress the drum's current workflow stage anyway?`
-      );
-      if(!proceed) return false;
+    if(item.task_item && checked.has(String(item.task_item))){
+      return updatePlanItem(item.id,{status:"Done"});
     }
 
-    const progressed=await progressDrumFromCard(drum);
+    // Complete the task that was actually scheduled, even if it is intentionally
+    // out of sequence (for example drilling after polyurethane spraying has begun).
+    const progressed=await progressDrumFromCard(drum,item.task_item||"");
     if(!progressed) return false;
 
     return updatePlanItem(item.id,{status:"Done"});
@@ -3336,7 +3655,7 @@ function App(){
     <header className="hero">
       <div className="heroBrand">
         <img src={nowakLogo} alt="Nowak Drum Company Australia" className="nowakHeaderLogo"/>
-        <div><h1>Nowak Workshop OS</h1><p>v8.0.4 — Veneer comparison + sealing workflow + hardware correction.</p></div>
+        <div><h1>Nowak Workshop OS</h1><p>v8.0.4 — Veneer comparison calculator + updated sealing workflow.</p></div>
       </div>
       <button onClick={loadAll}><RefreshCw size={16}/> Refresh</button>
     </header>
@@ -3354,6 +3673,8 @@ function App(){
       <button className={view==="orders"?"active":""} onClick={()=>setView("orders")}><Users size={16}/> Customers & Orders</button>
       <button className={view==="repairs"?"active":""} onClick={()=>setView("repairs")}><Wrench size={16}/> Repairs & Modifications</button>
       <button className={view==="veneer"?"active":""} onClick={()=>setView("veneer")}><Ruler size={16}/> Veneer Calc</button>
+      <button className={view==="spray"?"active":""} onClick={()=>setView("spray")}><Clock size={16}/> Spray Calculator</button>
+      <button className={view==="trials"?"active":""} onClick={()=>setView("trials")}><Lightbulb size={16}/> Workshop Trials</button>
       <button className={view==="inventory"?"active":""} onClick={()=>setView("inventory")}><Package size={16}/> Inventory</button>
       <button className={view==="costing"?"active":""} onClick={()=>setView("costing")}><DollarSign size={16}/> Costing</button>
       <button className={view==="summary"?"active":""} onClick={()=>setView("summary")}><BarChart3 size={16}/> Workshop Summary</button>
@@ -3455,7 +3776,7 @@ function App(){
                     <b>{drum.serial ? `#${drum.serial}` : "Pending"} {drum.timber}</b>
                     <span>{drum.size} · {drum.build_type} · {allocatedCustomerName(drum) || displaySalesBadge(drum)}</span>
                   </div>
-                  <button onClick={()=>setJobCard(drum)}>Open Job Card</button>
+                  <button onClick={()=>openJobCardStable(drum)}>Open Job Card</button>
                 </div>
                 <div className="attentionReasonRow">
                   {reasons.map(reason=><span className={"attentionReason "+(reason==="Overdue"?"urgentAttention":"")} key={reason}>{reason}</span>)}
@@ -3466,11 +3787,12 @@ function App(){
     </>}
 
     {view==="today" && <>
+      <section className="panel drumViewToolbar"><b>Drum view</b><div className="filterRow"><button className={drumViewMode==="standard"?"primary":""} onClick={()=>setDrumViewMode("standard")}>Standard</button><button className={drumViewMode==="condensed"?"primary":""} onClick={()=>setDrumViewMode("condensed")}>Condensed</button></div></section>
       <DailyWorkPlan
         workPlan={workPlan}
         drums={operationalDrums}
         repairs={activeRepairs}
-        openJobCard={setJobCard}
+        openJobCard={openJobCardStable}
         openRepair={setRepairJob}
         updatePlanItem={updatePlanItem}
         completePlannedWork={completePlannedWork}
@@ -3495,13 +3817,14 @@ function App(){
             .map(d=><DrumCard
               key={d.id}
               drum={d}
-              openJobCard={setJobCard}
+              openJobCard={openJobCardStable}
+              compact={drumViewMode==="condensed"}
               progressDrum={progressDrumFromCard}
               progressing={progressingDrumId===d.id}
               onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
               plannedDates={plannedDatesByDrum[d.id]||[]}
               scheduledTask={activePlanByDrum[d.id]?.[0]?.task_label||""}
-              scheduleDrum={(drum,date)=>addDrumsToPlan([drum],date,batchType(drum)||"")}
+              scheduleDrum={(drum,date,taskItem)=>addDrumsToPlan([drum],date,batchType(drum)||"",taskItem)}
             />)}
         </div>
       </section>}
@@ -3537,7 +3860,17 @@ function App(){
                   const plannedDates=plannedDatesByDrum[d.id] || [];
                   const scheduled=plannedDates.length>0;
                   const firstPlan=activePlanByDrum[d.id]?.[0];
-                  return <article className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduled?" scheduledTomorrowCard":"")} key={d.id}>
+                  if(drumViewMode==="condensed") return <DrumCard
+                    key={d.id}
+                    drum={d}
+                    compact
+                    openJobCard={openJobCardStable}
+                    progressDrum={progressDrumFromCard}
+                    progressing={progressingDrumId===d.id}
+                    plannedDates={plannedDates}
+                    scheduledTask={firstPlan?.task_label||""}
+                  />;
+                  return <article data-drum-id={d.id} className={"card " + (d.build_client==="Brady"?"bradyCard":d.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduled?" scheduledTomorrowCard":"")} key={d.id}>
                     <div className="cardHeading">
                       <b>{d.serial ? `#${d.serial}` : "Pending"} {d.timber}</b>
                       {allocatedCustomerName(d) && <span className="customerNameBadge">{allocatedCustomerName(d)}</span>}
@@ -3558,12 +3891,13 @@ function App(){
                     {scheduled && <div className="scheduledTomorrowBadge"><CalendarDays size={14}/><span>Scheduled: {plannedDates.map(friendlyPlanDate).join(", ")}{firstPlan?.task_label?` · ${firstPlan.task_label}`:""}</span></div>}
                     {flow.nextStep!=="Complete" && (!cureStatusForDrum(d) || cureStatusForDrum(d).ready) && <ScheduleWorkControl
                       label="Schedule Work"
-                      onSchedule={date=>addDrumsToPlan([d],date,name)}
+                      onSchedule={(date,taskItem)=>addDrumsToPlan([d],date,name,taskItem)}
+                      taskOptions={scheduleTaskOptionsForDrum(d)}
                       scheduledDates={plannedDates}
                     />}
                     {flow.nextStep!=="Complete" && <button type="button" className="primary" disabled={progressingDrumId===d.id || Boolean(cureStatusForDrum(d) && !cureStatusForDrum(d).ready)} onClick={()=>progressDrumFromCard(d)}><CheckCircle2 size={15}/> {progressingDrumId===d.id ? "Progressing..." : cureStatusForDrum(d) && !cureStatusForDrum(d).ready ? "Curing — not ready" : `Progress: ${flow.nextStep}`}</button>}
                     <button type="button" onClick={()=>setGlobalPhotoPrompt({drum:d,milestoneKey:"general"})}><Camera size={15}/> Add Photo</button>
-                    <button type="button" onClick={()=>setJobCard(d)}>Open job card</button>
+                    <button type="button" onClick={()=>openJobCardStable(d)}>Open job card</button>
                   </article>
                 })}
               </div>
@@ -3577,6 +3911,14 @@ function App(){
     {view==="production" && <section>
       <section className="panel productionToolbar">
         <h2>Production</h2>
+
+        <div className="productionFilterGroup">
+          <span className="filterLabel">View</span>
+          <div className="filterRow">
+            <button className={drumViewMode==="standard"?"primary":""} onClick={()=>setDrumViewMode("standard")}>Standard</button>
+            <button className={drumViewMode==="condensed"?"primary":""} onClick={()=>setDrumViewMode("condensed")}>Condensed</button>
+          </div>
+        </div>
 
         <div className="productionFilterGroup">
           <span className="filterLabel">Construction</span>
@@ -3619,7 +3961,7 @@ function App(){
           />
         : <ProductionGroups
             drums={[...filtered]
-              .sort(productionPriorityCompare)
+              .sort(productionStableCompare)
               .filter(d=>{
                 if(isArchivedStatus(d)) return false;
                 if(!constructionMatches(d,constructionFilter)) return false;
@@ -3634,12 +3976,13 @@ function App(){
                 return true;
               })}
             projects={projects}
-            openJobCard={setJobCard}
+            openJobCard={openJobCardStable}
+            compact={drumViewMode==="condensed"}
             updateDrum={updateDrum}
             progressDrum={progressDrumFromCard}
             progressingDrumId={progressingDrumId}
             onAddPhoto={drum=>setGlobalPhotoPrompt({drum,milestoneKey:"general"})}
-            scheduleDrum={(drum,date)=>addDrumsToPlan([drum],date,batchType(drum)||"")}
+            scheduleDrum={(drum,date,taskItem)=>addDrumsToPlan([drum],date,batchType(drum)||"",taskItem)}
             scheduleBatch={(items,name,date)=>addDrumsToPlan(items,date,name)}
             plannedDatesByDrum={plannedDatesByDrum}
             activePlanByDrum={activePlanByDrum}
@@ -3664,6 +4007,8 @@ function App(){
     {view==="orders" && <Orders drums={filtered} openJobCard={setJobCard} externalOrders={externalOrders} createDrumFromShopify={createDrumFromShopify} updateExternalOrderStatus={updateExternalOrderStatus}/>}
     {view==="repairs" && <RepairsPage repairs={repairs} openRepair={setRepairJob} addRepair={()=>setShowAddRepair(true)} scheduleRepair={addRepairToPlan} plannedDatesByRepair={plannedDatesByRepair}/>}
     {view==="veneer" && <VeneerCalculator drums={filtered.filter(d=>d.build_type==="Ply")} updateDrum={updateDrum} openJobCard={setJobCard}/>}
+    {view==="spray" && <SprayCalculatorPage drums={operationalDrums} onSchedule={(items,date,batchName)=>addDrumsToPlan(items,date,batchName)}/>}
+    {view==="trials" && <WorkshopTrialsPage/>}
     {view==="inventory" && <Inventory hardware={availableHardware} allocations={hardwareAllocations} drums={drums} openJobCard={setJobCard} updateHardware={updateHardware} saveStocktake={saveHardwareStocktake} refreshData={loadAll} allocateHardware={allocateHardwareForDrum} releaseHardware={releaseHardwareForDrum} lowStock={lowStock} inventoryValue={inventoryValue}/>}
     {view==="costing" && <Costing templates={templates} labourRate={labourRate} setLabourRate={setLabourRate}/>}
     {view==="summary" && <WorkshopSummary drums={drums} sales={sales} labourRate={labourRate}/>}
@@ -3705,7 +4050,7 @@ function App(){
     />}
     {showAddRepair && <AddRepairModal repairs={repairs} onClose={()=>setShowAddRepair(false)} onCreate={createRepair}/>}
     {repairJob && <RepairJobModal repair={repairJob} onClose={()=>setRepairJob(null)} updateRepair={updateRepair} deleteRepair={deleteRepair} setMessage={setMessage}/>}
-    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={()=>setJobCard(null)} updateDrum={updateDrum} updateHardware={updateHardware} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} returnDrumToProduction={returnDrumToProduction} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}} hardware={hardware} hardwareAllocations={hardwareAllocations} consumeHardwareForDrum={consumeHardwareForDrum} syncHardwareUsed={syncHardwareUsed} releaseHardwareForDrum={releaseHardwareForDrum}/>}
+    {jobCard && <JobCard drum={jobCard} template={templateMap[jobCard.template_name]} labourRate={labourRate} onClose={closeJobCardStable} updateDrum={updateDrum} completeDrum={completeDrum} addTime={addTime} markSold={markSold} markShipped={markShipped} returnDrumToProduction={returnDrumToProduction} archiveDrum={archiveDrum} restoreArchivedDrum={restoreArchivedDrum} setDrumLifecycle={setDrumLifecycle} copyText={copyText} deleteDrum={deleteDrum} drums={drums} projects={projects} createProject={createProject} setMessage={setMessage} onAddDrumToProject={(projectId,sourceDrum)=>{setAddWizardPreset({project_id:projectId,build_client:sourceDrum.build_client||"Unallocated",customer:sourceDrum.customer||"",customer_email:sourceDrum.customer_email||"",shipping_address:sourceDrum.shipping_address||"",due_date:sourceDrum.due_date||"",finish:sourceDrum.finish||"To Be Decided"});setJobCard(null);setShowAddWizard(true);}} hardware={hardware} hardwareAllocations={hardwareAllocations} consumeHardwareForDrum={consumeHardwareForDrum} syncHardwareUsed={syncHardwareUsed} releaseHardwareForDrum={releaseHardwareForDrum}/>}
   </main>
 }
 
@@ -3871,23 +4216,32 @@ function WorkshopTaskModal({task,onClose,onCreate,onUpdate}){
 }
 
 
-function SprayMixCalculator({batchName,count}){
+function SprayMixCalculator({batchName,count,drums=[],plannedItems=[]}){
   const [wastage,setWastage]=useState(0);
-  const mix=sprayMixForBatch(batchName,count);
+  const mix=sprayMixForBatch(batchName,drums.length?drums:count);
   if(!mix) return null;
 
   const multiplier=1+(Number(wastage||0)/100);
-  const base=mix.base*multiplier;
-  const hardener=mix.hardener*multiplier;
-  const combined=base+hardener;
-  const thinners=combined*(mix.thinnerPercent/100);
+  const rawCombined=((mix.rawBase??mix.base)+(mix.rawHardener??mix.hardener))*multiplier;
+  const rounded=roundTwoToOneMix(rawCombined);
+  const {base,hardener,combined}=rounded;
+  const thinners=roundMixTo5(combined*(mix.thinnerPercent/100));
   const total=combined+thinners;
+  const isHighGloss=String(mix.label||"").toLowerCase().includes("high-gloss");
+  const plannedLabels=plannedItems.map(item=>String(item?.task_label||item?.task_item||"").toLowerCase());
+  const onlyCoat1=plannedLabels.length>0 && plannedLabels.every(label=>label.includes("coat 1"));
+  const trialThinnerPercent=isHighGloss && !onlyCoat1 ? 5 : 0;
+  const trialThinners=roundMixTo5(combined*(trialThinnerPercent/100));
+  const trialTotal=combined+trialThinners;
+  const canCost=String(mix.product||"").toLowerCase()==="polyurethane" && String(mix.hardener||"").toLowerCase().includes("standard");
+  const sessionCost=canCost?polyurethaneMaterialCost({base,hardener,thinners}):null;
 
   return <section className="sprayMixCard">
     <header>
       <div>
         <span className="launchPackEyebrow">BATCH MIX CALCULATOR</span>
         <h3>{mix.label} — {mix.drums} drum{mix.drums===1?"":"s"}</h3>
+        <small>{mix.equivalentDrums.toFixed(2)} equivalent 14 × 6½ drums · 2:1 mix ratio preserved in 5 ml measuring increments</small>
       </div>
       <label>Extra allowance
         <select value={wastage} onChange={e=>setWastage(Number(e.target.value))}>
@@ -3908,12 +4262,165 @@ function SprayMixCalculator({batchName,count}){
       {formatMixMl(base)} + {formatMixMl(hardener)} = {formatMixMl(combined)}
       {mix.thinnerPercent>0 ? ` + ${mix.thinnerPercent}% (${formatMixMl(thinners)}) = ${formatMixMl(total)}` : ` total = ${formatMixMl(total)}`}
     </p>
+    {isHighGloss && <div className="sprayCostSummary">
+      <span>Active polyurethane trial — thinners</span>
+      <b>{trialThinnerPercent}% = {formatMixMl(trialThinners)}</b>
+      <small>{onlyCoat1 ? `Coat 1 trial: no thinners. Trial total remains ${formatMixMl(combined)}.` : `Coats 2–4 trial: add 5% thinners to the ${formatMixMl(combined)} base mixture. Trial total ${formatMixMl(trialTotal)}. Coat 1 remains 0%.`}</small>
+    </div>}
+    {sessionCost!==null && <div className="sprayCostSummary">
+      <span>Material cost for this mix</span><b>{money(sessionCost)}</b>
+      <small>Using GST-inclusive prices: polyurethane $145.20 / 4 L · standard hardener $49.665 / L · thinners $22.33 / L.</small>
+    </div>}
   </section>;
 }
 
-function ScheduleWorkControl({label="Schedule Work",onSchedule,scheduledDates=[],compact=false}){
+
+function sprayStageForDrum(drum){
+  const flow=workflowState(drum.build_type||"Stave",parseChecked(drum.notes),drum.finish,drum.build_client,drum.drum_type,drum.size);
+  const next=String(flow.nextStep||"").toLowerCase();
+  if(next.includes("sealer")) return {type:"Sealer coat",label:flow.nextStep};
+  if(next.includes("polyurethane coat")) return {type:"Polyurethane gloss",label:flow.nextStep};
+  if(next.includes("satin")) return {type:"Satin coat",label:flow.nextStep};
+  return null;
+}
+
+function SealingWorkflowNote(){
+  return <section className="panel sealingWorkflowNote"><span className="launchPackEyebrow">UPDATED FINISHING PROCESS</span><h2>Inside / Outside Seal Before Machining</h2><p><b>14 × 6½ baseline per coat:</b> 20 ml polyurethane + 10 ml hardener. Spray both the inside and outside, then repeat the same sealing coat the following day.</p><ol><li>Apply sealing coat to inside and outside.</li><li>Repeat on Day 2.</li><li>After the second coat, the <b>inside is finished</b> and the outside sealing stage is complete.</li><li>Allow 7 days curing. During this cure window, cut and sand bearing edges, cut snare beds and drill hardware holes.</li></ol></section>;
+}
+
+function PolyurethaneTrialCalculator(){
+  const [coat,setCoat]=useState("Coat 1");
+  const [diameter,setDiameter]=useState("14");
+  const [depth,setDepth]=useState("6 1/2");
+  const size=`${diameter} x ${depth}`;
+  const glossMix=polyurethaneGlossMixMlForSize(size);
+  const roundedMix=roundTwoToOneMix(glossMix);
+  const {base,hardener,combined}=roundedMix;
+  const standardThinners=0;
+  const trialPercent=coat==="Coat 1"?0:5;
+  const trialThinners=roundMixTo5(combined*(trialPercent/100));
+  return <div className="trialCalcCard">
+    <div className="sectionHeader"><div><span className="launchPackEyebrow">ACTIVE TRIAL</span><h3>Polyurethane Finish Trial</h3><p>Original Nowak Standard is preserved alongside the trial calculation.</p></div></div>
+    <div className="trialControls"><label>Coat<select value={coat} onChange={e=>setCoat(e.target.value)}><option>Coat 1</option><option>Coat 2</option><option>Coat 3</option><option>Coat 4</option></select></label><label>Diameter<select value={diameter} onChange={e=>setDiameter(e.target.value)}>{drumDiameters.map(x=><option key={x}>{x}</option>)}</select></label><label>Depth<select value={depth} onChange={e=>setDepth(e.target.value)}>{drumDepths.map(x=><option key={x}>{x}</option>)}</select></label></div>
+    <div className="trialCompareGrid"><div><b>Nowak Standard</b><span>Polyurethane {formatMixMl(base)}</span><span>Hardener {formatMixMl(hardener)}</span><span>Thinners {formatMixMl(standardThinners)} (0%)</span><strong>Total {formatMixMl(combined)}</strong></div><div><b>Current Trial — {coat}</b><span>Polyurethane {formatMixMl(base)}</span><span>Hardener {formatMixMl(hardener)}</span><span>Thinners {formatMixMl(trialThinners)} ({trialPercent}%)</span><strong>Total {formatMixMl(combined+trialThinners)}</strong></div></div>
+    <p className="calcNote"><b>Sanding trial:</b> before Coat 1 use 180G or 240G and record which was used. Sand before subsequent coats with 320G.</p>
+    {coat!=="Coat 1" && <p className="veneerFitWarning"><b>Difference from standard:</b> +{formatMixMl(trialThinners)} thinners.</p>}
+  </div>;
+}
+
+function WorkshopTrialsPage(){
+  const [polyNotes,setPolyNotes]=useState(()=>localStorage.getItem("nowak_trial_poly_notes")||"");
+  const [plyNotes,setPlyNotes]=useState(()=>localStorage.getItem("nowak_trial_ply_notes")||"");
+  const [polyStatus,setPolyStatus]=useState(()=>localStorage.getItem("nowak_trial_poly_status")||"Testing");
+  const [plyStatus,setPlyStatus]=useState(()=>localStorage.getItem("nowak_trial_ply_status")||"Testing");
+  function save(){localStorage.setItem("nowak_trial_poly_notes",polyNotes);localStorage.setItem("nowak_trial_ply_notes",plyNotes);localStorage.setItem("nowak_trial_poly_status",polyStatus);localStorage.setItem("nowak_trial_ply_status",plyStatus);alert("Workshop trial notes saved");}
+  const statuses=["Testing","Successful","Adopt as Nowak Standard","Abandoned"];
+  return <section className="trialsPage"><section className="panel"><span className="launchPackEyebrow">TEST → MEASURE → LEARN → STANDARDISE</span><h2>Workshop Trials</h2><p>Trial settings stay separate from the established Nowak Standard. The baseline remains visible so you can compare the change and record the actual result before deciding whether to adopt it.</p></section>
+    <section className="panel"><h2>Polyurethane Finish Trial</h2><label>Status<select value={polyStatus} onChange={e=>setPolyStatus(e.target.value)}>{statuses.map(x=><option key={x}>{x}</option>)}</select></label><div className="trialCompareGrid"><div><b>Nowak Standard</b><span>Coats 1–4: 0% thinners</span><span>Sand: 180G / 180G / 240G / 400G</span></div><div><b>Current Trial</b><span>Coat 1: 0% thinners</span><span>Coats 2–4: 5% thinners</span><span>Before Coat 1: 180G or 240G — record actual</span><span>Subsequent sanding: 320G</span></div></div><label>Results / observations<textarea rows="6" value={polyNotes} onChange={e=>setPolyNotes(e.target.value)} placeholder="Record drum, coat, grit used, orange peel, sink-back, off-gun finish, polishing result..."/></label></section>
+    <section className="panel"><h2>Ply Shell — Bubble Elimination Trial</h2><label>Status<select value={plyStatus} onChange={e=>setPlyStatus(e.target.value)}>{statuses.map(x=><option key={x}>{x}</option>)}</select></label><VeneerProcessNotes/><label>Results / observations<textarea rows="6" value={plyNotes} onChange={e=>setPlyNotes(e.target.value)} placeholder="Record shell, pair thicknesses, glue coverage, any bubbles/voids and where they appeared..."/></label></section>
+    <button className="primary" onClick={save}><Save size={16}/> Save Trial Notes</button>
+  </section>;
+}
+
+function SprayCalculatorPage({drums=[],onSchedule}){
+  const [sprayType,setSprayType]=useState("Sealer coat");
+  const [manualDrums,setManualDrums]=useState([{id:"manual-1",diameter:"14",depth:"6 1/2"}]);
+  const [selected,setSelected]=useState([]);
+  const [scheduleType,setScheduleType]=useState("Polyurethane gloss");
+
+  const manualMix=sprayMixForBatch(sprayType,manualDrums.map((row,index)=>({
+    ...row,
+    label:`Drum ${index+1}`,
+    size:`${row.diameter} x ${row.depth}`,
+  })));
+
+  const eligible=drums.filter(drum=>{
+    const stage=sprayStageForDrum(drum);
+    const cure=cureStatusForDrum(drum);
+    if(!stage || (cure && !cure.ready)) return false;
+    return stage.type===scheduleType;
+  });
+  const selectedDrums=eligible.filter(drum=>selected.includes(drum.id));
+  const selectedMix=sprayMixForBatch(scheduleType,selectedDrums);
+
+  function toggleDrum(id){
+    setSelected(current=>{
+      if(current.includes(id)) return current.filter(item=>item!==id);
+      if(current.length>=6) return current;
+      return [...current,id];
+    });
+  }
+
+  function changeScheduleType(value){
+    setScheduleType(value);
+    setSelected([]);
+  }
+
+  function addManualDrum(){
+    if(manualDrums.length>=6) return;
+    setManualDrums(current=>[...current,{id:`manual-${Date.now()}`,diameter:"14",depth:"6 1/2"}]);
+  }
+
+  function updateManual(id,key,value){
+    setManualDrums(current=>current.map(row=>row.id===id?{...row,[key]:value}:row));
+  }
+
+  const batchName=scheduleType==="Polyurethane gloss"?"Spray Polyurethane":scheduleType==="Satin coat"?"Final satin coat":"Sealer coat";
+
+  return <section className="sprayCalculatorPage">
+    <section className="panel sprayCalculatorIntro">
+      <span className="launchPackEyebrow">SPRAY ROOM</span>
+      <h2>Spray Calculator</h2>
+      <SealingWorkflowNote/>
+      <PolyurethaneTrialCalculator/>
+      <p>14 × 6½ remains the 100% reference drum. High-gloss polyurethane now uses workshop-calibrated usage: a fixed per-drum amount plus a shell-size component, which keeps snare estimates similar while reducing the previous overestimate on larger drums. Mix quantities are rounded to the nearest 5 ml.</p>
+      <p className="calcNote"><b>Between coats:</b> after sealer sand 180G until relatively smooth; after Coat 1 sand 180G until relatively smooth; after Coat 2 sand 240G; after Coat 3 sand 400G.</p>
+      <p className="calcNote">Polyurethane costing uses GST-inclusive prices: $145.20 / 4 L polyurethane, $49.665 / L standard hardener and $22.33 / L thinners.</p>
+    </section>
+
+    <section className="panel">
+      <div className="sectionHeader"><div><h3>Manual Spray Calculator</h3><p>Add up to six drums, including drums that are not in Workshop OS.</p></div></div>
+      <label className="sprayTypeSelect">Spray type
+        <select value={sprayType} onChange={e=>setSprayType(e.target.value)}>
+          <option>Sealer coat</option><option>Polyurethane gloss</option><option>Satin coat</option>
+        </select>
+      </label>
+      <div className="manualSprayDrums">{manualDrums.map((row,index)=><article className="manualSprayRow" key={row.id}>
+        <b>Drum {index+1}</b>
+        <label>Diameter<select value={row.diameter} onChange={e=>updateManual(row.id,"diameter",e.target.value)}>{drumDiameters.map(x=><option key={x}>{x}</option>)}</select></label>
+        <label>Depth<select value={row.depth} onChange={e=>updateManual(row.id,"depth",e.target.value)}>{drumDepths.map(x=><option key={x}>{x}</option>)}</select></label>
+        <span>{(polyurethaneGlossEquivalentForSize(`${row.diameter} x ${row.depth}`)*100).toFixed(0)}% gloss reference</span>
+        <small className="sprayDrumCost">Full HG finish: <b>{money(fullHighGlossFinishForSize(`${row.diameter} x ${row.depth}`).cost)}</b></small>
+        {manualDrums.length>1 && <button className="dangerButton" onClick={()=>setManualDrums(current=>current.filter(item=>item.id!==row.id))}><Trash2 size={14}/></button>}
+      </article>)}</div>
+      {manualDrums.length<6 && <button onClick={addManualDrum}><Plus size={15}/> Add another drum</button>}
+      {manualMix && <SprayMixCalculator batchName={sprayType} drums={manualDrums.map((row,index)=>({...row,label:`Drum ${index+1}`,size:`${row.diameter} x ${row.depth}`}))}/>} 
+    </section>
+
+    <section className="panel">
+      <div className="sectionHeader"><div><h3>Schedule a Spray Batch</h3><p>Select up to six workshop drums. Polyurethane Coat 1, 2, 3 and 4 can be scheduled together while each drum keeps its own current coat stage.</p></div><b>{selected.length}/6 selected</b></div>
+      <label className="sprayTypeSelect">Batch type
+        <select value={scheduleType} onChange={e=>changeScheduleType(e.target.value)}>
+          <option>Sealer coat</option><option>Polyurethane gloss</option><option>Satin coat</option>
+        </select>
+      </label>
+      {eligible.length===0?<div className="stocktakeNotice"><b>No drums are ready for this spray type.</b><span>Drums currently curing are automatically excluded until ready.</span></div>:
+      <div className="sprayEligibleGrid">{eligible.map(drum=>{const stage=sprayStageForDrum(drum);const checked=selected.includes(drum.id);return <button type="button" key={drum.id} className={`sprayEligibleCard ${checked?"selected":""}`} onClick={()=>toggleDrum(drum.id)}>
+        <span className="sprayCheck">{checked?"✓":""}</span><b>{drum.serial?`#${drum.serial}`:"Pending"} {drum.timber}</b><span>{drum.size} · {drum.drum_type||"Snare"}</span><small>{stage?.label}</small><strong>{(polyurethaneGlossEquivalentForSize(drum.size)*100).toFixed(0)}% gloss</strong><small className="sprayDrumCost">Full HG finish: {money(fullHighGlossFinishForSize(drum.size).cost)}</small>
+      </button>})}</div>}
+      {selectedMix && <SprayMixCalculator batchName={scheduleType} drums={selectedDrums}/>} 
+      {selected.length>0 && <div className="sprayScheduleActions"><span>Choose when to spray these {selected.length} drum{selected.length===1?"":"s"}:</span><ScheduleWorkControl label="Schedule Selected" compact onSchedule={date=>onSchedule?.(selectedDrums,date,batchName)}/></div>}
+    </section>
+  </section>;
+}
+
+function ScheduleWorkControl({label="Schedule Work",onSchedule,scheduledDates=[],compact=false,taskOptions=[]}){
   const [choice,setChoice]=useState("");
   const [customDate,setCustomDate]=useState("");
+  const [taskItem,setTaskItem]=useState(taskOptions[0]?.value || "");
+  useEffect(()=>{
+    if(taskOptions.length && !taskOptions.some(option=>option.value===taskItem)) setTaskItem(taskOptions[0].value);
+  },[taskOptions.map(option=>option.value).join("|")]);
   const scheduledDate=[...scheduledDates].sort()[0]||"";
   const scheduledLabel=scheduledDate===localISODate(0)
     ? "Scheduled: Today"
@@ -3932,7 +4439,7 @@ function ScheduleWorkControl({label="Schedule Work",onSchedule,scheduledDates=[]
       return;
     }
     if(!date) return;
-    const saved=await onSchedule?.(date);
+    const saved=await onSchedule?.(date,taskItem);
     if(saved!==false){
       setChoice("");
       setCustomDate("");
@@ -3940,6 +4447,7 @@ function ScheduleWorkControl({label="Schedule Work",onSchedule,scheduledDates=[]
   }
 
   return <div className={"scheduleWorkControl "+(compact?"compactScheduleControl":"")}>
+    {taskOptions.length>1 && <div className="scheduleTaskWrap"><ListChecks size={15}/><select value={taskItem} onChange={e=>setTaskItem(e.target.value)}>{taskOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></div>}
     <div className="scheduleSelectWrap">
       <CalendarDays size={15}/>
       <select value={choice} onChange={e=>{setChoice(e.target.value);schedule(e.target.value);}}>
@@ -3967,7 +4475,13 @@ function DailyWorkPlan({workPlan,drums,repairs=[],openJobCard,openRepair,updateP
   function PlanSection({date,title}){
     const activeDrumIds=new Set(drums.map(drum=>drum.id));
     const activeRepairIds=new Set(repairs.map(repair=>repair.id));
-    const items=workPlan.filter(item=>item.planned_date===date && ((item.drum_id && activeDrumIds.has(item.drum_id)) || (item.repair_id && activeRepairIds.has(item.repair_id))));
+    const items=workPlan.filter(item=>{
+      if(item.planned_date!==date) return false;
+      if(item.repair_id) return activeRepairIds.has(item.repair_id);
+      if(!item.drum_id || !activeDrumIds.has(item.drum_id)) return false;
+      if(item.status==="Done") return true;
+      return planItemStillCurrentForDrum(item,drumMap[item.drum_id]);
+    });
     const unfinished=items.filter(item=>item.status!=="Done");
     const grouped={};
     items.forEach(item=>{
@@ -3992,11 +4506,12 @@ function DailyWorkPlan({workPlan,drums,repairs=[],openJobCard,openRepair,updateP
         ? <div className="emptyPlan"><CalendarDays size={24}/><p>No work deliberately planned for this day yet.</p></div>
         : <div className="dailyPlanGroups">{Object.entries(grouped).map(([group,groupItems])=>{
             const groupHours=plannedGroupHours(group,groupItems);
-            const mixCount=groupItems.filter(i=>i.status!=="Done").length;
-            const mixRecipe=sprayMixForBatch(group,mixCount);
+            const unfinishedGroupItems=groupItems.filter(i=>i.status!=="Done");
+            const mixDrums=unfinishedGroupItems.map(item=>drumMap[item.drum_id]).filter(Boolean);
+            const mixRecipe=sprayMixForBatch(group,mixDrums);
             return <section className="dailyPlanGroup" key={group}>
               <header><div><h3>{group}</h3><span>{groupItems.length} task{groupItems.length===1?"":"s"} · {formatPlanTime(groupHours)}</span></div></header>
-              {mixRecipe && mixCount>0 && <SprayMixCalculator batchName={group} count={mixCount}/>}
+              {mixRecipe && mixDrums.length>0 && <SprayMixCalculator batchName={group} drums={mixDrums} plannedItems={unfinishedGroupItems}/>}
               <div className="planItemList">{groupItems.map(item=>{
                 const drum=drumMap[item.drum_id];
                 const repair=repairMap[item.repair_id];
@@ -4025,7 +4540,7 @@ function DailyWorkPlan({workPlan,drums,repairs=[],openJobCard,openRepair,updateP
   </section>;
 }
 
-function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,progressingDrumId,onAddPhoto,scheduleDrum,scheduleBatch,plannedDatesByDrum={},activePlanByDrum={}}){
+function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,progressingDrumId,onAddPhoto,scheduleDrum,scheduleBatch,plannedDatesByDrum={},activePlanByDrum={},compact=false}){
   const projectMap=Object.fromEntries(projects.map(p=>[p.id,p]));
   const linkedGroups={};
   const unlinked=[];
@@ -4042,12 +4557,12 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
   const groups=Object.entries(linkedGroups)
     .map(([projectId,items])=>({
       project:projectMap[projectId] || {id:projectId,name:"Unnamed Kit / Project"},
-      items:[...items].sort(productionPriorityCompare)
+      items:[...items]
     }))
     .sort((a,b)=>{
       const aFirst=a.items[0] || {};
       const bFirst=b.items[0] || {};
-      return productionPriorityCompare(aFirst,bFirst);
+      return drums.indexOf(aFirst)-drums.indexOf(bFirst);
     });
 
   return <section className="productionGroups">
@@ -4074,7 +4589,7 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
           </div>
         </header>
         <div className="productionList kitDrumGrid">
-          {items.map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} scheduleDrum={scheduleDrum} plannedDates={plannedDatesByDrum[d.id]||[]} scheduledTask={activePlanByDrum[d.id]?.[0]?.task_label||""}/>)}
+          {items.map(d=><DrumCard key={d.id} drum={d} compact={compact} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} scheduleDrum={scheduleDrum} plannedDates={plannedDatesByDrum[d.id]||[]} scheduledTask={activePlanByDrum[d.id]?.[0]?.task_label||""}/>)}
         </div>
       </section>
     })}
@@ -4089,21 +4604,46 @@ function ProductionGroups({drums,projects,openJobCard,updateDrum,progressDrum,pr
       </header>
       <div className="productionList">
         {[...unlinked]
-          .sort(productionPriorityCompare)
-          .map(d=><DrumCard key={d.id} drum={d} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} scheduleDrum={scheduleDrum} plannedDates={plannedDatesByDrum[d.id]||[]} scheduledTask={activePlanByDrum[d.id]?.[0]?.task_label||""}/>)}
+          .map(d=><DrumCard key={d.id} drum={d} compact={compact} openJobCard={openJobCard} updateDrum={updateDrum} progressDrum={progressDrum} progressing={progressingDrumId===d.id} onAddPhoto={onAddPhoto} scheduleDrum={scheduleDrum} plannedDates={plannedDatesByDrum[d.id]||[]} scheduledTask={activePlanByDrum[d.id]?.[0]?.task_label||""}/>)}
       </div>
     </section>}
   </section>
 }
 
 
-function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto, scheduleDrum, plannedDates=[], scheduledTask=""}){
+function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=false, onAddPhoto, scheduleDrum, plannedDates=[], scheduledTask="",compact=false}){
   const checked=parseChecked(drum.notes);
   const flow=workflowState(drum.build_type || "Stave",checked,drum.finish,drum.build_client,drum.drum_type,drum.size);
   const cure=cureStatusForDrum(drum);
+  const [viewOverride,setViewOverride]=useState(null);
+  useEffect(()=>{ setViewOverride(null); },[compact]);
 
   const scheduled=plannedDates.length>0;
-  return <article className={"card " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduled?" scheduledTomorrowCard":"")}>
+  const effectiveCompact=viewOverride==="condensed" ? true : viewOverride==="standard" ? false : compact;
+  const customerName=allocatedCustomerName(drum);
+  const curingDay=cure && !cure.ready ? Math.max(1,Math.min(7,7-Number(cure.daysRemaining||0))) : null;
+  const currentStatus=isShippedStatus(drum) ? "Shipped" : isSoldStatus(drum) ? "Sold" : cure ? (cure.ready ? (cure.type==="sealer" ? "Sealer cured" : "Final cure complete") : `Day ${curingDay} curing`) : isManufacturingComplete(drum) ? "Manufacturing Complete" : flow.status;
+
+  if(effectiveCompact){
+    return <article data-drum-id={drum.id} className={"card compactDrumCard compactSummaryCard " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduled?" scheduledTomorrowCard":"")}>
+      <div className="compactSummaryTop">
+        <b>{drum.serial ? `#${drum.serial}` : "Pending"} {drum.timber}</b>
+        <span>{drum.size} · {drum.drum_type || "Snare"}</span>
+      </div>
+      {(drum.cb_number || customerName) && <div className="compactIdentityLine">
+        {drum.cb_number && <span className="compactIdentityPill">CB {drum.cb_number}</span>}
+        {customerName && <span className="compactIdentityPill compactCustomerPill">{customerName}</span>}
+      </div>}
+      <div className="progress"><i style={{width:(isManufacturingComplete(drum)?100:flow.percent)+"%"}}></i></div>
+      <div className="compactSummaryStatus"><span><b>Status:</b> {currentStatus}</span></div>
+      {scheduled && <div className="compactScheduleLine"><CalendarDays size={12}/><span>{plannedDates.map(friendlyPlanDate).join(", ")}{scheduledTask?` · ${scheduledTask}`:""}</span></div>}
+      <div className="compactSummaryActions">
+        <button type="button" className="primary" onClick={()=>setViewOverride("standard")}>Expand / Standard View</button>
+        <button type="button" onClick={()=>openJobCard(drum)}>Open</button>
+      </div>
+    </article>;
+  }
+  return <article data-drum-id={drum.id} className={"card " + (drum.build_client==="Brady"?"bradyCard":drum.build_client==="Nowak"?"nowakCard":"unallocatedCard") + (scheduled?" scheduledTomorrowCard":"")}>
     <div className="cardHeading">
       <b>{drum.serial ? `#${drum.serial}` : "Pending"} {drum.timber}</b>
       {allocatedCustomerName(drum) && <span className="customerNameBadge">{allocatedCustomerName(drum)}</span>}
@@ -4127,14 +4667,16 @@ function DrumCard({drum, openJobCard, updateDrum, progressDrum, progressing=fals
         <span>Ready date: {formatStageDate(cure.readyAt)}</span>
       </div>
     </div>}
-    <p><b>Estimated:</b> {flow.estimatedTotal.toFixed(2)} hr production · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
-    <p><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
+    <p className="detailMetric"><b>Estimated:</b> {flow.estimatedTotal.toFixed(2)} hr production · {flow.estimatedRemaining.toFixed(2)} hr remaining</p>
+    <p className="detailMetric"><b>Actual:</b> {Number(drum.hours_logged||0).toFixed(2)} hr</p>
     {trackingNumberFromNotes(drum.notes) && <p className="trackingNumberLine"><b>Tracking:</b> {trackingNumberFromNotes(drum.notes)}</p>}
     {scheduled && <div className="scheduledTomorrowBadge"><CalendarDays size={14}/><span>Scheduled: {plannedDates.map(friendlyPlanDate).join(", ")}{scheduledTask?` · ${scheduledTask}`:""}</span></div>}
     <section className="cardActionRow">
+      <button type="button" className="condenseCardButton" onClick={()=>setViewOverride("condensed")}>Condense</button>
       {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && (!cure || cure.ready) && scheduleDrum && <ScheduleWorkControl
         label="Schedule Work"
-        onSchedule={date=>scheduleDrum(drum,date)}
+        onSchedule={(date,taskItem)=>scheduleDrum(drum,date,taskItem)}
+        taskOptions={scheduleTaskOptionsForDrum(drum)}
         scheduledDates={plannedDates}
       />}
       {flow.nextStep!=="Complete" && !isManufacturingComplete(drum) && <button type="button" className="primary" disabled={progressing || !progressDrum || Boolean(cure && !cure.ready)} onClick={()=>progressDrum?.(drum)}><CheckCircle2 size={15}/> {progressing ? "Progressing..." : cure && !cure.ready ? "Curing — not ready" : `Progress: ${flow.nextStep}`}</button>}
@@ -4536,20 +5078,7 @@ function SizeEditor({drum, updateDrum}){
 }
 
 function VeneerProcessNotes(){
-  return <div className="panel veneerProcessNotes">
-    <span className="launchPackEyebrow">ACTIVE WORKSHOP TRIAL</span>
-    <h2>Ply Veneer Process — Current Trial</h2>
-    <p className="calcNote">Keep the existing cut calculation as the production reference. Enter the actual measured thickness of each completed layer/group; it does not matter whether that layer contains one, two or three individual veneer sheets.</p>
-    <ol>
-      <li><b>Prepare veneer groups:</b> Glue pairs/triples as required, allow them to stabilise, sand flat and measure the actual finished thickness of each group.</li>
-      <li><b>Compare calculations:</b> The calculator shows the current method beside the experimental sequential thickness-based method.</li>
-      <li><b>Mould glue-up:</b> Apply full, even glue coverage with no dry areas.</li>
-      <li><b>Initial plug expansion:</b> Slightly expand the plug before fully tightening the mould to help squeeze out excess glue.</li>
-      <li><b>Final mould pressure:</b> Let the plug down, fully tighten/close the mould, then re-expand the plug to <b>1 bar</b>.</li>
-      <li><b>Staged inner-sheet trial:</b> If using the 9-sheet trial, press the first 9 single sheets for 24 hours, remove the plug and measure, then cut/glue the final single inside sheet. Reinsert the plug for 24 hours, then remove it and leave the shell a further 24 hours.</li>
-      <li><b>Record the result:</b> Note actual cut length and whether each layer was short, correct or long so the experimental formula can keep being calibrated.</li>
-    </ol>
-  </div>;
+  return <div className="panel veneerProcessNotes"><span className="launchPackEyebrow">ACTIVE WORKSHOP TRIAL</span><h2>Ply Veneer Process — Current Trial</h2><p className="calcNote">Keep the existing cut calculation as the production reference. Enter the actual measured thickness of each completed layer/group; it does not matter whether that layer contains one, two or three individual veneer sheets.</p><ol><li><b>Prepare veneer groups:</b> Glue pairs/triples as required, allow them to stabilise, sand flat and measure the actual finished thickness of each group.</li><li><b>Compare calculations:</b> The calculator shows the current method beside the experimental sequential thickness-based method.</li><li><b>Mould glue-up:</b> Apply full, even glue coverage with no dry areas.</li><li><b>Initial plug expansion:</b> Slightly expand the plug before fully tightening the mould to help squeeze out excess glue.</li><li><b>Final mould pressure:</b> Let the plug down, fully tighten/close the mould, then re-expand the plug to <b>1 bar</b>.</li><li><b>Staged inner-sheet trial:</b> If using the 9-sheet trial, press the first 9 single sheets for 24 hours, remove the plug and measure, then cut/glue the final single inside sheet. Reinsert the plug for 24 hours, then remove it and leave the shell a further 24 hours.</li><li><b>Record the result:</b> Note actual cut length and whether each layer was short, correct or long so the experimental formula can keep being calibrated.</li></ol></div>;
 }
 
 function VeneerComparison({thicknesses,size}){
@@ -4559,13 +5088,10 @@ function VeneerComparison({thicknesses,size}){
     <div className="veneerCompareHeader"><span>Layer</span><b>Current calculation</b><b>Experimental thickness calculation</b></div>
     {thicknesses.map((value,index)=><div className={`veneerCompareRow ${index===4?"veneerSensitiveLayer":""}`} key={index}>
       <span><b>L{index+1}</b><small>{Number(value||0).toFixed(2)} mm thick</small></span>
-      <strong>{current[index]!=null && Number.isFinite(current[index])?`${current[index].toFixed(1)} mm`:"—"}</strong>
+      <strong>{current[index]!=null?`${current[index].toFixed(1)} mm`:"—"}</strong>
       <strong>{experimental[index]!=null?`${experimental[index].toFixed(1)} mm`:"—"}</strong>
     </div>)}
-    {thicknesses.length>=5 && <div className="veneerCalibrationNote">
-      <b>Layer 5 watch item</b>
-      <span>14-inch workshop observations: around 1.2 mm layers, 1069 mm has fitted correctly. Thinner lay-ups have needed a longer Layer 5; thicker lay-ups have needed a shorter Layer 5. Keep the current value as the production reference while comparing the experimental column.</span>
-    </div>}
+    {thicknesses.length>=5 && <div className="veneerCalibrationNote"><b>Layer 5 watch item</b><span>14" workshop observations: around 1.2 mm layers, 1069 mm has fitted correctly. Thinner lay-ups have needed a longer Layer 5; thicker lay-ups have needed a shorter Layer 5. Keep using the current value as the production reference while comparing the experimental column.</span></div>}
   </div>;
 }
 
@@ -4573,11 +5099,11 @@ function VeneerCalculator({drums, updateDrum, openJobCard}){
   const [manual,setManual]=useState([1.2,1.2,1.2,1.2,1.2]);
   const [manualSize,setManualSize]=useState("14 x 6.5");
   const addLayer=()=>setManual(current=>[...current,1.2]);
-  const removeLayer=()=>setManual(current=>current.length>5?current.slice(0,-1):current);
+  const removeLayer=()=>setManual(current=>current.length>1?current.slice(0,-1):current);
   return <section>
     <div className="panel"><h2>Ply Veneer Cut Calculator</h2><p>The existing calculator remains unchanged. The experimental column uses the measured thickness of each layer/group and continues automatically for any number of added layers.</p></div>
     <VeneerProcessNotes/>
-    <section className="panel"><h2>Manual Calculator</h2><label>Shell size</label><select value={manualSize} onChange={e=>setManualSize(e.target.value)}><option>14 x 6.5</option><option>14 x 5.5</option><option>13 x 7</option><option>12 x 7</option></select><p className="calcNote">{sizeAdjustmentLabel(manualSize)}. Measure each completed layer/group directly — single, pair or triple — and enter that actual thickness.</p><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><div className="buttonRow"><button type="button" onClick={addLayer}><Plus size={15}/> Add Layer</button>{manual.length>5&&<button type="button" onClick={removeLayer}>Remove Last Layer</button>}</div><VeneerComparison thicknesses={manual} size={manualSize}/></section>
+    <section className="panel"><h2>Manual Calculator</h2><label>Shell size</label><select value={manualSize} onChange={e=>setManualSize(e.target.value)}><option>14 x 6.5</option><option>14 x 5.5</option><option>13 x 7</option><option>12 x 7</option></select><p className="calcNote">{sizeAdjustmentLabel(manualSize)}. Measure each completed layer/group directly — single, pair or triple — and enter that actual thickness.</p><div className="veneerGrid">{manual.map((v,i)=><label key={i}>Layer {i+1} thickness mm<input value={v} onChange={e=>{const n=[...manual]; n[i]=e.target.value; setManual(n)}}/></label>)}</div><div className="buttonRow"><button type="button" onClick={addLayer}>+ Add Layer</button>{manual.length>5&&<button type="button" onClick={removeLayer}>Remove Last Layer</button>}</div><VeneerComparison thicknesses={manual} size={manualSize}/></section>
     <section className="panel"><h2>Ply Drums</h2><div className="templateGrid">{drums.map(d=>{const t=[d.veneer_1_thickness,d.veneer_2_thickness,d.veneer_3_thickness,d.veneer_4_thickness,d.veneer_5_thickness].map(x=>x||1.2); return <article className="card" key={d.id}><b>{d.serial ? `#${d.serial}` : "Pending"} {d.timber}</b><span>{d.size} · {d.production_status}</span><p className="calcNote">{sizeAdjustmentLabel(d.size)}. Saved drum records currently store Layers 1–5; use the Manual Calculator above for Layer 6+ trials.</p><div className="veneerGrid small">{t.map((v,i)=><label key={i}>L{i+1}<input value={v} onChange={e=>updateDrum(d.id,{[`veneer_${i+1}_thickness`]:Number(e.target.value)})}/></label>)}</div><VeneerComparison thicknesses={t} size={d.size}/><button onClick={()=>openJobCard(d)}>Open job card</button></article>})}</div></section>
   </section>
 }
@@ -4585,6 +5111,7 @@ function VeneerCalculator({drums, updateDrum, openJobCard}){
 function VeneerResult({lengths,thicknesses=[]}){
   return <div className="resultList veneerResultList">{lengths.map((l,i)=><div className={i===4?"veneerSensitiveLayer":""} key={i}><b>Layer {i+1}</b><span>{l.toFixed(1)} mm</span>{i===4&&<small className="veneerFitWarning">Layer 5 remains a monitored fit item — compare against the experimental calculator before cutting.</small>}</div>)}</div>;
 }
+
 
 function localDateKey(value){
   if(!value) return "";
@@ -4664,7 +5191,6 @@ function totalWorkflowHours(drum){
 }
 
 function estimatedStageEvents(drum){
-  const estimates=workflowEstimates[drum.build_type || "Stave"] || workflowEstimates.Stave;
   const history=Array.isArray(drum.stage_history) ? drum.stage_history : [];
   const seen=new Set();
   const rows=[];
@@ -4672,7 +5198,7 @@ function estimatedStageEvents(drum){
   history.forEach(entry=>{
     if(!entry?.completed || !entry?.completed_at || !entry?.item || seen.has(entry.item)) return;
     seen.add(entry.item);
-    const hours=Number(estimates[entry.item] || 0) * drumTimingMultiplier(drum.drum_type,drum.size);
+    const hours=workflowItemEstimatedHours(entry.item,drum.build_type || "Stave",drum.drum_type,drum.size);
     rows.push({
       date:localDateKey(entry.completed_at),
       hours,
@@ -5923,7 +6449,17 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
       };
       if(supplierIsRech){
         if(/BASS-LUG-GASKET/i.test(key)) return null;
-        if(/TOM-MOUNT/i.test(key)||/TM001/i.test(String(part.code||""))) return null;
+        // Rech snare kits do not include a snare-side hoop.
+        if(String(row.drumType||"").toLowerCase()==="snare" && /-SNR(?:-|$)/i.test(key)) return null;
+        // Rech floor toms use their rounded leg mounts rather than Lea Hung TM001 mounts.
+        if(/TOM-MOUNT/i.test(key)||/TM001/i.test(String(part.code||""))){
+          if(String(row.drumType||"").toLowerCase()!=="floor tom") return null;
+          part.sku_key="RECH-ROUNDED-TOM-MOUNT";
+          part.code="RECH-ROUNDED-TOM-MOUNT";
+          part.part_name="Rounded Tom Mount";
+          part.category="Floor Tom Hardware";
+          part.size="Floor tom leg mount";
+        }
         if(part.category==="Lugs"&&/ball/i.test(`${part.part_name||""} ${key}`)){
           part.rechLugUse=String(row.drumType||"").toLowerCase()==="bass drum"?"Bass":"Tom";
         }
@@ -5963,7 +6499,7 @@ ${(order.order_items||[]).map(i=>`${i.name} | ${i.colour} | ${i.code} | ${i.size
       return `<tr class="category"><td colspan="5">${escapeHtml(category)}</td></tr>${rows.map(item=>`<tr><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.finish)}</td><td>${escapeHtml(item.code)}</td><td>${escapeHtml(item.size)}</td><td><b>${item.qty}</b></td></tr>`).join("")}`;
     }).join("");
     const note=supplierIsRech
-      ?"Rech rules applied: Tom and Bass single-point ball lugs are separated; separate lug gaskets and Lea Hung TM001 mounts are excluded."
+      ?"Rech rules applied: Tom and Bass single-point ball lugs are separated; snare-side hoops and separate lug gaskets are excluded; floor toms use Rech rounded leg mounts."
       :"Lea Hung catalogue rules applied, including separate bass-lug gaskets and floor-tom TM001 mounts.";
     const html=`<!doctype html><html><head><title>${escapeHtml(supplier)} Kit Hardware Breakdown</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:10px}h1{margin:0 0 4px;font-size:20px}h2{font-size:13px;margin:16px 0 6px}.intro{margin:0 0 4px}.note{margin:0 0 12px;color:#444}.drum{break-inside:avoid;margin-bottom:14px}table{width:100%;border-collapse:collapse;margin-bottom:8px}th,td{border:1px solid #888;padding:5px;text-align:left;vertical-align:top}th{background:#ddd}.category td{background:#eee;font-weight:700;font-size:11px}.totalTitle{margin-top:22px;border-top:2px solid #111;padding-top:10px}</style></head><body><h1>Nowak Drum Company — ${escapeHtml(supplier)} Kit Hardware Breakdown</h1><p class="intro">Printed ${new Date().toLocaleString("en-AU")} · ${planTotal} drum${planTotal===1?"":"s"} in this build plan.</p><p class="note">${escapeHtml(note)}</p>${drumSections}<h1 class="totalTitle">${escapeHtml(supplier)} Combined Hardware Totals</h1><table><thead><tr><th>Supplier item</th><th>Finish</th><th>Code</th><th>Size</th><th>Total required</th></tr></thead><tbody>${totalsHtml}</tbody></table></body></html>`;
     openPrintableDocument(html,"Please allow pop-ups to print or save the supplier kit hardware breakdown.");
@@ -6208,14 +6744,35 @@ function Costing({templates, labourRate, setLabourRate}){
     </div>
     <p className="pricingNote">Brady pricing reflects the current agreement and Brady assisting with the builds. Freight, unusual specifications, premium timber and special finishing can be quoted separately.</p>
 
+    <h3>Polyurethane finish costing</h3>
+    <p className="pricingNote">High Gloss material cost uses GST-inclusive prices: polyurethane $145.20 / 4 L, standard hardener $49.665 / L and thinners $22.33 / L. Sealer remains on the original 14 × 6.5 diameter × depth scaling. Gloss coats use the workshop-calibrated model (17 ml + 0.471 × diameter × depth of mixed material per coat), based on the measured five-drum batch that used 600 ml versus the previous 720 ml estimate. Inter-coat sanding is calibrated from workshop measurements (8 × 8 = 5 min, 14 × 8 = 10 min, 16 × 16 = 15 min, 24 × 14 = 20 min), interpolated by shell size and rounded to the nearest 5 minutes.</p>
+    <p className="pricingNote"><b>Sanding procedure:</b> after sealer — 180G until relatively smooth; after Coat 1 — 180G until relatively smooth; after Coat 2 — 240G; after Coat 3 — 400G.</p>
+    <div className="priceGuideTable darkPriceGuide polyCostGuide">
+      <div className="priceGuideHeader"><b>Drum</b><b>Poly materials</b><b>Sand / pass</b><b>4 sanding passes</b><b>Sanding labour</b><b>Finish subtotal</b></div>
+      {[
+        ["8 × 8","8 x 8"],["10 × 10","10 x 10"],["12 × 7","12 x 7"],["12 × 12","12 x 12"],
+        ["13 × 7","13 x 7"],["14 × 6.5","14 x 6.5"],["14 × 8","14 x 8"],["14 × 14","14 x 14"],
+        ["16 × 16","16 x 16"],["18 × 18","18 x 18"],["24 × 14","24 x 14"]
+      ].map(([label,size])=>{
+        const finish=fullHighGlossFinishForSize(size);
+        const sandMin=intercoatSandingMinutesForSize(size);
+        const sandHours=fullFinishIntercoatSandingHours(size);
+        const sandLabour=sandHours*Number(labourRate||0);
+        return <div className="priceGuideRow" key={size}>
+          <span>{label}</span><strong>{money(finish.cost)}</strong><strong>{sandMin} min</strong><strong>{sandMin*4} min</strong><strong>{money(sandLabour)}</strong><strong>{money(finish.cost+sandLabour)}</strong>
+        </div>;
+      })}
+    </div>
+    <p className="pricingNote">The finish subtotal above is polyurethane/hardener/thinners plus inter-coat sanding labour only. Spray labour, final high-gloss preparation and polishing remain in the normal production-time allowance.</p>
+
     <h3>Production Time Allowances</h3>
     <p className="pricingNote">Snare timings are the minimum baseline. Tom and bass-drum times use the agreed diameter multiplier. Cure waiting time remains unchanged.</p>
     <div className="timeAllowanceGrid">
       {["Stave","Ply"].map(type=>{
         const rows=manufacturingChecklist(type,"High Gloss","Nowak","Snare").filter(item=>!marketingChecklist.includes(item) && !fulfilmentChecklist.includes(item));
-        const total=rows.reduce((sum,item)=>sum+Number(workflowEstimates[type][item]||0),0);
+        const total=rows.reduce((sum,item)=>sum+workflowItemEstimatedHours(item,type,"Snare","14 x 6.5"),0);
         return <article className="card" key={type}><h4>{type} — 14 × 6.5 snare baseline</h4>
-          <div className="timeRows">{rows.map(item=><div key={item}><span>{checklistDisplayLabel(item,type)}</span><b>{Math.round(Number(workflowEstimates[type][item]||0)*60)} min</b></div>)}</div>
+          <div className="timeRows">{rows.map(item=><div key={item}><span>{checklistDisplayLabel(item,type)}</span><b>{Math.round(workflowItemEstimatedHours(item,type,"Snare","14 x 6.5")*60)} min</b></div>)}</div>
           <p><b>Total High Gloss production allowance: {total.toFixed(2)} hr</b></p>
         </article>;
       })}
@@ -6992,6 +7549,7 @@ async function offerSaveToDevice(files,title="Nowak Drum Media"){
 
 function LaunchMediaModal({drum,stage,onClose,onUploaded,setMessage}){
   const cameraInputRef=useRef(null);
+  const videoInputRef=useRef(null);
   const libraryInputRef=useRef(null);
   const [files,setFiles]=useState([]);
   const [source,setSource]=useState("");
@@ -8338,7 +8896,9 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
             <div className="stageCommsThumbs">
               {items.map(photo=><div className="storedMediaCard" key={photo.id}>
                 <a href={photo.public_url} target="_blank" rel="noreferrer">
-                  <img src={photo.public_url} alt={stageLabel(key)}/>
+                  {(photo.media_type==="video" || /\.(mp4|mov|m4v|webm)$/i.test(photo.storage_path||photo.public_url||""))
+                    ? <video src={photo.public_url} muted playsInline controls preload="metadata"/>
+                    : <img src={photo.public_url} alt={stageLabel(key)}/>}
                 </a>
                 <div className="storedMediaPrimaryActions">
                   <a className="buttonLike" href={photo.public_url} target="_blank" rel="noreferrer">Open</a>
@@ -8378,6 +8938,7 @@ function StageCommunications({drum,setMessage,onAddPhoto}){
 
 function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
   const cameraInputRef=useRef(null);
+  const videoInputRef=useRef(null);
   const libraryInputRef=useRef(null);
   const baseMilestone=photoMilestones[milestoneKey] || photoMilestones.blank;
   const milestone={
@@ -8406,7 +8967,7 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       return;
     }
     if(!files.length){
-      setStatus("Choose or take at least one photo first.");
+      setStatus("Choose or take at least one photo or video first.");
       return;
     }
 
@@ -8414,14 +8975,14 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       ? await offerSaveToDevice(files,`${drum.timber||"Nowak drum"} — ${milestone.label}`)
       : {supported:false,shared:false};
     setStatus(source==="camera" && shareResult.supported
-      ? "Saving photos to the app..."
-      : "Uploading photos...");
+      ? "Saving media to the app..."
+      : "Uploading media...");
     const saved=[];
 
     try{
       for(let index=0; index<files.length; index+=1){
         const file=files[index];
-        const safeName=String(file.name || `photo-${index+1}.jpg`).replace(/[^a-zA-Z0-9._-]/g,"-");
+        const safeName=String(file.name || `media-${index+1}`).replace(/[^a-zA-Z0-9._-]/g,"-");
         const uniqueId=(globalThis.crypto?.randomUUID?.() || `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`);
         const path=`${drum.id}/${milestoneKey}/${uniqueId}-${safeName}`;
 
@@ -8430,7 +8991,7 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
           .upload(path,file,{
             upsert:false,
             cacheControl:"3600",
-            contentType:file.type || "image/jpeg"
+            contentType:file.type || undefined
           });
 
         if(uploadError) throw new Error("Storage upload: " + uploadError.message);
@@ -8438,6 +8999,7 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
         const {data:publicData}=supabase.storage.from("drum-photos").getPublicUrl(path);
         const publicUrl=publicData?.publicUrl || "";
 
+        const mediaType=String(file.type || "").startsWith("video/") ? "video" : "image";
         const {error:rowError}=await supabase
           .from("drum_photos")
           .insert({
@@ -8446,6 +9008,7 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
             storage_path:path,
             public_url:publicUrl,
             caption:socialText,
+            media_type:mediaType,
           });
 
         if(rowError) throw new Error("Photo record: " + rowError.message);
@@ -8463,7 +9026,7 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       setUploaded(saved);
       setFiles([]);
       window.dispatchEvent(new CustomEvent("drum-media-updated",{detail:{drumId:drum.id}}));
-      const successMessage=`${saved.length} photo${saved.length===1?"":"s"} saved successfully${drum.build_client==="Brady" ? " to this Brady shell" : " to this drum"}.`;
+      const successMessage=`${saved.length} media file${saved.length===1?"":"s"} saved successfully${drum.build_client==="Brady" ? " to this Brady shell" : " to this drum"}.`;
       setStatus(successMessage);
       setMessage?.(successMessage);
       setTimeout(()=>onClose?.(),650);
@@ -8487,16 +9050,18 @@ function MilestonePhotoModal({drum,milestoneKey,onClose,setMessage}){
       <h2>{milestone.label}</h2>
       <p>{milestone.prompt}</p>
 
-      <div className="photoChoiceButtons">
+      <div className="photoChoiceButtons mediaChoiceButtons">
         <button className="primary" type="button" onClick={()=>cameraInputRef.current?.click()}><Camera size={16}/> Take Photo</button>
-        <button type="button" onClick={()=>libraryInputRef.current?.click()}><Plus size={16}/> Choose Existing Photos</button>
+        <button type="button" onClick={()=>videoInputRef.current?.click()}><Camera size={16}/> Take Video</button>
+        <button type="button" onClick={()=>libraryInputRef.current?.click()}><Plus size={16}/> Choose Existing Media</button>
       </div>
       <input className="hiddenFileInput" ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={e=>{setSource("camera");setFiles(Array.from(e.target.files || []));}}/>
-      <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept="image/*" multiple onChange={e=>{setSource("library");setFiles(Array.from(e.target.files || []));}}/>
-      {files.length>0 && <p className="okText">{files.length} photo{files.length===1?"":"s"} selected and ready to upload.</p>}
+      <input className="hiddenFileInput" ref={videoInputRef} type="file" accept="video/*" capture="environment" onChange={e=>{setSource("camera");setFiles(Array.from(e.target.files || []));}}/>
+      <input className="hiddenFileInput" ref={libraryInputRef} type="file" accept="image/*,video/*" multiple onChange={e=>{setSource("library");setFiles(Array.from(e.target.files || []));}}/>
+      {files.length>0 && <p className="okText">{files.length} media file{files.length===1?"":"s"} selected and ready to upload.</p>}
 
-      <button type="button" className="primary uploadPhotosButton" disabled={status==="Uploading photos..." || status==="Saving photos to the app..."} onClick={uploadPhotos}><Camera size={16}/> {(status==="Uploading photos..." || status==="Saving photos to the app...") ? "Uploading..." : source==="camera" ? "Upload & Save to iPhone" : "Upload"}</button>
-      {source==="camera" && <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> in the share sheet. The photo will also be uploaded to this drum.</small>}
+      <button type="button" className="primary uploadPhotosButton" disabled={status==="Uploading media..." || status==="Saving media to the app..."} onClick={uploadPhotos}><Camera size={16}/> {(status==="Uploading media..." || status==="Saving media to the app...") ? "Uploading..." : source==="camera" ? "Upload & Save to iPhone" : "Upload"}</button>
+      {source==="camera" && <small className="saveToPhoneNote">On iPhone, choose <b>Save Image</b> or <b>Save Video</b> in the share sheet. The media will also be uploaded to this drum.</small>}
       {status && <p className={(status.toLowerCase().includes("failed") || status.toLowerCase().includes("error")) ? "dangerText" : "okText"}>{status}</p>}
 
       {drum.build_client!=="Brady" && <>
@@ -8530,15 +9095,15 @@ ${emailBody}`,"Customer email")}>Copy Email</button>
       </>}
 
       {uploaded.length>0 && <section className="uploadedPhotoList">
-        <h3>Stored photos</h3>
-        {uploaded.map(photo=><a key={photo.id} href={photo.public_url} target="_blank" rel="noreferrer">Open photo</a>)}
+        <h3>Stored media</h3>
+        {uploaded.map(photo=><a key={photo.id} href={photo.public_url} target="_blank" rel="noreferrer">Open media</a>)}
       </section>}
     </div>
   </div>
 }
 
 
-function JobCard({drum, template, labourRate, onClose, updateDrum, updateHardware, completeDrum, addTime, markSold, markShipped, returnDrumToProduction, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject, hardware=[], hardwareAllocations=[], consumeHardwareForDrum, syncHardwareUsed,releaseHardwareForDrum}){
+function JobCard({drum, template, labourRate, onClose, updateDrum, completeDrum, addTime, markSold, markShipped, returnDrumToProduction, archiveDrum, restoreArchivedDrum, setDrumLifecycle, copyText, deleteDrum, drums=[], projects=[], createProject, setMessage, onAddDrumToProject, hardware=[], hardwareAllocations=[], consumeHardwareForDrum, syncHardwareUsed,releaseHardwareForDrum}){
   const [localBuildType,setLocalBuildType]=useState(drum.build_type || "Stave");
   const [localOwnership,setLocalOwnership]=useState(drum.build_client || "Unallocated");
   const [localCbNumber,setLocalCbNumber]=useState(drum.cb_number || "");
@@ -8581,7 +9146,6 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, updateHardwar
   const [showHardwareUsed,setShowHardwareUsed]=useState(false);
   const [hardwareSelection,setHardwareSelection]=useState({});
   const [trickFinish,setTrickFinish]=useState("Chrome");
-  const [hardwareSubstitutions,setHardwareSubstitutions]=useState({});
   const [savingHardware,setSavingHardware]=useState(false);
   const [pendingAssembly,setPendingAssembly]=useState(false);
   const [assemblyShortages,setAssemblyShortages]=useState([]);
@@ -8624,11 +9188,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, updateHardwar
   },[localOwnership,bradyCalculatedPrice,draft.finish,localBuildType,drum.drum_type,drum.size]);
 
   const standardHardware=drumHardwareRequirements({...drum,...draft,build_type:localBuildType});
-  const partByCode=Object.fromEntries(hardware.flatMap(part=>[
-    [hardwareLookupKey(part),part],
-    [String(part.code||""),part],
-    [String(part.sku_key||""),part]
-  ]).filter(([key])=>key));
+  const partByCode=Object.fromEntries(hardware.map(part=>[hardwareLookupKey(part),part]));
   const consumedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && String(a.status||"").toLowerCase()==="consumed");
   const allocatedForDrum=hardwareAllocations.filter(a=>a.drum_id===drum.id && String(a.status||"").toLowerCase()==="allocated");
   const consumedByPart=consumedForDrum.reduce((map,a)=>{map[a.hardware_part_id]=(map[a.hardware_part_id]||0)+Number(a.quantity||0);return map;},{});
@@ -8646,7 +9206,6 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, updateHardwar
       initial[req.code]=forAssembly ? true : isCurrentlyFitted;
     });
     setHardwareSelection(initial);
-    setHardwareSubstitutions({});
     setAssemblyShortages(shortages);
     setPendingAssembly(forAssembly);
     setShowHardwareUsed(true);
@@ -8656,12 +9215,9 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, updateHardwar
     setSavingHardware(true);
     const selected=standardHardware
       .filter(req=>hardwareSelection[req.code]===true)
-      .map(req=>{
-        const defaultCode=req.code==="THROW-TRICK-CHROME" && trickFinish==="Gold" ? "THROW-TRICK-GOLD" : req.code;
-        const chosenCode=hardwareSubstitutions[req.code] || defaultCode;
-        const chosenPart=partByCode[chosenCode];
-        return {...req,code:chosenCode,label:chosenPart?.part_name || req.label};
-      });
+      .map(req=>req.code==="THROW-TRICK-CHROME" && trickFinish==="Gold"
+        ? {...req,code:"THROW-TRICK-GOLD",label:"Trick throw-off — Gold"}
+        : req);
     const ok=await syncHardwareUsed(drum,selected,pendingAssembly);
     // syncHardwareUsed now handles any reservation release from a fresh database
     // read. Do not run a second prompt against stale Job Card allocation state.
@@ -8796,6 +9352,17 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, updateHardwar
           ? "Sold"
           : (currentLifecycleStatus || null);
 
+    const previousChecked=parseChecked(drum.notes);
+    let nextStageHistory=Array.isArray(drum.stage_history) ? [...drum.stage_history] : [];
+    const newlyCompleted=[...checked].filter(item=>!previousChecked.has(item));
+    const newlyReopened=[...previousChecked].filter(item=>!checked.has(item));
+    if(newlyCompleted.length || newlyReopened.length){
+      const changed=new Set([...newlyCompleted,...newlyReopened]);
+      nextStageHistory=nextStageHistory.filter(entry=>!changed.has(entry.item));
+      const completedAt=new Date().toISOString();
+      newlyCompleted.forEach(item=>nextStageHistory.push({item,completed:true,completed_at:completedAt}));
+    }
+
     const patch={
       serial:draft.serial,
       timber:draft.timber,
@@ -8842,6 +9409,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, updateHardwar
         ),
         checked
       ),
+      stage_history:nextStageHistory,
       veneer_1_thickness:Number(veneer[0]||0),
       veneer_2_thickness:Number(veneer[1]||0),
       veneer_3_thickness:Number(veneer[2]||0),
@@ -9071,33 +9639,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, updateHardwar
 
     {showHardwareUsed && <div className="hardwareUsedOverlay" onClick={()=>setShowHardwareUsed(false)}><div className="hardwareUsedModal" onClick={e=>e.stopPropagation()}>
       <div className="sectionHeader"><div><h2>Adjust Hardware Used</h2><p>{pendingAssembly?"There is not enough recorded stock for the full standard hardware set. Deselect anything not fitted, or save as assembled anyway to record a stock shortage.":"Select only the parts currently fitted to this drum."}</p></div><button onClick={()=>setShowHardwareUsed(false)}>Close</button></div>{assemblyShortages.length>0&&<div className="stocktakeNotice dangerText"><b>Hardware shortage</b><span>{assemblyShortages.map(req=>req.label).join(", ")}</span></div>}
-      <div className="hardwareChecklist">{standardHardware.map(req=>{
-        const isTrick=req.code==="THROW-TRICK-CHROME";
-        const defaultCode=isTrick&&trickFinish==="Gold"?"THROW-TRICK-GOLD":req.code;
-        const lookupCode=hardwareSubstitutions[req.code]||defaultCode;
-        const part=partByCode[lookupCode];
-        const standardPart=partByCode[defaultCode];
-        const category=canonicalInventoryCategory(standardPart?.category);
-        const alternatives=hardware.filter(candidate=>candidate.id!==standardPart?.id && canonicalInventoryCategory(candidate.category)===category);
-        const insufficient=part && Number(part.qty_on_hand||0)<Number(req.qty||0);
-        return <div key={req.code} className={`hardwareCheckRow ${insufficient?"hardwareShortageRow":""}`}>
-          <input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/>
-          <span>
-            <b>{req.qty} × {part?.part_name || (isTrick?`Trick throw-off — ${trickFinish}`:req.label)}</b>
-            <small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small>
-            {isTrick&&hardwareSelection[req.code]!==false&&<select value={trickFinish} onChange={e=>setTrickFinish(e.target.value)}><option>Chrome</option><option>Gold</option></select>}
-            {hardwareSelection[req.code]!==false&&alternatives.length>0&&<label className="hardwareSubstituteControl">Hardware fitted<select value={hardwareSubstitutions[req.code]||""} onChange={e=>setHardwareSubstitutions(current=>({...current,[req.code]:e.target.value}))}><option value="">Standard — {standardPart?.part_name||req.label}</option>{alternatives.map(candidate=><option key={candidate.id} value={hardwareLookupKey(candidate)}>{candidate.part_name} · {candidate.finish||"Standard"} · {candidate.size||candidate.code} · {candidate.qty_on_hand} on hand</option>)}</select></label>}
-            {hardwareSelection[req.code]!==false&&insufficient&&part&&<button type="button" className="stockCorrectionButton" onClick={async()=>{
-              const entered=window.prompt(`App stock for ${part.part_name} is ${part.qty_on_hand}. How many are physically in stock before fitting this drum?`,String(part.qty_on_hand||0));
-              if(entered===null) return;
-              const qty=Number(entered);
-              if(!Number.isFinite(qty)||qty<0){setSavedMessage("Enter a valid physical stock quantity.");return;}
-              const ok=await updateHardware?.(part.id,{qty_on_hand:qty});
-              if(ok!==false) setSavedMessage(`${part.part_name} stock corrected to ${qty}. Review the row, then save hardware used.`);
-            }}>Correct stock level</button>}
-          </span>
-        </div>;
-      })}</div>
+      <div className="hardwareChecklist">{standardHardware.map(req=>{const isTrick=req.code==="THROW-TRICK-CHROME";const lookupCode=isTrick&&trickFinish==="Gold"?"THROW-TRICK-GOLD":req.code;const part=partByCode[lookupCode];return <div key={req.code} className={`hardwareCheckRow ${assemblyShortages.some(x=>x.code===req.code)?"hardwareShortageRow":""}`}><input type="checkbox" checked={hardwareSelection[req.code]!==false} onChange={e=>setHardwareSelection(current=>({...current,[req.code]:e.target.checked}))}/><span><b>{req.qty} × {isTrick?`Trick throw-off — ${trickFinish}`:req.label}</b><small>{part ? `${part.qty_on_hand} currently on hand` : "Inventory part not found"}</small>{isTrick&&hardwareSelection[req.code]!==false&&<select value={trickFinish} onChange={e=>setTrickFinish(e.target.value)}><option>Chrome</option><option>Gold</option></select>}</span></div>})}</div>
       <div className="modalActions"><button onClick={()=>setShowHardwareUsed(false)}>Cancel</button><button className="primary" disabled={savingHardware} onClick={saveHardwareUsed}>{savingHardware?"Saving...":pendingAssembly?"Save as Assembled":"Save Hardware Used"}</button></div>
     </div></div>}
 
@@ -9198,9 +9740,7 @@ function JobCard({drum, template, labourRate, onClose, updateDrum, updateHardwar
     </section>
 
     {localBuildType==="Stave" && <section className="panel inner"><h2>Stave Cutting Calculator</h2><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Stave" serial={drum.serial} timber={draft.timber} size={drum.size}/></section>}
-    {localBuildType==="Ply" && <><VeneerProcessNotes/><section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={draft.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Enter the measured thickness of each completed layer/group. The current calculation remains the production reference while the experimental value is monitored.</p><div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerComparison thicknesses={veneer} size={drum.size}/></section></>}
-
-    {!String(draft.finish||"").toLowerCase().includes("natural") && <section className="panel inner sealingWorkflowNote"><span className="launchPackEyebrow">UPDATED FINISHING PROCESS</span><h2>Inside / Outside Seal Before Machining</h2><p><b>14 × 6½ baseline per coat:</b> 20 ml polyurethane + 10 ml hardener. Spray both inside and outside and repeat the following day.</p><p>After the second coat the inside is finished and the outside sealer stage is complete. During the following 7-day cure, cut/sand bearing edges, cut snare beds and drill the hardware holes.</p></section>}
+    {localBuildType==="Ply" && <><VeneerProcessNotes/><section className="panel inner"><StaveSpecPanel diameter={splitSize(drum.size).diameter} drumType={drum.drum_type||"Snare"} buildType="Ply" serial={drum.serial} timber={draft.timber} size={drum.size}/><h2>Ply Veneer Calculator</h2><p className="calcNote">{sizeAdjustmentLabel(drum.size)}. Layer 1 is fixed as the largest outer layer; thickness changes affect the inner layers only.</p>{shellSizeKey(drum.size)==="12" && <p className="veneerFitWarning"><b>Workshop calibrated.</b> Layer 4: check fit on next 12&quot; build — may need +1 mm.</p>}<div className="veneerGrid">{veneer.map((v,i)=><label key={i}>Layer {i+1} thickness<input value={v} onChange={e=>changeVeneer(i,e.target.value)} onBlur={e=>saveVeneer(i,e.target.value)}/></label>)}</div><VeneerComparison thicknesses={veneer} size={drum.size}/></section></>}
 
     <section className="panel inner"><h2>Manufacturing Checklist</h2>
       {shouldSuggestExtraFiddlebackCoat({...drum,...draft,timber:draft.timber,finish:draft.finish}) && <div className="fiddlebackCoatSuggestion">

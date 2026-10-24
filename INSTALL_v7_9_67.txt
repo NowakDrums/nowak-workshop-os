@@ -1,0 +1,11 @@
+Nowak Workshop OS v7.9.67
+
+Changes:
+- Adds the polyurethane inter-coat sanding grit procedure:
+  after sealer 180G until relatively smooth; after Coat 1 180G until relatively smooth; after Coat 2 240G; after Coat 3 400G.
+- Keeps 14 x 6.5 as the high-gloss reference drum.
+- Replaces direct area scaling for polyurethane gloss coats with a workshop-calibrated model: 17 ml + 0.471 x diameter x depth of mixed material per drum, per gloss coat.
+- Calibration is based on the measured 8x8 + 14x8 + 16x16 + 18x18 + 24x14 batch: old estimate 720 ml, actual use 600 ml.
+- Sealer scaling remains unchanged until measured sealer data is available.
+- Full high-gloss material costing now uses the calibrated gloss model.
+- Existing inter-coat sanding timing calibration is retained.
