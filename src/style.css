@@ -1872,3 +1872,25 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .repairPlanItem{border-left:4px solid #58a6ff;background:rgba(88,166,255,.08)}
 .repairHours{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:.88rem}
 .repairCard .scheduleWorkControl{margin:.65rem 0}
+
+
+/* v8.0.4 veneer comparison + hardware correction */
+.veneerCompareWrap{display:grid;gap:8px;margin-top:14px}
+.veneerCompareHeader,.veneerCompareRow{display:grid;grid-template-columns:minmax(90px,.8fr) minmax(130px,1fr) minmax(160px,1.15fr);gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border,#d6d6d6);border-radius:10px}
+.veneerCompareHeader{font-size:.82rem;background:#f4f5f6}
+.veneerCompareRow span{display:flex;flex-direction:column}
+.veneerCompareRow small{opacity:.7}
+.veneerCompareRow strong:nth-child(3){font-size:1.05rem}
+.veneerCalibrationNote{padding:12px;border-radius:10px;background:#fff4d6;border:1px solid #e6c96a;display:flex;flex-direction:column;gap:4px}
+.sealingWorkflowNote{border-left:4px solid #8b6b3f}
+.hardwareSubstituteControl{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.hardwareSubstituteControl select{max-width:100%}
+.stockCorrectionButton{margin-top:8px}
+@media(max-width:700px){
+  .veneerCompareHeader{display:none}
+  .veneerCompareRow{grid-template-columns:1fr 1fr}
+  .veneerCompareRow>span{grid-column:1/-1}
+  .veneerCompareRow strong:before{display:block;font-size:.72rem;font-weight:500;opacity:.65}
+  .veneerCompareRow strong:nth-child(2):before{content:"Current"}
+  .veneerCompareRow strong:nth-child(3):before{content:"Experimental"}
+}
