@@ -1982,3 +1982,15 @@ button:disabled{opacity:.55;cursor:not-allowed}
   .savedVeneerRow label>span{display:block;font-size:.72rem;opacity:.72}
   .savedVeneerRow label:last-child{grid-column:1/-1}
 }
+
+
+/* v8.0.7 Job Card veneer actuals */
+.jobVeneerActuals{display:grid;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line,#3a3a3a)}
+.jobVeneerActuals h3{margin:0}
+.jobVeneerActualRow{display:grid;grid-template-columns:48px minmax(130px,.7fr) minmax(220px,1.6fr);gap:10px;align-items:end;padding:10px;border:1px solid var(--line,#3a3a3a);border-radius:10px}
+.jobVeneerActualRow label{display:grid;gap:5px;margin:0}
+@media(max-width:700px){
+  .jobVeneerActualRow{grid-template-columns:1fr 1fr}
+  .jobVeneerActualRow>b{grid-column:1/-1;color:var(--gold,#e0b858)}
+  .jobVeneerActualRow label:last-child{grid-column:1/-1}
+}
